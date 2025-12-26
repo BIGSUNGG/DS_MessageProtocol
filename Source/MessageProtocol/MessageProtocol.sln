@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36705.20 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol", "MessageProtocol\MessageProtocol.csproj", "{72066D0D-5B49-4196-BBB3-C846663E9D5A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{72066D0D-5B49-4196-BBB3-C846663E9D5A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{72066D0D-5B49-4196-BBB3-C846663E9D5A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{72066D0D-5B49-4196-BBB3-C846663E9D5A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{72066D0D-5B49-4196-BBB3-C846663E9D5A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {80675E3F-B131-4D2C-A133-4CB356F3FD95}
+	EndGlobalSection
+EndGlobal
