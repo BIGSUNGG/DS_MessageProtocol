@@ -6,7 +6,7 @@ using DS.MessageProtocol;
 
 namespace DS.MessageProtocol.Serialize
 {
-    public class MessageSerializer : IMessageSerialize
+    public class MessageSerializer : IMessageSerialize, IMessageDeserialize
     {
         public static MessageSerializer Instance => _instance.Value;
         static Lazy<MessageSerializer> _instance = new Lazy<MessageSerializer>(() => new MessageSerializer());
@@ -23,20 +23,15 @@ namespace DS.MessageProtocol.Serialize
         /// </summary>
         Dictionary<Type, IMessageDeserialize> _deserializeHelper = new Dictionary<Type, IMessageDeserialize>();
 
-        public MessageSerializer()
+        private MessageSerializer()
         {
-            // 현재 어셈블리에서 MessageInfo 어트리뷰트를 가진 모든 클래스를 찾은 후 SerializeHelper에 등록            
-            var assembly = Assembly.GetExecutingAssembly();
-            var types = assembly.GetTypes()
-                .Where(type => type.GetCustomAttribute<MessageGroupElement>() != null);
-
-            foreach (var type in types)
+            foreach(var root in MessageGroupCollector.Instance.MessageGroupRoots.Values)
             {
-                var attribute = type.GetCustomAttribute<MessageGroupElement>();
-                if (attribute != null)
+                _deserializeHelper.Add(root.RootMessageType, new MessageGroupRootDeserializeHelper(root));
+                foreach(var element in root.Elements.Values)
                 {
-                    _serializeHelper[type] = new MessageSerializeHelper(type);
-                    _deserializeHelper[type] = new RootMessageDeserializeHelper(type);
+                    _serializeHelper.Add(element.ElementMessageType, new MessageGroupElementSerializeHelper(element));
+                    _deserializeHelper.Add(element.ElementMessageType, new MessageGroupElementDeserializeHelper(element));
                 }
             }
         }
@@ -60,5 +55,6 @@ namespace DS.MessageProtocol.Serialize
             else
                 throw new InvalidOperationException();
         }
+
     }
 }

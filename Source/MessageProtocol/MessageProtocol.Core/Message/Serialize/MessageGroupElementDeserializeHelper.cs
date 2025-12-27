@@ -7,18 +7,15 @@ using System.Threading.Tasks;
 
 namespace DS.MessageProtocol.Serialize
 {
-    internal class ElementMessageDeserializeHelper : IMessageDeserialize
+    internal class MessageGroupElementDeserializeHelper : IMessageDeserialize
     {
-        Type _messageType;
-        MessageGroupElement? _messageGroupElement;
-
+        MessageGroupElementWrapper _elementWrapper;
         MethodInfo _sizeOf;
 
-        public ElementMessageDeserializeHelper(Type messageType)
+        public MessageGroupElementDeserializeHelper(MessageGroupElementWrapper elementWrapper)
         {
-            _messageType = messageType;
-            _messageGroupElement = _messageType.GetCustomAttribute<MessageGroupElement>(false);
-            _sizeOf = typeof(Unsafe).GetMethod("SizeOf").MakeGenericMethod(messageType);
+            _elementWrapper = elementWrapper;
+            _sizeOf = typeof(Unsafe).GetMethod("SizeOf").MakeGenericMethod(_elementWrapper.ElementMessageType);
         }
 
         public T Deserialize<T>(byte[] data)
@@ -28,7 +25,7 @@ namespace DS.MessageProtocol.Serialize
                 fixed (byte* p = data)
                 {
                     ushort messageId = Unsafe.Read<ushort>(p);
-                    if (messageId != _messageGroupElement.MessageElementId)
+                    if (messageId != _elementWrapper.ElementMessageAttribute.MessageElementId)
                         throw new InvalidOperationException();
                     T message = Unsafe.Read<T>(p + 2);
                     return message;

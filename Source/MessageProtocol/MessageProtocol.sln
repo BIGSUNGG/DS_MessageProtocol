@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.36705.20
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.Core", "MessageProtocol.Core\MessageProtocol.Core.csproj", "{306836A3-F2FD-4D4D-CF85-F29B4457008E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.Core.Tests", "MessageProtocol.CoreTests\MessageProtocol.Core.Tests.csproj", "{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{306836A3-F2FD-4D4D-CF85-F29B4457008E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{306836A3-F2FD-4D4D-CF85-F29B4457008E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{306836A3-F2FD-4D4D-CF85-F29B4457008E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

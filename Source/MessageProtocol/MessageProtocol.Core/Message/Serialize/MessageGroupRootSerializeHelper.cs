@@ -7,18 +7,15 @@ using System.Threading.Tasks;
 
 namespace DS.MessageProtocol.Serialize
 {
-    internal class MessageSerializeHelper : IMessageSerialize
+    internal class MessageGroupRootSerializeHelper : IMessageSerialize
     {
-        Type _messageType;
-        MessageGroupElement? _messageGroupElement;
-
+        MessageGroupRootWrapper _root;
         MethodInfo _sizeOf;
 
-        public MessageSerializeHelper(Type messageType)
+        public MessageGroupRootSerializeHelper(MessageGroupRootWrapper root)
         {
-            _messageType = messageType; ;
-            _messageGroupElement = _messageType.GetCustomAttribute<MessageGroupElement>(false);
-            _sizeOf = typeof(Unsafe).GetMethod("SizeOf").MakeGenericMethod(messageType);
+            _root = root;
+            _sizeOf = typeof(Unsafe).GetMethod("SizeOf").MakeGenericMethod(_root.RootMessageType);
         }
 
         public byte[] Serialize(object message)
@@ -29,8 +26,8 @@ namespace DS.MessageProtocol.Serialize
             {
                 fixed (byte* p = result)
                 {
-                    Unsafe.Write(p, _messageGroupElement.MessageElementId);
-                    Unsafe.Write(p + 2, message);
+                    Unsafe.Write(p, (ushort)0);
+                    Unsafe.Copy(p + 2, ref message);
                 }
             }
 
