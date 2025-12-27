@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace DS.MessageProtocol.Serialize
 {
-    internal class MessageGroupDeserializeHelper : IMessageDeserialize
+    internal class MessageStandaloneDeserializeHelper : IMessageDeserialize
     {
-        public MessageGroupDeserializeHelper(Type type)
+        public MessageStandaloneDeserializeHelper(Type type)
         {
         }
 
@@ -19,7 +19,7 @@ namespace DS.MessageProtocol.Serialize
             {
                 fixed (byte* p = data)
                 {
-                    T message = Unsafe.Read<T>(p + 4);
+                    T message = Unsafe.ReadUnaligned<T>(p);
                     return message;
                 }
             }

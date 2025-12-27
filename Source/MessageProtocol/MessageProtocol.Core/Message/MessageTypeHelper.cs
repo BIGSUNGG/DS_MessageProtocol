@@ -8,27 +8,28 @@ using DS.MessageProtocol;
 
 namespace DS.MessageProtocol
 {
-    internal class MessageGroupCollector
+    internal class MessageTypeHelper
     {
-        public static MessageGroupCollector Instance => _instance.Value;
-        static Lazy<MessageGroupCollector> _instance = new Lazy<MessageGroupCollector>(() => new MessageGroupCollector());
+        public static MessageTypeHelper Instance => _instance.Value;
+        static Lazy<MessageTypeHelper> _instance = new Lazy<MessageTypeHelper>(() => new MessageTypeHelper());
+
+        private readonly Dictionary<Type, MessageType> _messageTypes = new Dictionary<Type, MessageType>();
+        public IReadOnlyDictionary<Type, MessageType> MessageTypes => _messageTypes;
 
         private readonly Dictionary<Type, MessageGroupRootWrapper> _messageGroupRoots = new Dictionary<Type, MessageGroupRootWrapper>();
         public IReadOnlyDictionary<Type, MessageGroupRootWrapper> MessageGroupRoots => _messageGroupRoots;
 
-        private MessageGroupCollector()
-        {
-            InitializeMessageGroups();
-        }
+        private readonly HashSet<Type> _messageStandalones = new HashSet<Type>();
+        public IReadOnlySet<Type> MessageStandalones => _messageStandalones;
 
-        private void InitializeMessageGroups()
-        {
+        private MessageTypeHelper()
+        {       
             // 현재 어셈블리와 이를 참조하는 어셈블리만 스캔 (성능 최적화)
             var currentAssembly = Assembly.GetExecutingAssembly();
             var currentAssemblyName = currentAssembly.GetName();
             var assembliesToScan = new HashSet<Assembly> { currentAssembly };
             
-            // 현재 도메인의 모든 어셈블리 중에서 현재 어셈블리를 참조하는 어셈블리 찾기 (역참조)
+            // 현재 도메인의 모든 어셈블리 중에서 현재 어셈블리를 참조하는 어셈블리 찾기
             var allLoadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
             foreach (var assembly in allLoadedAssemblies)
             {
@@ -69,6 +70,20 @@ namespace DS.MessageProtocol
                 catch { return Array.Empty<Type>(); }
             }).ToArray();
 
+            FindMessageGroups(allTypes);
+            FindMessageStandalones(allTypes);
+        }
+
+        public MessageType GetMessageType(Type type)
+        {
+            if (_messageTypes.TryGetValue(type, out var messageType))
+                return messageType;
+            
+            return MessageType.Unmanaged;
+        }
+
+        private void FindMessageGroups(Type[] allTypes)
+        {
             // 1단계: MessageGroupRoot와 MessageGroupElement 어트리뷰트를 가진 클래스 수집
             var rootTypes = new List<Type>();
             var elementTypes = new List<Type>();
@@ -89,11 +104,13 @@ namespace DS.MessageProtocol
 
                 if (rootAttribute != null)
                 {
+                    _messageTypes.Add(type, MessageType.MessageGroup);
                     rootTypes.Add(type);
                 }
 
                 if (elementAttribute != null)
                 {
+                    _messageTypes.Add(type, MessageType.MessageGroup);
                     elementTypes.Add(type);
                 }
             }
@@ -121,6 +138,22 @@ namespace DS.MessageProtocol
                 // MessageGroupRootWrapper 생성 및 캐싱
                 var rootWrapper = new MessageGroupRootWrapper(rootType, elementWrappers);
                 _messageGroupRoots[rootType] = rootWrapper;
+            }
+        }
+
+        private void FindMessageStandalones(Type[] allTypes)
+        {
+            foreach (var type in allTypes)
+            {
+                if (!type.IsClass || type.IsAbstract || type.IsInterface)
+                    continue;
+
+                var standaloneAttribute = type.GetCustomAttribute<MessageStandalone>(false);
+                if (standaloneAttribute != null)
+                {
+                    _messageTypes.Add(type, MessageType.MessageStandalone);
+                    _messageStandalones.Add(type);
+                }
             }
         }
     }

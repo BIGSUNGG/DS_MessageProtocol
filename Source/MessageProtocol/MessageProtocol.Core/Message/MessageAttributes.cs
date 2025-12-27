@@ -30,3 +30,8 @@ public class MessageGroupElement : Attribute
             throw new InvalidOperationException("MessageElementId cannot be 0");
     }
 }
+
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
+public class MessageStandalone : Attribute
+{
+}
