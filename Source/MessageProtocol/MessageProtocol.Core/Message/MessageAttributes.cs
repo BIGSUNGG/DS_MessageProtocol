@@ -10,14 +10,11 @@ namespace DS.MessageProtocol;
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
 public class MessageGroupRoot : Attribute
 {
-    // TODO : 사용처 만들기
     public ushort MessageRootId { get; private set; }
 
     public MessageGroupRoot(ushort messageRootId)
     {
         MessageRootId = messageRootId;
-        if(MessageRootId.Equals(0))
-            throw new InvalidOperationException("MessageRootId cannot be 0");
     }
 }
 
@@ -29,5 +26,7 @@ public class MessageGroupElement : Attribute
     public MessageGroupElement(ushort messageElementId)
     {
         MessageElementId = messageElementId;
+        if (MessageElementId.Equals(0))
+            throw new InvalidOperationException("MessageElementId cannot be 0");
     }
 }
