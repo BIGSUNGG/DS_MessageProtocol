@@ -48,7 +48,7 @@ namespace DS.MessageProtocol.Serialize.Tests
 
             // Act
             byte[] serialized = serializer.Serialize(originalMessage);
-            var deserialized = serializer.Deserialize<TestElementMessage>(serialized);
+            var deserialized = serializer.Deserialize<TestRootMessage>(serialized) as TestElementMessage;
 
             // Assert
             Assert.IsNotNull(deserialized);

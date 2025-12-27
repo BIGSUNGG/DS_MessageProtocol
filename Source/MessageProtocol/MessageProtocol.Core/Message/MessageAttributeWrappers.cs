@@ -25,14 +25,18 @@ namespace DS.MessageProtocol
 
     public class MessageGroupElementWrapper
     {
-        public MessageGroupRoot MessageGroupRoot { get; private set; }
+        public Type RootMessageType { get; private set; }
+        public MessageGroupRoot RootMessageAttribute { get; private set; }
 
         public Type ElementMessageType { get; private set; }
         public MessageGroupElement ElementMessageAttribute { get; private set; }
 
-        public MessageGroupElementWrapper(MessageGroupRoot groupRoot, Type elementMessageType)
+        public MessageGroupElementWrapper(Type rootMessageType, Type elementMessageType)
         {
-            MessageGroupRoot = groupRoot;
+            RootMessageType = rootMessageType;
+            RootMessageAttribute = RootMessageType.GetCustomAttribute<MessageGroupRoot>(false);
+            if (RootMessageAttribute == null)
+                throw new InvalidOperationException($"Type {rootMessageType.FullName} does not have MessageGroupRoot attribute");
 
             ElementMessageType = elementMessageType;
             ElementMessageAttribute = elementMessageType.GetCustomAttribute<MessageGroupElement>(false);

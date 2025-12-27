@@ -113,7 +113,7 @@ namespace DS.MessageProtocol
                     // Element가 Root의 자식 타입인지 확인
                     if (rootType.IsAssignableFrom(elementType))
                     {
-                        var elementWrapper = new MessageGroupElementWrapper(rootAttribute, elementType);
+                        var elementWrapper = new MessageGroupElementWrapper(rootType, elementType);
                         elementWrappers[elementType] = elementWrapper;
                     }
                 }
