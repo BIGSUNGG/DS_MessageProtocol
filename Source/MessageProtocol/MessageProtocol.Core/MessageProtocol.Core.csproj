@@ -4,6 +4,17 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <WarningsAsErrors>$(WarningsAsErrors);NU1605</WarningsAsErrors>
+    <NoWarn>1701;1702,8605,8602</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <WarningsAsErrors>$(WarningsAsErrors);NU1605</WarningsAsErrors>
+    <NoWarn>1701;1702,8605,8602</NoWarn>
   </PropertyGroup>
 
 </Project>
