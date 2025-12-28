@@ -93,8 +93,8 @@ namespace DS.MessageProtocol
                 if (!type.IsClass || type.IsAbstract || type.IsInterface)
                     continue;
 
-                var rootAttribute = type.GetCustomAttribute<MessageGroupRoot>(false);
-                var elementAttribute = type.GetCustomAttribute<MessageGroupElement>(false);
+                var rootAttribute = type.GetCustomAttribute<MessageGroupRootAttribute>(false);
+                var elementAttribute = type.GetCustomAttribute<MessageGroupElementAttribute>(false);
 
                 if (rootAttribute != null && elementAttribute != null)
                 {
@@ -118,7 +118,7 @@ namespace DS.MessageProtocol
             // 2단계: Root에서 Element를 찾는 방식으로 매핑 (성능 최적화)
             foreach (var rootType in rootTypes)
             {
-                var rootAttribute = rootType.GetCustomAttribute<MessageGroupRoot>(false);
+                var rootAttribute = rootType.GetCustomAttribute<MessageGroupRootAttribute>(false);
                 if (rootAttribute == null)
                     continue;
 
@@ -148,7 +148,7 @@ namespace DS.MessageProtocol
                 if (!type.IsClass || type.IsAbstract || type.IsInterface)
                     continue;
 
-                var standaloneAttribute = type.GetCustomAttribute<MessageStandalone>(false);
+                var standaloneAttribute = type.GetCustomAttribute<MessageStandaloneAttribute>(false);
                 if (standaloneAttribute != null)
                 {
                     _messageTypes.Add(type, MessageType.MessageStandalone);

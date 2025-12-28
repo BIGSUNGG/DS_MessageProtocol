@@ -358,7 +358,7 @@ namespace DS.MessageProtocol.Serialize.Tests
     }
 
     // 테스트용 메시지 클래스들
-    [MessageGroupRoot(1)]
+    [MessageGroupRootAttribute(1)]
     internal class TestRootMessage
     {
     }
