@@ -127,6 +127,33 @@ namespace DS.MessageProtocol.Serialize.Tests
         }
 
         [TestMethod()]
+        public void GroupElementHasList_DeserializeTest()
+        {
+            // Arrange
+            var serializer = MessageSerializer.Instance;
+            var originalMessage = new TestElementHasListMessage
+            {
+                First = new() { 1, 2, 3, 4, 5 },
+                A = 123,
+                B = 456L,
+                C = 789L,
+                D = new() { 1, 2, 3, 4 }
+            };
+
+            // Act
+            byte[] serialized = serializer.Serialize(originalMessage);
+            var deserialized = serializer.Deserialize<TestRootMessage>(serialized) as TestElementHasListMessage;
+
+            // Assert
+            Assert.IsNotNull(deserialized);
+            Assert.AreEqual(originalMessage.First.Count, deserialized.First.Count);
+            Assert.AreEqual(originalMessage.A, deserialized.A);
+            Assert.AreEqual(originalMessage.B, deserialized.B);
+            Assert.AreEqual(originalMessage.C, deserialized.C);
+            Assert.AreEqual(originalMessage.D.Count, deserialized.D.Count);
+        }
+
+        [TestMethod()]
         public void GroupElement_SerializeDeserializeRoundTripTest()
         {
             // Arrange
@@ -348,6 +375,16 @@ namespace DS.MessageProtocol.Serialize.Tests
         public int A;
         public long B;
         public long C;
+    }
+
+    [MessageGroupElement(2)]
+    internal class TestElementHasListMessage : TestRootMessage
+    {
+        public List<float> First = new List<float>();
+        public int A;
+        public long B;
+        public long C;
+        public List<int> D = new List<int>();
     }
 
     [MessageStandalone]
