@@ -5,7 +5,13 @@ VisualStudioVersion = 17.14.36705.20
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.Core", "MessageProtocol.Core\MessageProtocol.Core.csproj", "{306836A3-F2FD-4D4D-CF85-F29B4457008E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.Core.Tests", "MessageProtocol.CoreTests\MessageProtocol.Core.Tests.csproj", "{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.Tests", "MessageProtocol.CoreTests\MessageProtocol.Tests.csproj", "{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.CodeGenerator", "MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj", "{765695E7-356D-4377-A227-D3E7BD09A0ED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol", "MessageProtocol\MessageProtocol.csproj", "{D5F776DE-D062-455E-90B1-E14D22B79D26}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestConsole", "TestConsole\TestConsole.csproj", "{F814481B-3733-4B90-AFD7-CA349363277A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +27,18 @@ Global
 		{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EC6769BD-F0C4-4AA0-B62F-12867A5B719A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{765695E7-356D-4377-A227-D3E7BD09A0ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{765695E7-356D-4377-A227-D3E7BD09A0ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{765695E7-356D-4377-A227-D3E7BD09A0ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{765695E7-356D-4377-A227-D3E7BD09A0ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D5F776DE-D062-455E-90B1-E14D22B79D26}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5F776DE-D062-455E-90B1-E14D22B79D26}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5F776DE-D062-455E-90B1-E14D22B79D26}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5F776DE-D062-455E-90B1-E14D22B79D26}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F814481B-3733-4B90-AFD7-CA349363277A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F814481B-3733-4B90-AFD7-CA349363277A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F814481B-3733-4B90-AFD7-CA349363277A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F814481B-3733-4B90-AFD7-CA349363277A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
