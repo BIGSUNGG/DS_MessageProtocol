@@ -15,6 +15,17 @@ namespace MessageProtocol.Tests.Serialize
 
             var bytes = MessageSerializer.Instance.Serialize(target);
         }
+
+        public void MessageGroupRootDeserializeTest()
+        {
+            RootMessage target = new();
+            target.Id = 10;
+
+            bool a = target is IMessageSerializable<RootMessage>;
+
+            var bytes = MessageSerializer.Instance.Serialize(target);
+            var deserialized = MessageSerializer.Instance.Deserialize<RootMessage>(bytes);
+        }
     }
 
     [MessageGroupRoot(1)]

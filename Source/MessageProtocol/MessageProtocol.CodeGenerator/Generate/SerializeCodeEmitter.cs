@@ -76,7 +76,10 @@ namespace MessageProtocol.CodeGenerator.Generate
             StringBuilder sb = new StringBuilder();
 
             // Header 작성 (RootId와 ElementId를 ushort로)
-            ushort header = (ushort)((_typeMeta.MessageRootId << 8) | (_typeMeta.MessageElementId & 0xFF));
+            ushort header = ushort.MaxValue;
+            if (_typeMeta.IsGroupedMessage)
+                header = (ushort)((_typeMeta.MessageRootId << 8) | (_typeMeta.MessageElementId & 0xFF));
+
             sb.AppendLine($"            writer.Write((ushort){header});");
 
             // 각 멤버 직렬화

@@ -17,6 +17,18 @@ namespace MessageProtocol.Tests.Serialize
 
             var bytes = MessageSerializer.Instance.Serialize(target);
         }
+
+        [Fact]
+        public void MessageGroupRootDeserializeTest()
+        {
+            RootMessage target = new();
+            target.Id = 10;
+
+            bool a = target is IMessageSerializable<RootMessage>;
+
+            var bytes = MessageSerializer.Instance.Serialize(target);
+            var deserialized = MessageSerializer.Instance.Deserialize<RootMessage>(bytes);
+        }
     }
 
     [MessageGroupRoot(1)]
@@ -26,7 +38,7 @@ namespace MessageProtocol.Tests.Serialize
     }
 
     [MessageGroupElement(10)]
-    public partial class ElementMessage
+    public partial class ElementMessage : RootMessage
     {
         public string Name { get; set; }
     }

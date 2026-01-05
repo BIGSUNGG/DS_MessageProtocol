@@ -135,6 +135,12 @@ namespace MessageProtocol.CodeGenerator.Generate
             var attributeReferences = new AttributeReferences(compilation);
             var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
 
+            // Root 계층 구조 검증
+            if (!ValidateRootHierarchy(typeSymbol, typeMeta, attributeReferences, syntax, context))
+            {
+                return;
+            }
+
             // Step2 : Generate Code
             var emitter = new SerializeCodeEmitter(typeMeta);
             string code = emitter.Emit();
@@ -179,6 +185,40 @@ namespace MessageProtocol.CodeGenerator.Generate
         static bool IsNested(TypeDeclarationSyntax typeDeclaration)
         {
             return typeDeclaration.Parent is TypeDeclarationSyntax;
+        }
+
+        static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences, TypeDeclarationSyntax syntax, SourceProductionContext context)
+        {
+            // Element 메시지인데 Root가 없으면 에러
+            if (typeMeta.IsGroupedElementMessage && typeMeta.MessageRootId == 0)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.ElementMessageMustHaveRoot,
+                    syntax.Identifier.GetLocation(),
+                    typeSymbol.Name));
+                return false;
+            }
+
+            // Root 메시지인데 부모에 Root가 있으면 에러
+            if (typeMeta.IsGroupedRootMessage)
+            {
+                var baseType = typeSymbol.BaseType;
+                while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+                {
+                    var parentRootAttribute = baseType.FindAttribute(attributeReferences.MessageGroupRootAttributeType);
+                    if (parentRootAttribute != null)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.RootMessageCannotHaveRootParent,
+                            syntax.Identifier.GetLocation(),
+                            typeSymbol.Name));
+                        return false;
+                    }
+                    baseType = baseType.BaseType;
+                }
+            }
+
+            return true;
         }
     }
 }
