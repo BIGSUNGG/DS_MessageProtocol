@@ -14,6 +14,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine("using System;");
                 sb.AppendLine("using System.IO;");
                 sb.AppendLine("using System.Collections.Generic;");
+                sb.AppendLine("using System.Runtime.CompilerServices;");
                 sb.AppendLine("using MessageProtocol.Serialize;");
                 sb.AppendLine();
 

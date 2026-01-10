@@ -8,26 +8,132 @@ namespace MessageProtocol.Tests.Serialize
     public class SeralizeTest
     {
         [Fact]
-        void MessageGroupRootSerializeTest()
+        public void MessageGroupRoot_Serialize_Test()
         {
-            RootMessage target = new();
-            target.Id = 10;
+            // Arrange
+            RootMessage original = new();
+            original.Id = 10;
 
-            bool a = target is IMessageSerializable<RootMessage>;
+            // Act
+            var bytes = MessageSerializer.Serialize(original);
 
-            var bytes = MessageSerializer.Instance.Serialize(target);
+            // Assert
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length > 0);
+            // MessageId(4바이트) + Id(4바이트) = 최소 8바이트
+            Assert.True(bytes.Length >= 8);
         }
 
         [Fact]
-        public void MessageGroupRootDeserializeTest()
+        public void MessageGroupRoot_Deserialize_Test()
         {
-            RootMessage target = new();
-            target.Id = 10;
+            // Arrange
+            RootMessage original = new();
+            original.Id = 42;
+            var bytes = MessageSerializer.Serialize(original);
 
-            bool a = target is IMessageSerializable<RootMessage>;
+            // Act
+            var deserialized = MessageSerializer.Deserialize(bytes) as RootMessage;
 
-            var bytes = MessageSerializer.Instance.Serialize(target);
-            var deserialized = MessageSerializer.Instance.Deserialize<RootMessage>(bytes);
+            // Assert
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Id, deserialized.Id);
+        }
+
+        [Fact]
+        public void MessageGroupElement_Serialize_Test()
+        {
+            // Arrange
+            ElementMessage original = new();
+            original.Id = 20;
+            original.Name = "TestElement";
+
+            // Act
+            var bytes = MessageSerializer.Serialize(original);
+
+            // Assert
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length > 0);
+        }
+
+        [Fact]
+        public void MessageGroupElement_Deserialize_Test()
+        {
+            // Arrange
+            ElementMessage original = new();
+            original.Id = 30;
+            original.Name = "ElementName";
+            var bytes = MessageSerializer.Serialize(original);
+
+            // Act
+            var deserialized = MessageSerializer.Deserialize(bytes) as ElementMessage;
+
+            // Assert
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Id, deserialized.Id);
+            Assert.Equal(original.Name, deserialized.Name);
+        }
+
+        [Fact]
+        public void MessageStandalone_Serialize_Test()
+        {
+            // Arrange
+            StandaloneMessage original = new();
+            original.Flag = true;
+
+            // Act
+            var bytes = MessageSerializer.Serialize(original);
+
+            // Assert
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length > 0);
+        }
+
+        [Fact]
+        public void MessageStandalone_Deserialize_Test()
+        {
+            // Arrange
+            StandaloneMessage original = new();
+            original.Flag = false;
+            var bytes = MessageSerializer.Serialize(original);
+
+            // Act
+            var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
+
+            // Assert
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Flag, deserialized.Flag);
+        }
+
+        [Fact]
+        public void MessageStandalone_WithTrueFlag_Serialize_Test()
+        {
+            // Arrange
+            StandaloneMessage original = new();
+            original.Flag = true;
+
+            // Act
+            var bytes = MessageSerializer.Serialize(original);
+
+            // Assert
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length > 0);
+        }
+
+        [Fact]
+        public void MessageStandalone_WithTrueFlag_Deserialize_Test()
+        {
+            // Arrange
+            StandaloneMessage original = new();
+            original.Flag = true;
+            var bytes = MessageSerializer.Serialize(original);
+
+            // Act
+            var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
+
+            // Assert
+            Assert.NotNull(deserialized);
+            Assert.True(deserialized.Flag);
         }
     }
 
@@ -40,10 +146,10 @@ namespace MessageProtocol.Tests.Serialize
     [MessageGroupElement(10)]
     public partial class ElementMessage : RootMessage
     {
-        public string Name { get; set; }
+        public string? Name { get; set; }
     }
 
-    [MessageStandalone]
+    [MessageStandalone(0)]
     public partial class StandaloneMessage
     {
         public bool Flag { get; set; }

@@ -1,4 +1,4 @@
-﻿using MessageProtocol;
+using MessageProtocol;
 using MessageProtocol.Serialize;
 using System.Collections.Generic;
 
@@ -13,7 +13,7 @@ namespace MessageProtocol.Tests.Serialize
 
             bool a = target is IMessageSerializable<RootMessage>;
 
-            var bytes = MessageSerializer.Instance.Serialize(target);
+            var bytes = MessageSerializer.Serialize(target);
         }
 
         public void MessageGroupRootDeserializeTest()
@@ -23,8 +23,8 @@ namespace MessageProtocol.Tests.Serialize
 
             bool a = target is IMessageSerializable<RootMessage>;
 
-            var bytes = MessageSerializer.Instance.Serialize(target);
-            var deserialized = MessageSerializer.Instance.Deserialize<RootMessage>(bytes);
+            var bytes = MessageSerializer.Serialize(target);
+            var deserialized = MessageSerializer.Deserialize<RootMessage>(bytes);
         }
     }
 

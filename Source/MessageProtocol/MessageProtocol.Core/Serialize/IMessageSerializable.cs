@@ -8,6 +8,8 @@ namespace MessageProtocol.Serialize
 {
     public interface IMessageSerializable<T>
     {
+        static abstract uint MessageId { get; }
+
         static abstract byte[] Serialize(T message);
         static abstract T Deserialize(byte[] data);
     }

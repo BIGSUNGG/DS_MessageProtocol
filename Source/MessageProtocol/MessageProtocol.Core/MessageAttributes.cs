@@ -10,9 +10,9 @@ namespace MessageProtocol;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
 public class MessageGroupRootAttribute : Attribute
 {
-    public ushort MessageRootId { get; private set; }
+    public byte MessageRootId { get; private set; }
 
-    public MessageGroupRootAttribute(ushort messageRootId)
+    public MessageGroupRootAttribute(byte messageRootId)
     {
         MessageRootId = messageRootId;
     }
@@ -34,6 +34,12 @@ public class MessageGroupElementAttribute : Attribute
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
 public class MessageStandaloneAttribute : Attribute
 {
+    public byte MessageStandaloneId { get; private set; }
+
+    public MessageStandaloneAttribute(byte messageStandaloneId)
+    {
+        MessageStandaloneId = messageStandaloneId;
+    }
 }
 
 [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false, Inherited = false)]

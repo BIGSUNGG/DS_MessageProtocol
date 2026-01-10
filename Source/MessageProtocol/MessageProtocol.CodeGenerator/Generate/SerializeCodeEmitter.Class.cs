@@ -16,8 +16,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 string indent = GetIndent(typeMeta);
                 string baseAndInterfaces = GetBaseAndInterfaces(typeMeta);
 
-                sb.Append($@"{indent}public partial class {typeMeta.Symbol.Name}{baseAndInterfaces}
+
+                sb.Append($@"
+{indent}
+{indent}public partial class {typeMeta.Symbol.Name}{baseAndInterfaces}
 {indent}{{
+{indent}    public static uint MessageId => {typeMeta.GetMessageId(typeMeta)};
+{indent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}
+{indent}
 {indent}    {Method.EmitSerialize(typeMeta, indent + "    ")}
 {indent}
 {indent}    {Method.EmitDeserialize(typeMeta, indent + "    ")}
