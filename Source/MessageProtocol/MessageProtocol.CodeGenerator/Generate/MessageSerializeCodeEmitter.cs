@@ -3,11 +3,11 @@ using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class SerializeCodeEmitter
+    internal sealed partial class MessageSerializeCodeEmitter
     {
         TypeMetadata _typeMeta;
 
-        public SerializeCodeEmitter(TypeMetadata typeMeta)
+        public MessageSerializeCodeEmitter(TypeMetadata typeMeta)
         {
             _typeMeta = typeMeta;
         }

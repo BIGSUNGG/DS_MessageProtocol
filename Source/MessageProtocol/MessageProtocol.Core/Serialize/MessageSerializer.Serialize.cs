@@ -28,13 +28,37 @@ namespace MessageProtocol.Serialize
         {
             var messageType = message.GetType();
 
-            return _serializeCache[messageType].Serialize(message);
+            if(!_serializeCache.TryGetValue(messageType, out var invoker))
+                invoker = RegisterSerializeInvoker(messageType);
+
+            return invoker.Serialize(message);
         }
 
-        private static void RegisterSerializeInvoker(Type messageType)
+        private static NonGenericSerializeInvoker RegisterSerializeInvoker(Type messageType)
         {
-            NonGenericSerializeInvoker invoker = (NonGenericSerializeInvoker)Activator.CreateInstance(typeof(GenericSerializeInvoker<>).MakeGenericType(messageType));
-            _serializeCache[messageType] = invoker;
+            try
+            {
+                var genericInvokerType = typeof(GenericSerializeInvoker<>).MakeGenericType(messageType);
+                var instance = Activator.CreateInstance(genericInvokerType);
+                if (instance == null)
+                {
+                    throw new InvalidOperationException($"Failed to create instance of GenericSerializeInvoker<{messageType.Name}>");
+                }
+                NonGenericSerializeInvoker invoker = (NonGenericSerializeInvoker)instance;
+                _serializeCache[messageType] = invoker;
+                return invoker;
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("violates the constraint"))
+            {
+                throw new InvalidOperationException(
+                    $"Type '{messageType.FullName}' does not implement 'IMessageSerializable<{messageType.Name}>'. " +
+                    $"This usually means the source generator (MessageProtocol.CodeGenerator) did not generate the required partial class implementation. " +
+                    $"Please ensure that:\n" +
+                    $"1. 'MessageProtocol.CodeGenerator' is properly referenced as an analyzer in your project\n" +
+                    $"2. The project uses ProjectReference (not a DLL reference) to MessageProtocol.Core\n" +
+                    $"3. The message class is marked as 'partial' and has the appropriate attribute ([MessageGroupElement], [MessageGroupRoot], or [MessageStandalone])\n" +
+                    $"Original error: {ex.Message}", ex);
+            }
         }
 
         class GenericSerializeInvoker<T> : NonGenericSerializeInvoker where T : IMessageSerializable<T>

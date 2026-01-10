@@ -11,6 +11,11 @@ namespace MessageProtocol.Serialize
 {
     public static partial class MessageSerializer
     {
+        static MessageSerializer()
+        {
+  
+        }
+
         public static void RegisterType(Type type)
         {
             RegisterSerializeInvoker(type);

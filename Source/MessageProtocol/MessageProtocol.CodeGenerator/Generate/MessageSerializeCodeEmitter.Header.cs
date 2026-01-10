@@ -3,7 +3,7 @@ using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class SerializeCodeEmitter
+    internal sealed partial class MessageSerializeCodeEmitter
     {
         // Header: 네임스페이스와 using 추가
         internal static class Header

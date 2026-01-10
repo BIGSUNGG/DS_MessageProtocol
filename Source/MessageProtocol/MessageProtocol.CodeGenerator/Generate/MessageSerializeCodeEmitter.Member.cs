@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class SerializeCodeEmitter
+    internal sealed partial class MessageSerializeCodeEmitter
     {
         // Member: 개별 멤버 변수 직렬화, 역직렬화 코드 추가
         internal static class Member

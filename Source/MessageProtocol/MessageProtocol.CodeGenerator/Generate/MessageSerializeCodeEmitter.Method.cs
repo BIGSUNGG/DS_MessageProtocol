@@ -6,7 +6,7 @@ using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class SerializeCodeEmitter
+    internal sealed partial class MessageSerializeCodeEmitter
     {
         // Method: 직렬화, 역직렬화 함수 추가
         internal static class Method

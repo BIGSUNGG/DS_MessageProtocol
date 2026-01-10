@@ -15,7 +15,7 @@ using System.Text;
 namespace MessageProtocol.CodeGenerator.Generate
 {
     [Generator(LanguageNames.CSharp)]
-    public class MessageSerailizeCodeGenerator : IIncrementalGenerator
+    public class MessageCodeGenerator : IIncrementalGenerator
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
@@ -141,16 +141,22 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return;
             }
 
+            // Root 메시지가 abstract이면 코드 생성을 건너뛰기 (abstract Root는 상속용이므로)
+            if (typeMeta.IsGroupedRootMessage && typeSymbol.IsAbstract)
+            {
+                return;
+            }
+
             // Step2 : Generate Code
-            var emitter = new SerializeCodeEmitter(typeMeta);
-            string code = emitter.Emit();
+            var serializeCodeEmitter = new MessageSerializeCodeEmitter(typeMeta);
+            string serializeCode = serializeCodeEmitter.Emit();
 
             // Step3 : Debug - Save generated code to file
 #pragma warning disable RS1035 // Do not use APIs banned for analyzers
             try
             {
                 var debugFilePath = Path.Combine("C:\\Debug\\", $"{typeMeta.Symbol.Name}.g.debug.cs");
-                File.WriteAllText(debugFilePath, code);
+                File.WriteAllText(debugFilePath, serializeCode);
             }
             catch
             {
@@ -159,7 +165,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 #pragma warning restore RS1035
 
             // Step4 : Output Code
-            context.AddSource($"{typeMeta.Symbol.Name}.g.cs", SourceText.From(code, Encoding.UTF8));
+            context.AddSource($"{typeMeta.Symbol.Name}.g.cs", SourceText.From(serializeCode, Encoding.UTF8));
         }
 
         static bool IsPartial(TypeDeclarationSyntax typeDeclaration)
@@ -190,13 +196,29 @@ namespace MessageProtocol.CodeGenerator.Generate
         static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences, TypeDeclarationSyntax syntax, SourceProductionContext context)
         {
             // Element 메시지인데 Root가 없으면 에러
-            if (typeMeta.IsGroupedElementMessage && typeMeta.MessageRootId == 0)
+            // MessageRootId가 0이어도 Root 메시지가 있을 수 있으므로, BaseTypeMetadata에서 확인
+            if (typeMeta.IsGroupedElementMessage)
             {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    DiagnosticDescriptors.ElementMessageMustHaveRoot,
-                    syntax.Identifier.GetLocation(),
-                    typeSymbol.Name));
-                return false;
+                bool hasRoot = false;
+                var current = typeMeta;
+                while (current != null)
+                {
+                    if (current.IsGroupedRootMessage)
+                    {
+                        hasRoot = true;
+                        break;
+                    }
+                    current = current.BaseTypeMetadata;
+                }
+                
+                if (!hasRoot)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.ElementMessageMustHaveRoot,
+                        syntax.Identifier.GetLocation(),
+                        typeSymbol.Name));
+                    return false;
+                }
             }
 
             // Root 메시지인데 부모에 Root가 있으면 에러

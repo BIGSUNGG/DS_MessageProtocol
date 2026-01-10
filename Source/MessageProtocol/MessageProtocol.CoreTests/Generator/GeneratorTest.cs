@@ -31,7 +31,7 @@ namespace MyCode
 
             // Act
             var inputCompilation = CreateCompilation(source);
-            var generator = new MessageSerailizeCodeGenerator();
+            var generator = new MessageCodeGenerator();
             GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
             driver = driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
 
@@ -44,13 +44,12 @@ namespace MyCode
             // 참조 부족으로 인한 오류는 무시하고, 생성된 코드가 있는지만 확인
 
             var runResult = driver.GetRunResult();
-            Assert.Single(runResult.GeneratedTrees); // 하나의 생성된 트리가 있어야 함
+            Assert.Equal(1, runResult.GeneratedTrees.Length);
             Assert.Empty(runResult.Diagnostics);
 
             var generatorResult = runResult.Results[0];
             Assert.NotNull(generatorResult.Generator);
             Assert.Empty(generatorResult.Diagnostics);
-            Assert.Single(generatorResult.GeneratedSources);
             Assert.Null(generatorResult.Exception);
 
             // 생성된 코드 확인
@@ -76,7 +75,7 @@ namespace MyCode
 
             // Act
             var inputCompilation = CreateCompilation(source);
-            var generator = new MessageSerailizeCodeGenerator();
+            var generator = new MessageCodeGenerator();
             GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
             driver = driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
 
@@ -86,7 +85,7 @@ namespace MyCode
             // 참조 부족으로 인한 컴파일 오류는 무시
 
             var runResult = driver.GetRunResult();
-            Assert.Single(runResult.GeneratedTrees);
+            Assert.Equal(1, runResult.GeneratedTrees.Length);
 
             var generatorResult = runResult.Results[0];
             var generatedCode = generatorResult.GeneratedSources[0].SourceText.ToString();
@@ -111,7 +110,7 @@ namespace MyCode
 
             // Act
             var inputCompilation = CreateCompilation(source);
-            var generator = new MessageSerailizeCodeGenerator();
+            var generator = new MessageCodeGenerator();
             GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
             driver = driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
 
@@ -121,7 +120,7 @@ namespace MyCode
             // 참조 부족으로 인한 컴파일 오류는 무시
 
             var runResult = driver.GetRunResult();
-            Assert.Single(runResult.GeneratedTrees);
+            Assert.Equal(1, runResult.GeneratedTrees.Length);
 
             var generatorResult = runResult.Results[0];
             var generatedCode = generatorResult.GeneratedSources[0].SourceText.ToString();
@@ -158,7 +157,7 @@ namespace MyCode
 
             // Act
             var inputCompilation = CreateCompilation(source);
-            var generator = new MessageSerailizeCodeGenerator();
+            var generator = new MessageCodeGenerator();
             GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
             driver = driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
 
@@ -194,7 +193,7 @@ namespace MyCode
 
             // Act
             var inputCompilation = CreateCompilation(source);
-            var generator = new MessageSerailizeCodeGenerator();
+            var generator = new MessageCodeGenerator();
             GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
             driver = driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
 

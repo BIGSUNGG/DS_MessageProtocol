@@ -70,26 +70,6 @@ namespace MessageProtocol.CodeGenerator.Metadata
                     if (elementIdValue != null)
                     {
                         MessageElementId = (ushort)elementIdValue;
-
-                        // Element일 경우 부모 클래스에서 RootId 추출
-                        if (MessageRootId == 0) // 아직 RootId가 설정되지 않았다면 부모에서 찾기
-                        {
-                            var baseType = typeSymbol.BaseType;
-                            while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
-                            {
-                                var parentRootAttribute = baseType.FindAttribute(references.MessageGroupRootAttributeType);
-                                if (parentRootAttribute != null && parentRootAttribute.ConstructorArguments.Length > 0)
-                                {
-                                    var parentRootIdValue = parentRootAttribute.ConstructorArguments[0].Value;
-                                    if (parentRootIdValue != null)
-                                    {
-                                        MessageRootId = (byte)parentRootIdValue;
-                                        break; // 찾았으면 중단
-                                    }
-                                }
-                                baseType = baseType.BaseType;
-                            }
-                        }
                     }
                 }
             }
@@ -98,6 +78,31 @@ namespace MessageProtocol.CodeGenerator.Metadata
             if (baseTypeSymbol != null && baseTypeSymbol.SpecialType != SpecialType.System_Object)
             {
                 BaseTypeMetadata = new TypeMetadata(baseTypeSymbol, references);
+                
+                // Element 메시지인데 RootId가 아직 설정되지 않았다면 부모에서 찾기
+                if (IsGroupedElementMessage && MessageRootId == 0)
+                {
+                    // 부모가 Root 메시지인 경우 (MessageRootId가 0이어도 유효함)
+                    if (BaseTypeMetadata.IsGroupedRootMessage)
+                    {
+                        MessageRootId = BaseTypeMetadata.MessageRootId; // 0일 수도 있음
+                    }
+                    // 부모가 Element 메시지이고 이미 RootId를 가지고 있는 경우 (재귀적으로 찾기)
+                    else if (BaseTypeMetadata.IsGroupedElementMessage)
+                    {
+                        // 부모의 BaseTypeMetadata를 재귀적으로 확인
+                        var parentBase = BaseTypeMetadata.BaseTypeMetadata;
+                        while (parentBase != null)
+                        {
+                            if (parentBase.IsGroupedRootMessage)
+                            {
+                                MessageRootId = parentBase.MessageRootId;
+                                break;
+                            }
+                            parentBase = parentBase.BaseTypeMetadata;
+                        }
+                    }
+                }
             }
             else
             {

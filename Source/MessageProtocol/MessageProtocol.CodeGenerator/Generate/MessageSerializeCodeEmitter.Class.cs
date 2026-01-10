@@ -5,7 +5,7 @@ using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class SerializeCodeEmitter
+    internal sealed partial class MessageSerializeCodeEmitter
     {
         // Class: 클래스 선언 및 상속
         internal static class Class
@@ -15,7 +15,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                 StringBuilder sb = new StringBuilder();
                 string indent = GetIndent(typeMeta);
                 string baseAndInterfaces = GetBaseAndInterfaces(typeMeta);
-
 
                 sb.Append($@"
 {indent}
