@@ -19,6 +19,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public bool IsGroupedElementMessage { get; set; }
         public ushort MessageElementId { get; set; }
 
+        public TypeMetadata? BaseTypeMetadata { get; set; }
         public MemberMetadata[] Members { get; set; }
 
         public TypeMetadata(INamedTypeSymbol typeSymbol, AttributeReferences references)
@@ -93,56 +94,29 @@ namespace MessageProtocol.CodeGenerator.Metadata
                 }
             }
 
-            // 현재 타입과 모든 부모 타입의 멤버를 수집
-            // 먼저 타입 체인을 수집 (부모 -> 자식 순서)
-            var typeChain = new System.Collections.Generic.List<INamedTypeSymbol>();
-            INamedTypeSymbol? currentType = typeSymbol;
-            while (currentType != null && currentType.SpecialType != SpecialType.System_Object)
+            var baseTypeSymbol = typeSymbol.BaseType;
+            if (baseTypeSymbol != null && baseTypeSymbol.SpecialType != SpecialType.System_Object)
             {
-                typeChain.Add(currentType);
-                currentType = currentType.BaseType;
+                BaseTypeMetadata = new TypeMetadata(baseTypeSymbol, references);
             }
-            
-            // 타입 체인을 역순으로 정렬 (부모가 먼저, 자식이 나중)
-            typeChain.Reverse();
-            
-            // 멤버를 수집 (부모부터 시작하여 자식까지, 같은 이름이면 나중 것이 우선)
-            var allMembers = new System.Collections.Generic.List<ISymbol>();
-            var collectedNames = new System.Collections.Generic.HashSet<string>();
-            
-            foreach (var type in typeChain)
+            else
             {
-                var typeMembers = type.GetMembers()
-                    // 필드 또는 프로퍼티만 찾기
-                    .Where(m => m is IFieldSymbol || m is IPropertySymbol)
-                    .Where(m => !m.IsStatic)
-                    // 포함/제외 어트리뷰트 처리 및 공개 멤버만
-                    .Where(m =>
-                    {
-                        bool include = m.ContainAttribute(references.MessageIncludeAttributeType);
-                        bool ignore = m.ContainAttribute(references.MessageIgnoreAttributeType);
-                        if (ignore) return false;
-                        if (include) return true;
-                        return m.DeclaredAccessibility is Accessibility.Public;
-                    });
-                
-                foreach (var member in typeMembers)
+                BaseTypeMetadata = null;
+            }
+
+            Members = typeSymbol.GetMembers()
+                // 필드 또는 프로퍼티만 찾기
+                .Where(m => m is IFieldSymbol || m is IPropertySymbol)
+                .Where(m => !m.IsStatic)
+                // 포함/제외 어트리뷰트 처리 및 공개 멤버만
+                .Where(m =>
                 {
-                    // 같은 이름의 멤버가 이미 있으면 제거하고 새 것으로 교체 (자식이 부모를 override)
-                    if (collectedNames.Contains(member.Name))
-                    {
-                        allMembers.RemoveAll(m => m.Name == member.Name);
-                        collectedNames.Remove(member.Name);
-                    }
-                    
-                    if (collectedNames.Add(member.Name))
-                    {
-                        allMembers.Add(member);
-                    }
-                }
-            }
-            
-            Members = allMembers
+                    bool include = m.ContainAttribute(references.MessageIncludeAttributeType);
+                    bool ignore = m.ContainAttribute(references.MessageIgnoreAttributeType);
+                    if (ignore) return false;
+                    if (include) return true;
+                    return m.DeclaredAccessibility is Accessibility.Public;
+                })
                 .Select(m => new MemberMetadata(m))
                 .ToArray();
         }

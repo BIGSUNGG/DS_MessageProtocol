@@ -1,4 +1,7 @@
 using MessageProtocol.CodeGenerator.Metadata;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
@@ -21,6 +24,28 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return sb.ToString();
             }
 
+            static IEnumerable<MemberMetadata> GetMembers(TypeMetadata typeMeta)
+            {
+                var memberDict = new Dictionary<string, MemberMetadata>();
+                
+                // 부모 타입의 멤버부터 수집 (부모 -> 자식 순서)
+                if (typeMeta.BaseTypeMetadata != null)
+                {
+                    foreach (var member in GetMembers(typeMeta.BaseTypeMetadata))
+                    {
+                        memberDict[member.Name] = member;
+                    }
+                }
+                
+                // 현재 타입의 멤버 추가 (같은 이름이면 덮어씀 - 자식이 부모를 override)
+                foreach (var member in typeMeta.Members)
+                {
+                    memberDict[member.Name] = member;
+                }
+                
+                return memberDict.Values;
+            }
+
             public static string EmitSerialize(TypeMetadata typeMeta, string indent)
             {
                 StringBuilder sb = new StringBuilder();
@@ -36,7 +61,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}        writer.Write({id});");
                 
                 // 각 멤버 직렬화
-                foreach (var member in typeMeta.Members)
+                foreach (var member in GetMembers(typeMeta))
                 {
                     string memberCode = Member.EmitSerialize(member, indent + "        ");
                     sb.Append(memberCode);
@@ -63,7 +88,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine();
                 
                 // 각 멤버 역직렬화
-                foreach (var member in typeMeta.Members)
+                foreach (var member in GetMembers(typeMeta))
                 {
                     string memberCode = Member.EmitDeserialize(member, indent + "        ");
                     sb.Append(memberCode);
