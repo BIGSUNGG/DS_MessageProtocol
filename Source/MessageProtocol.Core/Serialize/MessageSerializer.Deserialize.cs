@@ -35,9 +35,7 @@ namespace MessageProtocol.Serialize
 
         private static void RegisterDeserializeInvoker(Type messageType)
         {
-            uint messageId = (uint)messageType.
-                GetProperty("MessageId", BindingFlags.Static | BindingFlags.Public)
-                .GetValue(null);
+            uint messageId = GetMessageIdByType(messageType);
 
             try
             {
