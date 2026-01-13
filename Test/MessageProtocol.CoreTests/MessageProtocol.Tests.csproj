@@ -21,10 +21,10 @@
   </ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\MessageProtocol.Core\MessageProtocol.Core.csproj" />
+		<ProjectReference Include="..\..\Source\MessageProtocol.Core\MessageProtocol.Core.csproj" />
 
-		<ProjectReference Include="..\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj" />
-		<ProjectReference Include="..\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj">
+		<ProjectReference Include="..\..\Source\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj" />
+		<ProjectReference Include="..\..\Source\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj">
 			<OutputItemType>Analyzer</OutputItemType>
 			<ReferenceOutputAssembly>false</ReferenceOutputAssembly>
 		</ProjectReference>
