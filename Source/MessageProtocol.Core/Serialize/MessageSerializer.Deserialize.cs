@@ -33,6 +33,17 @@ namespace MessageProtocol.Serialize
             return invoker.Deserialize(data);
         }
 
+        public static T DeserializeMessageStandalone<T>(byte[] data) where T : IMessageSerializable<T>
+        {
+            if(data == null) throw new ArgumentNullException(nameof(data));
+            
+            // Data로 들어온 Message Id 값이 제너릭으로 들어온 T의 메시지 MessageId와 같은지 유효성 검사
+            if(BitConverter.ToUInt32(data, 0) != T.MessageId)
+                throw  new InvalidCastException($"Message type with ID {T.MessageId} is not a standalone message.");
+            
+            return T.Deserialize(data);
+        }
+
         private static void RegisterDeserializeInvoker(Type messageType)
         {
             uint messageId = GetMessageIdByType(messageType);

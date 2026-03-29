@@ -130,6 +130,7 @@ namespace MessageProtocol.Tests.Serialize
 
             // Act
             var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
+            var deserialized2 = MessageSerializer.DeserializeMessageStandalone<StandaloneMessage>(bytes);
 
             // Assert
             Assert.NotNull(deserialized);
