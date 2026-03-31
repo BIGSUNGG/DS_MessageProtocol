@@ -19,13 +19,11 @@ namespace MessageProtocol.CodeGenerator.Generate
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            // MessageGroupRootAttribute를 가진 클래스 찾기
-            var classesWithMessageGroupRoot = context.SyntaxProvider
+            var classesWithMessage = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.MessageGroupRootAttribute",
+                    fullyQualifiedMetadataName: "MessageProtocol.MessageAttribute",
                     predicate: static (node, token) =>
                     {
-                        // search [MemoryPackable] class or struct or interface or record
                         return (node is ClassDeclarationSyntax
                                      or StructDeclarationSyntax
                                      or RecordDeclarationSyntax
@@ -36,13 +34,11 @@ namespace MessageProtocol.CodeGenerator.Generate
                         return (TypeDeclarationSyntax)context.TargetNode;
                     }).Where(static result => result != null);
 
-            // MessageGroupElementAttribute를 가진 클래스 찾기
-            var classesWithMessageGroupElement = context.SyntaxProvider
+            var classesWithMessageGroupRoot = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.MessageGroupElementAttribute",
+                    fullyQualifiedMetadataName: "MessageProtocol.MessageGroupRootAttribute",
                     predicate: static (node, token) =>
                     {
-                        // search [MemoryPackable] class or struct or interface or record
                         return (node is ClassDeclarationSyntax
                                      or StructDeclarationSyntax
                                      or RecordDeclarationSyntax
@@ -51,15 +47,28 @@ namespace MessageProtocol.CodeGenerator.Generate
                     transform: static (context, token) =>
                     {
                         return (TypeDeclarationSyntax)context.TargetNode;
-                    }).Where(static result => result != null);             
+                    }).Where(static result => result != null);
 
-            // MessageStandaloneAttribute를 가진 클래스 찾기
+            var classesWithMessageGroupElement = context.SyntaxProvider
+                .ForAttributeWithMetadataName(
+                    fullyQualifiedMetadataName: "MessageProtocol.MessageGroupElementAttribute",
+                    predicate: static (node, token) =>
+                    {
+                        return (node is ClassDeclarationSyntax
+                                     or StructDeclarationSyntax
+                                     or RecordDeclarationSyntax
+                                     or InterfaceDeclarationSyntax);
+                    },
+                    transform: static (context, token) =>
+                    {
+                        return (TypeDeclarationSyntax)context.TargetNode;
+                    }).Where(static result => result != null);
+
             var classesWithMessageStandalone = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
                     fullyQualifiedMetadataName: "MessageProtocol.MessageStandaloneAttribute",
                     predicate: static (node, token) =>
                     {
-                        // search [MemoryPackable] class or struct or interface or record
                         return (node is ClassDeclarationSyntax
                                      or StructDeclarationSyntax
                                      or RecordDeclarationSyntax
@@ -72,7 +81,17 @@ namespace MessageProtocol.CodeGenerator.Generate
 
             var compilation = context.CompilationProvider;
 
-            // MessageGroupRoot 클래스들 코드 생성
+            {
+                var source = classesWithMessage.Combine(compilation);
+                context.RegisterSourceOutput(
+                    source,
+                    static (context, source) =>
+                    {
+                        var (typeDeclaration, compilation) = source;
+                        Generate(typeDeclaration, compilation, context);
+                    });
+            }
+
             {
                 var source = classesWithMessageGroupRoot.Combine(compilation);
                 context.RegisterSourceOutput(
@@ -84,7 +103,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                     });
             }
 
-            // MessageGroupElement 클래스들 코드 생성
             {
                 var source = classesWithMessageGroupElement.Combine(compilation);
                 context.RegisterSourceOutput(
@@ -96,7 +114,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                     });
             }
 
-            // MessageStandalone 클래스들 코드 생성
             {
                 var source = classesWithMessageStandalone.Combine(compilation);
                 context.RegisterSourceOutput(
@@ -133,6 +150,17 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             var attributeReferences = new AttributeReferences(compilation);
+            if (!TypeMetadataValidator.TryValidateMessageIdRange(typeSymbol, attributeReferences, out string invalidAttributeName, out string invalidAttributeValue))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.MessageAttributeValueOutOfRange,
+                    syntax.Identifier.GetLocation(),
+                    typeSymbol.Name,
+                    invalidAttributeName,
+                    invalidAttributeValue));
+                return;
+            }
+
             var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
 
             // Root 계층 구조 검증

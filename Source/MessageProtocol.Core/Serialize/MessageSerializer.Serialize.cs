@@ -56,7 +56,7 @@ namespace MessageProtocol.Serialize
                     $"Please ensure that:\n" +
                     $"1. 'MessageProtocol.CodeGenerator' is properly referenced as an analyzer in your project\n" +
                     $"2. The project uses ProjectReference (not a DLL reference) to MessageProtocol.Core\n" +
-                    $"3. The message class is marked as 'partial' and has the appropriate attribute ([MessageGroupElement], [MessageGroupRoot], or [MessageStandalone])\n" +
+                    $"3. The message class is marked as 'partial' and has the appropriate attribute ([Message], [MessageGroupElement], [MessageGroupRoot], or [MessageStandalone])\n" +
                     $"Original error: {ex.Message}", ex);
             }
         }

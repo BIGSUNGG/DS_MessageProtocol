@@ -56,9 +56,17 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    {{");
                 
                 // id 구성: 앞 8비트(standaloneId) + 그 다음 8비트(groupRootId) + 그 다음 16비트(elementId)
-                uint id = typeMeta.GetMessageId(typeMeta);
+                uint id = typeMeta.GetMessageId();
 
-                sb.AppendLine($@"{indent}        writer.Write({id});");
+                sb.AppendLine($@"{indent}        uint id = {id};");
+                sb.AppendLine($@"{indent}        byte messageFlag = (byte)(id >> 24);");
+                sb.AppendLine($@"{indent}        writer.Write(messageFlag);");
+                sb.AppendLine($@"{indent}        if ((messageFlag & 0x01) == 0)");
+                sb.AppendLine($@"{indent}        {{");
+                sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 16));");
+                sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 8));");
+                sb.AppendLine($@"{indent}            writer.Write((byte)id);");
+                sb.AppendLine($@"{indent}        }}");
                 
                 // 각 멤버 직렬화
                 foreach (var member in GetMembers(typeMeta))
@@ -82,7 +90,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    using (var ms = new MemoryStream(data))");
                 sb.AppendLine($@"{indent}    using (var reader = new BinaryReader(ms))");
                 sb.AppendLine($@"{indent}    {{");
-                sb.AppendLine($@"{indent}        uint id = reader.ReadUInt32();");
+                sb.AppendLine($@"{indent}        byte messageFlag = reader.ReadByte();");
+                sb.AppendLine($@"{indent}        uint id = (uint)messageFlag << 24;");
+                sb.AppendLine($@"{indent}        if ((messageFlag & 0x01) == 0)");
+                sb.AppendLine($@"{indent}        {{");
+                sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 16;");
+                sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 8;");
+                sb.AppendLine($@"{indent}            id |= reader.ReadByte();");
+                sb.AppendLine($@"{indent}        }}");
                 sb.AppendLine();
                 sb.AppendLine($@"{indent}        var result = new {typeMeta.Symbol.Name}();");
                 sb.AppendLine();

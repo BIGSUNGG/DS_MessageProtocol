@@ -1,6 +1,6 @@
 ﻿using MessageProtocol;
 using MessageProtocol.Serialize;
-using System.Collections.Generic;
+using System;
 using Xunit;
 
 namespace MessageProtocol.Tests.Serialize
@@ -136,6 +136,45 @@ namespace MessageProtocol.Tests.Serialize
             Assert.NotNull(deserialized);
             Assert.True(deserialized.Flag);
         }
+
+        [Fact]
+        public void MessageId_FlagBits_Should_BeEncodedInFirstByte()
+        {
+            Assert.Equal(0x04000001u, RootMessage.MessageId);
+            Assert.Equal(0x0800000Au, ElementMessage.MessageId);
+            Assert.Equal(0x02000000u, StandaloneMessage.MessageId);
+            Assert.Equal(0x01000000u, PlainMessage.MessageId);
+        }
+
+        [Fact]
+        public void MessageAttribute_Serialize_Should_WriteMessageFlag()
+        {
+            PlainMessage original = new();
+            original.Value = 99;
+
+            var bytes = MessageSerializer.Serialize(original);
+
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length >= 5);
+            Assert.Equal(0x01, bytes[0] & 0x01);
+
+            var deserialized = MessageSerializer.Deserialize(bytes) as PlainMessage;
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Value, deserialized.Value);
+        }
+
+        [Fact]
+        public void MessageAttribute_Deserialize_Test()
+        {
+            PlainMessage original = new();
+            original.Value = 777;
+            var bytes = MessageSerializer.Serialize(original);
+
+            var deserialized = MessageSerializer.Deserialize(bytes) as PlainMessage;
+
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Value, deserialized.Value);
+        }
     }
 
     [MessageGroupRoot(1)]
@@ -154,5 +193,11 @@ namespace MessageProtocol.Tests.Serialize
     public partial class StandaloneMessage
     {
         public bool Flag { get; set; }
+    }
+
+    [Message]
+    public partial class PlainMessage
+    {
+        public int Value { get; set; }
     }
 }

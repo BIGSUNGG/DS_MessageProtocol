@@ -26,7 +26,7 @@ namespace MessageProtocol.Serialize
 
         public static object Deserialize(byte[] data)
         {
-            uint messageId = BitConverter.ToUInt32(data, 0);
+            uint messageId = ReadMessageId(data);
             if(!_deserializeCache.TryGetValue(messageId, out var invoker))
                 throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
 
@@ -38,10 +38,32 @@ namespace MessageProtocol.Serialize
             if(data == null) throw new ArgumentNullException(nameof(data));
             
             // Data로 들어온 Message Id 값이 제너릭으로 들어온 T의 메시지 MessageId와 같은지 유효성 검사
-            if(BitConverter.ToUInt32(data, 0) != T.MessageId)
+            if(ReadMessageId(data) != T.MessageId)
                 throw  new InvalidCastException($"Message type with ID {T.MessageId} is not a standalone message.");
             
             return T.Deserialize(data);
+        }
+
+        static uint ReadMessageId(byte[] data)
+        {
+            if (data.Length == 0)
+                throw new ArgumentException("Message data is empty.", nameof(data));
+
+            byte messageFlag = data[0];
+            uint messageId = (uint)messageFlag << 24;
+
+            // first bit == 1: Message only, trailing 3 bytes are not part of message id.
+            if ((messageFlag & 0x01) != 0)
+                return messageId;
+
+            if (data.Length < 4)
+                throw new ArgumentException("Message data is too short to read 4-byte message id.", nameof(data));
+
+            messageId |= (uint)data[1] << 16;
+            messageId |= (uint)data[2] << 8;
+            messageId |= data[3];
+
+            return messageId;
         }
 
         private static void RegisterDeserializeInvoker(Type messageType)
@@ -67,7 +89,7 @@ namespace MessageProtocol.Serialize
                     $"Please ensure that:\n" +
                     $"1. 'MessageProtocol.CodeGenerator' is properly referenced as an analyzer in your project\n" +
                     $"2. The project uses ProjectReference (not a DLL reference) to MessageProtocol.Core\n" +
-                    $"3. The message class is marked as 'partial' and has the appropriate attribute ([MessageGroupElement], [MessageGroupRoot], or [MessageStandalone])\n" +
+                    $"3. The message class is marked as 'partial' and has the appropriate attribute ([Message], [MessageGroupElement], [MessageGroupRoot], or [MessageStandalone])\n" +
                     $"Original error: {ex.Message}", ex);
             }
         }

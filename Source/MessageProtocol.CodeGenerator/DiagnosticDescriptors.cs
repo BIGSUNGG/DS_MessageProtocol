@@ -37,5 +37,13 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor MessageAttributeValueOutOfRange = new(
+        id: "MSGPROT005",
+        title: "Message attribute value is out of range",
+        messageFormat: "Type '{0}' has invalid value '{2}' in '{1}'. Allowed range is 0 to 16777215 (2^24 - 1).",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }
 

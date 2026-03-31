@@ -101,7 +101,7 @@ using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageStandalone]
+    [MessageStandalone(0)]
     public partial class StandaloneMessage
     {
         public string Data { get; set; }
@@ -128,6 +128,36 @@ namespace MyCode
         }
 
         [Fact]
+        public void MessageAttribute_Should_GenerateCode()
+        {
+            string source = @"
+using MessageProtocol;
+
+namespace MyCode
+{
+    [Message]
+    public partial class PlainMessage
+    {
+        public int Value { get; set; }
+    }
+}";
+
+            var inputCompilation = CreateCompilation(source);
+            var generator = new MessageCodeGenerator();
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
+            driver = driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
+
+            Assert.Empty(diagnostics);
+            Assert.True(outputCompilation.SyntaxTrees.Count() >= 2);
+
+            var runResult = driver.GetRunResult();
+            Assert.Equal(1, runResult.GeneratedTrees.Length);
+
+            var generatedCode = runResult.Results[0].GeneratedSources[0].SourceText.ToString();
+            Assert.Contains("PlainMessage", generatedCode);
+        }
+
+        [Fact]
         public void MultipleAttributes_Should_GenerateMultipleFiles()
         {
             // Arrange
@@ -148,7 +178,7 @@ namespace MyCode
         public string Name { get; set; }
     }
 
-    [MessageStandalone]
+    [MessageStandalone(0)]
     public partial class StandaloneMessage
     {
         public bool Flag { get; set; }

@@ -20,7 +20,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}
 {indent}public partial class {typeMeta.Symbol.Name}{baseAndInterfaces}
 {indent}{{
-{indent}    public static uint MessageId => {typeMeta.GetMessageId(typeMeta)};
+{indent}    public static uint MessageId => {typeMeta.GetMessageId()};
 {indent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}
 {indent}
 {indent}    {Method.EmitSerialize(typeMeta, indent + "    ")}

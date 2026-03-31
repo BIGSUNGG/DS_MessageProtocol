@@ -4,6 +4,7 @@ namespace MessageProtocol.CodeGenerator.Reference
 {
     internal class AttributeReferences
     {
+        public INamedTypeSymbol? MessageAttributeType { get; set; }
         public INamedTypeSymbol? MessageGroupRootAttributeType { get; set; }
         public INamedTypeSymbol? MessageGroupElementAttributeType { get; set; }
         public INamedTypeSymbol? MessageStandaloneAttributeType { get; set; }
@@ -12,6 +13,7 @@ namespace MessageProtocol.CodeGenerator.Reference
                
         public AttributeReferences(Compilation compilation)
         {
+            MessageAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.MessageAttribute");
             MessageGroupRootAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.MessageGroupRootAttribute");
             MessageGroupElementAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.MessageGroupElementAttribute");
             MessageStandaloneAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.MessageStandaloneAttribute");
