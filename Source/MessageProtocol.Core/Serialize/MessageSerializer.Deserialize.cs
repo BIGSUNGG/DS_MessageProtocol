@@ -11,6 +11,11 @@ namespace MessageProtocol.Serialize
 {
     public static partial class MessageSerializer
     {
+        const byte MessageStandaloneFlag = 1 << 1;
+        const byte MessageGroupRootFlag = 1 << 2;
+        const byte MessageGroupElementFlag = 1 << 3;
+        const byte MessageStandaloneOrGroupMask = MessageStandaloneFlag | MessageGroupRootFlag | MessageGroupElementFlag;
+
         /// <summary>
         /// Key : Message Id
         /// Value : Deserialize 메서드를 호출하는 객체
@@ -20,28 +25,31 @@ namespace MessageProtocol.Serialize
         public static T Deserialize<T>(byte[] data) where T : IMessageSerializable<T>
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Length == 0)
+                throw new ArgumentException("Message data is empty.", nameof(data));
 
-            return (T)Deserialize(data);
+            byte messageFlag = data[0];
+            if ((messageFlag & MessageStandaloneOrGroupMask) != 0)
+                return (T)Deserialize(data);
+
+            return T.Deserialize(data);
         }
 
         public static object Deserialize(byte[] data)
         {
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.Length == 0)
+                throw new ArgumentException("Message data is empty.", nameof(data));
+
+            byte messageFlag = data[0];
+            if ((messageFlag & MessageStandaloneOrGroupMask) == 0)
+                throw new InvalidCastException("Message is not a standalone or group message.");
+
             uint messageId = ReadMessageId(data);
             if(!_deserializeCache.TryGetValue(messageId, out var invoker))
                 throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
 
             return invoker.Deserialize(data);
-        }
-
-        public static T DeserializeMessageStandalone<T>(byte[] data) where T : IMessageSerializable<T>
-        {
-            if(data == null) throw new ArgumentNullException(nameof(data));
-            
-            // Data로 들어온 Message Id 값이 제너릭으로 들어온 T의 메시지 MessageId와 같은지 유효성 검사
-            if(ReadMessageId(data) != T.MessageId)
-                throw  new InvalidCastException($"Message type with ID {T.MessageId} is not a standalone message.");
-            
-            return T.Deserialize(data);
         }
 
         static uint ReadMessageId(byte[] data)

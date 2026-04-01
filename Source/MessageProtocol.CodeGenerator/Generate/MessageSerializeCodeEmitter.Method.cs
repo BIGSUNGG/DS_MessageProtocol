@@ -14,7 +14,8 @@ namespace MessageProtocol.CodeGenerator.Generate
             public static string EmitOnModuleInitialize(TypeMetadata typeMeta, string indent)
             {
                 StringBuilder sb = new StringBuilder();
-                sb.AppendLine($@"
+                if(typeMeta.IsMessage == false)
+                    sb.AppendLine($@"
 {indent}[ModuleInitializer]
 {indent}internal static void Initialize()
 {indent}{{

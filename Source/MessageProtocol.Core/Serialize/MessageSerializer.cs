@@ -37,7 +37,6 @@ Message type with ID {messageId} is already registered.
             return (uint)type
                         .GetProperty("MessageId", BindingFlags.Static | BindingFlags.Public)
                         .GetValue(null);
-
         }
     }
 }

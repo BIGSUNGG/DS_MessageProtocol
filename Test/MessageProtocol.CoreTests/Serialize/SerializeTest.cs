@@ -130,7 +130,7 @@ namespace MessageProtocol.Tests.Serialize
 
             // Act
             var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
-            var deserialized2 = MessageSerializer.DeserializeMessageStandalone<StandaloneMessage>(bytes);
+            var deserialized2 = MessageSerializer.Deserialize<StandaloneMessage>(bytes);
 
             // Assert
             Assert.NotNull(deserialized);
@@ -157,10 +157,6 @@ namespace MessageProtocol.Tests.Serialize
             Assert.NotNull(bytes);
             Assert.True(bytes.Length >= 5);
             Assert.Equal(0x01, bytes[0] & 0x01);
-
-            var deserialized = MessageSerializer.Deserialize(bytes) as PlainMessage;
-            Assert.NotNull(deserialized);
-            Assert.Equal(original.Value, deserialized.Value);
         }
 
         [Fact]
@@ -170,7 +166,7 @@ namespace MessageProtocol.Tests.Serialize
             original.Value = 777;
             var bytes = MessageSerializer.Serialize(original);
 
-            var deserialized = MessageSerializer.Deserialize(bytes) as PlainMessage;
+            var deserialized = MessageSerializer.Deserialize<PlainMessage>(bytes);
 
             Assert.NotNull(deserialized);
             Assert.Equal(original.Value, deserialized.Value);
