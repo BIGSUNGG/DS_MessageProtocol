@@ -11,11 +11,6 @@ namespace MessageProtocol.Serialize
 {
     public static partial class MessageSerializer
     {
-        const byte MessageStandaloneFlag = 1 << 1;
-        const byte MessageGroupRootFlag = 1 << 2;
-        const byte MessageGroupElementFlag = 1 << 3;
-        const byte MessageStandaloneOrGroupMask = MessageStandaloneFlag | MessageGroupRootFlag | MessageGroupElementFlag;
-
         /// <summary>
         /// Key : Message Id
         /// Value : Deserialize 메서드를 호출하는 객체
@@ -29,7 +24,7 @@ namespace MessageProtocol.Serialize
                 throw new ArgumentException("Message data is empty.", nameof(data));
 
             byte messageFlag = data[0];
-            if ((messageFlag & MessageStandaloneOrGroupMask) != 0)
+            if ((((MessageFlag)messageFlag) & MessageFlag.StandaloneOrGroup) != 0)
                 return (T)Deserialize(data);
 
             return T.Deserialize(data);
@@ -42,7 +37,7 @@ namespace MessageProtocol.Serialize
                 throw new ArgumentException("Message data is empty.", nameof(data));
 
             byte messageFlag = data[0];
-            if ((messageFlag & MessageStandaloneOrGroupMask) == 0)
+            if ((((MessageFlag)messageFlag) & MessageFlag.StandaloneOrGroup) == 0)
                 throw new InvalidCastException("Message is not a standalone or group message.");
 
             uint messageId = ReadMessageId(data);
@@ -61,7 +56,7 @@ namespace MessageProtocol.Serialize
             uint messageId = (uint)messageFlag << 24;
 
             // first bit == 1: Message only, trailing 3 bytes are not part of message id.
-            if ((messageFlag & 0x01) != 0)
+            if ((((MessageFlag)messageFlag) & MessageFlag.Message) != 0)
                 return messageId;
 
             if (data.Length < 4)

@@ -4,6 +4,7 @@
 		<TargetFramework>netstandard2.0</TargetFramework>
 		<LangVersion>latest</LangVersion>
 		<Nullable>enable</Nullable>
+		<DefineConstants>$(DefineConstants);MESSAGE_PROTOCOL_CODE_GENERATOR</DefineConstants>
 
 		<IsRoslynAnalyzer>true</IsRoslynAnalyzer>
 		<IncludeBuildOutput>false</IncludeBuildOutput>
@@ -22,6 +23,10 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>MessageProtocol.Tests</_Parameter1>
     </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />
   </ItemGroup>
 
 </Project>

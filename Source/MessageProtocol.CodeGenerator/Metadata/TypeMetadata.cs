@@ -1,4 +1,5 @@
 using MessageProtocol.CodeGenerator.Reference;
+using MessageProtocol;
 using Microsoft.CodeAnalysis;
 using System.Linq;
 
@@ -7,10 +8,6 @@ namespace MessageProtocol.CodeGenerator.Metadata
     internal sealed class TypeMetadata
     {
         const uint MessageIdValueMask = 0x00FF_FFFF;
-        const uint MessageFlag = 1u << 0;
-        const uint MessageStandaloneFlag = 1u << 1;
-        const uint MessageGroupRootFlag = 1u << 2;
-        const uint MessageGroupElementFlag = 1u << 3;
 
         public const uint MaxMessageAttributeValue = MessageIdValueMask;
 
@@ -81,22 +78,22 @@ namespace MessageProtocol.CodeGenerator.Metadata
             uint flags = 0;
             if (IsMessage)
             {
-                flags |= MessageFlag;
+                flags |= (uint)MessageFlag.Message;
             }
 
             if (IsStandaloneMessage)
             {
-                flags |= MessageStandaloneFlag;
+                flags |= (uint)MessageFlag.Standalone;
             }
 
             if (IsGroupedRootMessage)
             {
-                flags |= MessageGroupRootFlag;
+                flags |= (uint)MessageFlag.GroupRoot;
             }
 
             if (IsGroupedElementMessage)
             {
-                flags |= MessageGroupElementFlag;
+                flags |= (uint)MessageFlag.GroupElement;
             }
 
             return (flags << 24) | (GetMessageIdValue() & MessageIdValueMask);

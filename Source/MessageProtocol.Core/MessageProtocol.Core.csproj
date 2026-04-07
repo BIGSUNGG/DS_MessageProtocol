@@ -17,4 +17,8 @@
     <NoWarn>1701;1702,8605,8602,8601;CS9057</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />
+  </ItemGroup>
+
 </Project>
