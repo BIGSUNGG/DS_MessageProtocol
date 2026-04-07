@@ -1,6 +1,7 @@
-﻿using MessageProtocol;
-using MessageProtocol.Serialize;
 using System;
+using System.Collections.Generic;
+using MessageProtocol;
+using MessageProtocol.Serialize;
 using Xunit;
 
 namespace MessageProtocol.Tests.Serialize
@@ -10,32 +11,25 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void MessageGroupRoot_Serialize_Test()
         {
-            // Arrange
             RootMessage original = new();
             original.Id = 10;
 
-            // Act
             var bytes = MessageSerializer.Serialize(original);
 
-            // Assert
             Assert.NotNull(bytes);
             Assert.True(bytes.Length > 0);
-            // MessageId(4바이트) + Id(4바이트) = 최소 8바이트
             Assert.True(bytes.Length >= 8);
         }
 
         [Fact]
         public void MessageGroupRoot_Deserialize_Test()
         {
-            // Arrange
             RootMessage original = new();
             original.Id = 42;
             var bytes = MessageSerializer.Serialize(original);
 
-            // Act
             var deserialized = MessageSerializer.Deserialize(bytes) as RootMessage;
 
-            // Assert
             Assert.NotNull(deserialized);
             Assert.Equal(original.Id, deserialized.Id);
         }
@@ -43,15 +37,12 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void MessageGroupElement_Serialize_Test()
         {
-            // Arrange
             ElementMessage original = new();
             original.Id = 20;
             original.Name = "TestElement";
 
-            // Act
             var bytes = MessageSerializer.Serialize(original);
 
-            // Assert
             Assert.NotNull(bytes);
             Assert.True(bytes.Length > 0);
         }
@@ -59,16 +50,13 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void MessageGroupElement_Deserialize_Test()
         {
-            // Arrange
             ElementMessage original = new();
             original.Id = 30;
             original.Name = "ElementName";
             var bytes = MessageSerializer.Serialize(original);
 
-            // Act
             var deserialized = MessageSerializer.Deserialize(bytes) as ElementMessage;
 
-            // Assert
             Assert.NotNull(deserialized);
             Assert.Equal(original.Id, deserialized.Id);
             Assert.Equal(original.Name, deserialized.Name);
@@ -77,14 +65,11 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void MessageStandalone_Serialize_Test()
         {
-            // Arrange
             StandaloneMessage original = new();
             original.Flag = true;
 
-            // Act
             var bytes = MessageSerializer.Serialize(original);
 
-            // Assert
             Assert.NotNull(bytes);
             Assert.True(bytes.Length > 0);
         }
@@ -92,15 +77,12 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void MessageStandalone_Deserialize_Test()
         {
-            // Arrange
             StandaloneMessage original = new();
             original.Flag = false;
             var bytes = MessageSerializer.Serialize(original);
 
-            // Act
             var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
 
-            // Assert
             Assert.NotNull(deserialized);
             Assert.Equal(original.Flag, deserialized.Flag);
         }
@@ -108,14 +90,11 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void MessageStandalone_WithTrueFlag_Serialize_Test()
         {
-            // Arrange
             StandaloneMessage original = new();
             original.Flag = true;
 
-            // Act
             var bytes = MessageSerializer.Serialize(original);
 
-            // Assert
             Assert.NotNull(bytes);
             Assert.True(bytes.Length > 0);
         }
@@ -123,18 +102,16 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void MessageStandalone_WithTrueFlag_Deserialize_Test()
         {
-            // Arrange
             StandaloneMessage original = new();
             original.Flag = true;
             var bytes = MessageSerializer.Serialize(original);
 
-            // Act
             var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
             var deserialized2 = MessageSerializer.Deserialize<StandaloneMessage>(bytes);
 
-            // Assert
             Assert.NotNull(deserialized);
             Assert.True(deserialized.Flag);
+            Assert.True(deserialized2.Flag);
         }
 
         [Fact]
@@ -188,6 +165,39 @@ namespace MessageProtocol.Tests.Serialize
             Assert.True(bytes.Length > 0);
             Assert.Equal(original.Value, deserialized.Value);
             Assert.Equal(original.Flag, deserialized.Flag);
+        }
+
+        [Fact]
+        public void Deserialize_Object_WithPlainMessage_Should_ThrowInvalidCastException()
+        {
+            PlainMessage original = new();
+            original.Value = 777;
+            var bytes = MessageSerializer.Serialize(original);
+
+            Assert.Throws<InvalidCastException>(() => MessageSerializer.Deserialize(bytes));
+        }
+
+        [Fact]
+        public void Deserialize_WithEmptyData_Should_ThrowArgumentException()
+        {
+            Assert.Throws<ArgumentException>(() => MessageSerializer.Deserialize(Array.Empty<byte>()));
+            Assert.Throws<ArgumentException>(() => MessageSerializer.Deserialize<PlainMessage>(Array.Empty<byte>()));
+        }
+
+        [Fact]
+        public void Deserialize_WithTooShortGroupedMessageHeader_Should_ThrowArgumentException()
+        {
+            byte[] bytes = [0x04, 0x00, 0x01];
+
+            Assert.Throws<ArgumentException>(() => MessageSerializer.Deserialize(bytes));
+        }
+
+        [Fact]
+        public void Deserialize_Object_WithUnregisteredMessageId_Should_ThrowKeyNotFoundException()
+        {
+            byte[] bytes = [0x02, 0x00, 0x00, 0x7F];
+
+            Assert.Throws<KeyNotFoundException>(() => MessageSerializer.Deserialize(bytes));
         }
     }
 

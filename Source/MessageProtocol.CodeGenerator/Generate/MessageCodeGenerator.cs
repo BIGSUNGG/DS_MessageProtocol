@@ -184,7 +184,8 @@ namespace MessageProtocol.CodeGenerator.Generate
             try
             {
                 var debugFilePath = Path.Combine("C:\\Debug\\", $"{typeMeta.Symbol.Name}.g.debug.cs");
-                File.WriteAllText(debugFilePath, serializeCode);
+                if(File.Exists(debugFilePath))
+                    File.WriteAllText(debugFilePath, serializeCode);
             }
             catch
             {

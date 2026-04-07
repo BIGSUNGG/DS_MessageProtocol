@@ -56,7 +56,6 @@ public class MessageStandaloneAttribute : Attribute
     }
 }
 
-
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
 public class MessageAttribute : Attribute
 {
