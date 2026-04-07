@@ -236,6 +236,43 @@ namespace MyCode
             Assert.Empty(runResult.GeneratedTrees); // 생성된 트리가 없어야 함
         }
 
+        [Fact]
+        public void NestedPartialClass_Should_GenerateContainingTypeDeclarations()
+        {
+            string source = @"
+using MessageProtocol;
+
+namespace MyCode
+{
+    public partial class Outer
+    {
+        public partial class Middle
+        {
+            [Message]
+            public partial class NestedMessage
+            {
+                public int Value { get; set; }
+            }
+        }
+    }
+}";
+
+            var inputCompilation = CreateCompilation(source);
+            var generator = new MessageCodeGenerator();
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
+            driver = driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
+
+            Assert.Empty(diagnostics);
+
+            var runResult = driver.GetRunResult();
+            Assert.Equal(1, runResult.GeneratedTrees.Length);
+
+            var generatedCode = runResult.Results[0].GeneratedSources[0].SourceText.ToString();
+            Assert.Contains("partial class Outer", generatedCode);
+            Assert.Contains("partial class Middle", generatedCode);
+            Assert.Contains("public partial class NestedMessage", generatedCode);
+        }
+
         private static Compilation CreateCompilation(string source)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(source);

@@ -13,29 +13,48 @@ namespace MessageProtocol.CodeGenerator.Generate
             public static string Emit(TypeMetadata typeMeta)
             {
                 StringBuilder sb = new StringBuilder();
-                string indent = GetIndent(typeMeta);
-                string baseAndInterfaces = GetBaseAndInterfaces(typeMeta);
+                string indent = GetTypeIndent(typeMeta);
+                string declarationIndent = GetNamespaceIndent(typeMeta);
 
-                sb.Append($@"
-{indent}
-{indent}public partial class {typeMeta.Symbol.Name}{baseAndInterfaces}
-{indent}{{
-{indent}    public static uint MessageId => {typeMeta.GetMessageId()};
-{indent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}
-{indent}
-{indent}    {Method.EmitSerialize(typeMeta, indent + "    ")}
-{indent}
-{indent}    {Method.EmitDeserialize(typeMeta, indent + "    ")}
-{indent}}}");
+                sb.AppendLine();
+
+                foreach (var containingType in typeMeta.ContainingTypes)
+                {
+                    sb.AppendLine($"{declarationIndent}partial {containingType.DeclarationKeyword} {containingType.Name}{containingType.TypeParameters}{containingType.Constraints}");
+                    sb.AppendLine($"{declarationIndent}{{");
+                    declarationIndent += "    ";
+                }
+
+                string baseAndInterfaces = GetBaseAndInterfaces(typeMeta);
+                sb.AppendLine($"{declarationIndent}public partial class {typeMeta.Symbol.Name}{baseAndInterfaces}");
+                sb.AppendLine($"{declarationIndent}{{");
+                sb.AppendLine($"{declarationIndent}    public static uint MessageId => {typeMeta.GetMessageId()};");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}");
+                sb.AppendLine($"{declarationIndent}");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitSerialize(typeMeta, indent + "    ")}");
+                sb.AppendLine($"{declarationIndent}");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitDeserialize(typeMeta, indent + "    ")}");
+                sb.AppendLine($"{declarationIndent}}}");
+
+                for (int i = typeMeta.ContainingTypes.Length - 1; i >= 0; i--)
+                {
+                    declarationIndent = declarationIndent.Substring(0, declarationIndent.Length - 4);
+                    sb.AppendLine($"{declarationIndent}}}");
+                }
 
                 return sb.ToString();
             }
 
-            private static string GetIndent(TypeMetadata typeMeta)
+            private static string GetNamespaceIndent(TypeMetadata typeMeta)
             {
                 string namespaceName = typeMeta.Symbol.ContainingNamespace.ToDisplayString();
                 bool hasNamespace = !string.IsNullOrEmpty(namespaceName) && namespaceName != "<global namespace>";
                 return hasNamespace ? "    " : "";
+            }
+
+            private static string GetTypeIndent(TypeMetadata typeMeta)
+            {
+                return GetNamespaceIndent(typeMeta) + new string(' ', typeMeta.ContainingTypes.Length * 4);
             }
 
             private static string GetBaseAndInterfaces(TypeMetadata typeMeta)

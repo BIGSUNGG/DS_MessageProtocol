@@ -27,11 +27,13 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public uint MessageElementId { get; }
 
         public TypeMetadata? BaseTypeMetadata { get; }
+        public ContainingTypeMetadata[] ContainingTypes { get; }
         public MemberMetadata[] Members { get; }
 
         public TypeMetadata(INamedTypeSymbol typeSymbol, AttributeReferences references)
         {
             Symbol = typeSymbol;
+            ContainingTypes = GetContainingTypes(typeSymbol);
 
             var messageAttribute = typeSymbol.FindAttribute(references.MessageAttributeType);
             var standaloneAttribute = typeSymbol.FindAttribute(references.MessageStandaloneAttributeType);
@@ -159,6 +161,19 @@ namespace MessageProtocol.CodeGenerator.Metadata
                     result = 0;
                     return false;
             }
+        }
+
+        static ContainingTypeMetadata[] GetContainingTypes(INamedTypeSymbol typeSymbol)
+        {
+            var containingTypes = new System.Collections.Generic.Stack<ContainingTypeMetadata>();
+            var current = typeSymbol.ContainingType;
+            while (current != null)
+            {
+                containingTypes.Push(new ContainingTypeMetadata(current));
+                current = current.ContainingType;
+            }
+
+            return containingTypes.ToArray();
         }
     }
 }
