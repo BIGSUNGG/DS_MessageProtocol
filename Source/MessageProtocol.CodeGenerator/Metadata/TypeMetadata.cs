@@ -15,6 +15,8 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public const uint MaxMessageAttributeValue = MessageIdValueMask;
 
         public INamedTypeSymbol Symbol { get; }
+        public TypeDeclarationKind DeclarationKind { get; }
+        public string DeclarationKeyword => TypeDeclarationKindHelper.GetDeclarationKeyword(DeclarationKind);
 
         public bool IsMessage { get; }
         public bool IsStandaloneMessage { get; }
@@ -33,6 +35,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public TypeMetadata(INamedTypeSymbol typeSymbol, AttributeReferences references)
         {
             Symbol = typeSymbol;
+            DeclarationKind = TypeDeclarationKindHelper.GetDeclarationKind(typeSymbol);
             ContainingTypes = GetContainingTypes(typeSymbol);
 
             var messageAttribute = typeSymbol.FindAttribute(references.MessageAttributeType);
@@ -51,7 +54,9 @@ namespace MessageProtocol.CodeGenerator.Metadata
             MessageElementId = ReadMessageIdOrDefault(elementAttribute);
 
             var baseTypeSymbol = typeSymbol.BaseType;
-            if (baseTypeSymbol != null && baseTypeSymbol.SpecialType != SpecialType.System_Object)
+            if (baseTypeSymbol != null &&
+                baseTypeSymbol.SpecialType != SpecialType.System_Object &&
+                baseTypeSymbol.SpecialType != SpecialType.System_ValueType)
             {
                 BaseTypeMetadata = new TypeMetadata(baseTypeSymbol, references);
             }

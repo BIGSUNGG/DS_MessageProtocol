@@ -20,7 +20,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             sb.Append(Header.Emit(_typeMeta, out bool hasNamespace));
             
             // Class: 클래스 선언 및 상속
-            sb.Append(Class.Emit(_typeMeta));
+            sb.Append(Define.Emit(_typeMeta));
             
             // 네임스페이스 닫기
             if (hasNamespace)

@@ -8,7 +8,7 @@ namespace MessageProtocol.CodeGenerator.Generate
     internal sealed partial class MessageSerializeCodeEmitter
     {
         // Class: 클래스 선언 및 상속
-        internal static class Class
+        internal static class Define
         {
             public static string Emit(TypeMetadata typeMeta)
             {
@@ -17,16 +17,18 @@ namespace MessageProtocol.CodeGenerator.Generate
                 string declarationIndent = GetNamespaceIndent(typeMeta);
 
                 sb.AppendLine();
-
+                
+                // 상위 클래스 먼저 선언
                 foreach (var containingType in typeMeta.ContainingTypes)
                 {
                     sb.AppendLine($"{declarationIndent}partial {containingType.DeclarationKeyword} {containingType.Name}{containingType.TypeParameters}{containingType.Constraints}");
                     sb.AppendLine($"{declarationIndent}{{");
                     declarationIndent += "    ";
                 }
-
+                
+                // 메시지 클래스 정의
                 string baseAndInterfaces = GetBaseAndInterfaces(typeMeta);
-                sb.AppendLine($"{declarationIndent}public partial class {typeMeta.Symbol.Name}{baseAndInterfaces}");
+                sb.AppendLine($"{declarationIndent}public partial {typeMeta.DeclarationKeyword} {typeMeta.Symbol.Name}{baseAndInterfaces}");
                 sb.AppendLine($"{declarationIndent}{{");
                 sb.AppendLine($"{declarationIndent}    public static uint MessageId => {typeMeta.GetMessageId()};");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}");
@@ -35,7 +37,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($"{declarationIndent}");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitDeserialize(typeMeta, indent + "    ")}");
                 sb.AppendLine($"{declarationIndent}}}");
-
+                
+                // 괄호 닫기
                 for (int i = typeMeta.ContainingTypes.Length - 1; i >= 0; i--)
                 {
                     declarationIndent = declarationIndent.Substring(0, declarationIndent.Length - 4);
@@ -63,7 +66,12 @@ namespace MessageProtocol.CodeGenerator.Generate
                 
                 // 기본 클래스가 있고 Object가 아니면 추가
                 var baseType = typeMeta.Symbol.BaseType;
-                if (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+                bool canHaveBaseType = typeMeta.DeclarationKind == TypeDeclarationKind.Class ||
+                                       typeMeta.DeclarationKind == TypeDeclarationKind.RecordClass;
+                if (canHaveBaseType &&
+                    baseType != null &&
+                    baseType.SpecialType != SpecialType.System_Object &&
+                    baseType.SpecialType != SpecialType.System_ValueType)
                 {
                     parts.Add(baseType.ToDisplayString());
                 }

@@ -5,30 +5,18 @@ namespace MessageProtocol.CodeGenerator.Metadata
 {
     internal readonly struct ContainingTypeMetadata
     {
-        public string DeclarationKeyword { get; }
+        public TypeDeclarationKind DeclarationKind { get; }
+        public string DeclarationKeyword => TypeDeclarationKindHelper.GetDeclarationKeyword(DeclarationKind);
         public string Name { get; }
         public string TypeParameters { get; }
         public string Constraints { get; }
 
         public ContainingTypeMetadata(INamedTypeSymbol symbol)
         {
-            DeclarationKeyword = GetDeclarationKeyword(symbol);
+            DeclarationKind = TypeDeclarationKindHelper.GetDeclarationKind(symbol);
             Name = symbol.Name;
             TypeParameters = GetTypeParameters(symbol);
             Constraints = GetTypeConstraints(symbol);
-        }
-
-        static string GetDeclarationKeyword(INamedTypeSymbol symbol)
-        {
-            switch (symbol.TypeKind)
-            {
-                case TypeKind.Struct:
-                    return "struct";
-                case TypeKind.Interface:
-                    return "interface";
-                default:
-                    return symbol.IsRecord ? "record" : "class";
-            }
         }
 
         static string GetTypeParameters(INamedTypeSymbol symbol)

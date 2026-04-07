@@ -171,6 +171,24 @@ namespace MessageProtocol.Tests.Serialize
             Assert.NotNull(deserialized);
             Assert.Equal(original.Value, deserialized.Value);
         }
+
+        [Fact]
+        public void MessageStruct_Serialize_Deserialize_Test()
+        {
+            MessageStruct original = new()
+            {
+                Value = 1234,
+                Flag = true,
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize<MessageStruct>(bytes);
+
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length > 0);
+            Assert.Equal(original.Value, deserialized.Value);
+            Assert.Equal(original.Flag, deserialized.Flag);
+        }
     }
 
     [MessageGroupRoot(1)]
@@ -195,5 +213,12 @@ namespace MessageProtocol.Tests.Serialize
     public partial class PlainMessage
     {
         public int Value { get; set; }
+    }
+
+    [Message]
+    public partial struct MessageStruct
+    {
+        public int Value { get; set; }
+        public bool Flag { get; set; }
     }
 }
