@@ -12,7 +12,7 @@ using MessageProtocol;
 
 namespace MyCode
 {
-    [Message]
+    [NonIdMessage]
     public class InvalidMessage
     {
         public int Value { get; set; }
@@ -27,7 +27,7 @@ namespace MyCode
         }
 
         [Fact]
-        public void NestedMessage_WithNonPartialContainingType_Should_Report_MSGPROT002()
+        public void NestedNonIdMessage_WithNonPartialContainingType_Should_Report_MSGPROT002()
         {
             const string source = """
 using MessageProtocol;
@@ -36,7 +36,7 @@ namespace MyCode
 {
     public class Outer
     {
-        [Message]
+        [NonIdMessage]
         public partial class NestedMessage
         {
             public int Value { get; set; }
@@ -59,7 +59,7 @@ using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageGroupElement(1)]
+    [GroupElementMessage(1)]
     public partial class InvalidElement
     {
         public int Value { get; set; }
@@ -81,12 +81,12 @@ using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageGroupRoot(1)]
+    [GroupRootMessage(1)]
     public partial class BaseRoot
     {
     }
 
-    [MessageGroupRoot(2)]
+    [GroupRootMessage(2)]
     public partial class DerivedRoot : BaseRoot
     {
     }
@@ -107,7 +107,7 @@ using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageStandalone(16777216u)]
+    [StandaloneMessage(16777216u)]
     public partial class InvalidMessage
     {
     }
@@ -128,7 +128,7 @@ using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageGroupRoot(1)]
+    [GroupRootMessage(1)]
     public abstract partial class AbstractRoot
     {
         public int Value { get; set; }

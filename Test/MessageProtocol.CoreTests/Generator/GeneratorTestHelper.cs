@@ -41,7 +41,7 @@ namespace MessageProtocol.Tests.Generator
                 .Select(path => MetadataReference.CreateFromFile(path))
                 .Concat(new[]
                 {
-                    MetadataReference.CreateFromFile(typeof(MessageGroupRootAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(GroupRootMessageAttribute).Assembly.Location),
                     MetadataReference.CreateFromFile(typeof(MessageSerializer).Assembly.Location),
                 })
                 .GroupBy(reference => reference.Display, StringComparer.OrdinalIgnoreCase)

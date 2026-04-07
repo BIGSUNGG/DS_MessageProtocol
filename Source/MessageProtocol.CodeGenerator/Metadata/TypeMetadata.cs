@@ -15,15 +15,15 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public TypeDeclarationKind DeclarationKind { get; }
         public string DeclarationKeyword => TypeDeclarationKindHelper.GetDeclarationKeyword(DeclarationKind);
 
-        public bool IsMessage { get; }
+        public bool IsNonIdMessage { get; }
         public bool IsStandaloneMessage { get; }
-        public bool IsGroupedMessage { get; }
-        public bool IsGroupedRootMessage { get; }
-        public bool IsGroupedElementMessage { get; }
+        public bool IsGroupMessage { get; }
+        public bool IsGroupRootMessage { get; }
+        public bool IsGroupElementMessage { get; }
 
-        public uint MessageStandaloneId { get; }
-        public uint MessageRootId { get; }
-        public uint MessageElementId { get; }
+        public uint StandaloneMessageId { get; }
+        public uint GroupRootMessageId { get; }
+        public uint GroupElementMessageId { get; }
 
         public TypeMetadata? BaseTypeMetadata { get; }
         public ContainingTypeMetadata[] ContainingTypes { get; }
@@ -35,20 +35,20 @@ namespace MessageProtocol.CodeGenerator.Metadata
             DeclarationKind = TypeDeclarationKindHelper.GetDeclarationKind(typeSymbol);
             ContainingTypes = GetContainingTypes(typeSymbol);
 
-            var messageAttribute = typeSymbol.FindAttribute(references.MessageAttributeType);
-            var standaloneAttribute = typeSymbol.FindAttribute(references.MessageStandaloneAttributeType);
-            var rootAttribute = typeSymbol.FindAttribute(references.MessageGroupRootAttributeType);
-            var elementAttribute = typeSymbol.FindAttribute(references.MessageGroupElementAttributeType);
+            var nonIdMessageAttribute = typeSymbol.FindAttribute(references.NonIdMessageAttributeType);
+            var standaloneMessageAttribute = typeSymbol.FindAttribute(references.StandaloneMessageAttributeType);
+            var groupRootMessageAttribute = typeSymbol.FindAttribute(references.GroupRootMessageAttributeType);
+            var groupElementMessageAttribute = typeSymbol.FindAttribute(references.GroupElementMessageAttributeType);
 
-            IsMessage = messageAttribute != null;
-            IsStandaloneMessage = standaloneAttribute != null;
-            IsGroupedRootMessage = rootAttribute != null;
-            IsGroupedElementMessage = elementAttribute != null;
-            IsGroupedMessage = IsGroupedRootMessage || IsGroupedElementMessage;
+            IsNonIdMessage = nonIdMessageAttribute != null;
+            IsStandaloneMessage = standaloneMessageAttribute != null;
+            IsGroupRootMessage = groupRootMessageAttribute != null;
+            IsGroupElementMessage = groupElementMessageAttribute != null;
+            IsGroupMessage = IsGroupRootMessage || IsGroupElementMessage;
 
-            MessageStandaloneId = ReadMessageIdOrDefault(standaloneAttribute);
-            MessageRootId = ReadMessageIdOrDefault(rootAttribute);
-            MessageElementId = ReadMessageIdOrDefault(elementAttribute);
+            StandaloneMessageId = ReadMessageIdOrDefault(standaloneMessageAttribute);
+            GroupRootMessageId = ReadMessageIdOrDefault(groupRootMessageAttribute);
+            GroupElementMessageId = ReadMessageIdOrDefault(groupElementMessageAttribute);
 
             var baseTypeSymbol = typeSymbol.BaseType;
             if (baseTypeSymbol != null &&
@@ -76,7 +76,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public uint GetMessageId()
         {
             uint flags = 0;
-            if (IsMessage)
+            if (IsNonIdMessage)
             {
                 flags |= (uint)MessageFlag.Message;
             }
@@ -86,12 +86,12 @@ namespace MessageProtocol.CodeGenerator.Metadata
                 flags |= (uint)MessageFlag.Standalone;
             }
 
-            if (IsGroupedRootMessage)
+            if (IsGroupRootMessage)
             {
                 flags |= (uint)MessageFlag.GroupRoot;
             }
 
-            if (IsGroupedElementMessage)
+            if (IsGroupElementMessage)
             {
                 flags |= (uint)MessageFlag.GroupElement;
             }
@@ -103,17 +103,17 @@ namespace MessageProtocol.CodeGenerator.Metadata
         {
             if (IsStandaloneMessage)
             {
-                return MessageStandaloneId;
+                return StandaloneMessageId;
             }
 
-            if (IsGroupedElementMessage)
+            if (IsGroupElementMessage)
             {
-                return MessageElementId;
+                return GroupElementMessageId;
             }
 
-            if (IsGroupedRootMessage)
+            if (IsGroupRootMessage)
             {
-                return MessageRootId;
+                return GroupRootMessageId;
             }
 
             return 0;

@@ -14,9 +14,9 @@ namespace MessageProtocol.CodeGenerator.Metadata
             var current = typeSymbol;
             while (current != null && current.SpecialType != SpecialType.System_Object)
             {
-                if (!TryValidateSingleAttribute(current, references.MessageStandaloneAttributeType, out attributeName, out attributeValue) ||
-                    !TryValidateSingleAttribute(current, references.MessageGroupRootAttributeType, out attributeName, out attributeValue) ||
-                    !TryValidateSingleAttribute(current, references.MessageGroupElementAttributeType, out attributeName, out attributeValue))
+                if (!TryValidateSingleAttribute(current, references.StandaloneMessageAttributeType, out attributeName, out attributeValue) ||
+                    !TryValidateSingleAttribute(current, references.GroupRootMessageAttributeType, out attributeName, out attributeValue) ||
+                    !TryValidateSingleAttribute(current, references.GroupElementMessageAttributeType, out attributeName, out attributeValue))
                 {
                     return false;
                 }
@@ -46,7 +46,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
             var rawValue = attribute.ConstructorArguments[0].Value;
             if (!TypeMetadata.TryConvertToUInt32(rawValue, out uint value) || value > TypeMetadata.MaxMessageAttributeValue)
             {
-                attributeName = attribute.AttributeClass?.Name ?? "MessageAttribute";
+                attributeName = attribute.AttributeClass?.Name ?? "NonIdMessageAttribute";
                 attributeValue = rawValue?.ToString() ?? "null";
                 return false;
             }

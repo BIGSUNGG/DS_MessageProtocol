@@ -9,7 +9,7 @@ namespace MessageProtocol.Tests.Serialize
     public class SeralizeTest
     {
         [Fact]
-        public void MessageGroupRoot_Serialize_Test()
+        public void GroupRootMessage_Serialize_Test()
         {
             RootMessage original = new();
             original.Id = 10;
@@ -22,7 +22,7 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageGroupRoot_Deserialize_Test()
+        public void GroupRootMessage_Deserialize_Test()
         {
             RootMessage original = new();
             original.Id = 42;
@@ -35,7 +35,7 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageGroupElement_Serialize_Test()
+        public void GroupElementMessage_Serialize_Test()
         {
             ElementMessage original = new();
             original.Id = 20;
@@ -48,7 +48,7 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageGroupElement_Deserialize_Test()
+        public void GroupElementMessage_Deserialize_Test()
         {
             ElementMessage original = new();
             original.Id = 30;
@@ -63,9 +63,9 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageStandalone_Serialize_Test()
+        public void StandaloneMessage_Serialize_Test()
         {
-            StandaloneMessage original = new();
+            StandalonePayload original = new();
             original.Flag = true;
 
             var bytes = MessageSerializer.Serialize(original);
@@ -75,22 +75,22 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageStandalone_Deserialize_Test()
+        public void StandaloneMessage_Deserialize_Test()
         {
-            StandaloneMessage original = new();
+            StandalonePayload original = new();
             original.Flag = false;
             var bytes = MessageSerializer.Serialize(original);
 
-            var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
+            var deserialized = MessageSerializer.Deserialize(bytes) as StandalonePayload;
 
             Assert.NotNull(deserialized);
             Assert.Equal(original.Flag, deserialized.Flag);
         }
 
         [Fact]
-        public void MessageStandalone_WithTrueFlag_Serialize_Test()
+        public void StandaloneMessage_WithTrueFlag_Serialize_Test()
         {
-            StandaloneMessage original = new();
+            StandalonePayload original = new();
             original.Flag = true;
 
             var bytes = MessageSerializer.Serialize(original);
@@ -100,14 +100,14 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageStandalone_WithTrueFlag_Deserialize_Test()
+        public void StandaloneMessage_WithTrueFlag_Deserialize_Test()
         {
-            StandaloneMessage original = new();
+            StandalonePayload original = new();
             original.Flag = true;
             var bytes = MessageSerializer.Serialize(original);
 
-            var deserialized = MessageSerializer.Deserialize(bytes) as StandaloneMessage;
-            var deserialized2 = MessageSerializer.Deserialize<StandaloneMessage>(bytes);
+            var deserialized = MessageSerializer.Deserialize(bytes) as StandalonePayload;
+            var deserialized2 = MessageSerializer.Deserialize<StandalonePayload>(bytes);
 
             Assert.NotNull(deserialized);
             Assert.True(deserialized.Flag);
@@ -119,14 +119,14 @@ namespace MessageProtocol.Tests.Serialize
         {
             Assert.Equal(0x04000001u, RootMessage.MessageId);
             Assert.Equal(0x0800000Au, ElementMessage.MessageId);
-            Assert.Equal(0x02000000u, StandaloneMessage.MessageId);
-            Assert.Equal(0x01000000u, PlainMessage.MessageId);
+            Assert.Equal(0x02000000u, StandalonePayload.MessageId);
+            Assert.Equal(0x01000000u, PlainPayload.MessageId);
         }
 
         [Fact]
-        public void MessageAttribute_Serialize_Should_WriteMessageFlag()
+        public void NonIdMessageAttribute_Serialize_Should_WriteMessageFlag()
         {
-            PlainMessage original = new();
+            PlainPayload original = new();
             original.Value = 99;
 
             var bytes = MessageSerializer.Serialize(original);
@@ -137,13 +137,13 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageAttribute_Deserialize_Test()
+        public void NonIdMessageAttribute_Deserialize_Test()
         {
-            PlainMessage original = new();
+            PlainPayload original = new();
             original.Value = 777;
             var bytes = MessageSerializer.Serialize(original);
 
-            var deserialized = MessageSerializer.Deserialize<PlainMessage>(bytes);
+            var deserialized = MessageSerializer.Deserialize<PlainPayload>(bytes);
 
             Assert.NotNull(deserialized);
             Assert.Equal(original.Value, deserialized.Value);
@@ -168,9 +168,9 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void Deserialize_Object_WithPlainMessage_Should_ThrowInvalidCastException()
+        public void Deserialize_Object_WithNonIdMessage_Should_ThrowInvalidCastException()
         {
-            PlainMessage original = new();
+            PlainPayload original = new();
             original.Value = 777;
             var bytes = MessageSerializer.Serialize(original);
 
@@ -181,7 +181,7 @@ namespace MessageProtocol.Tests.Serialize
         public void Deserialize_WithEmptyData_Should_ThrowArgumentException()
         {
             Assert.Throws<ArgumentException>(() => MessageSerializer.Deserialize(Array.Empty<byte>()));
-            Assert.Throws<ArgumentException>(() => MessageSerializer.Deserialize<PlainMessage>(Array.Empty<byte>()));
+            Assert.Throws<ArgumentException>(() => MessageSerializer.Deserialize<PlainPayload>(Array.Empty<byte>()));
         }
 
         [Fact]
@@ -201,31 +201,31 @@ namespace MessageProtocol.Tests.Serialize
         }
     }
 
-    [MessageGroupRoot(1)]
+    [GroupRootMessage(1)]
     public partial class RootMessage
     {
         public int Id { get; set; }
     }
 
-    [MessageGroupElement(10)]
+    [GroupElementMessage(10)]
     public partial class ElementMessage : RootMessage
     {
         public string? Name { get; set; }
     }
 
-    [MessageStandalone(0)]
-    public partial class StandaloneMessage
+    [StandaloneMessage(0)]
+    public partial class StandalonePayload
     {
         public bool Flag { get; set; }
     }
 
-    [Message]
-    public partial class PlainMessage
+    [NonIdMessage]
+    public partial class PlainPayload
     {
         public int Value { get; set; }
     }
 
-    [Message]
+    [NonIdMessage]
     public partial struct MessageStruct
     {
         public int Value { get; set; }

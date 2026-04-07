@@ -7,14 +7,14 @@ namespace MessageProtocol.Tests.Generator
     public class GeneratorTest
     {
         [Fact]
-        public void MessageGroupRootAttribute_Should_GenerateCompilableCode()
+        public void GroupRootMessageAttribute_Should_GenerateCompilableCode()
         {
             const string source = """
 using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageGroupRoot(1)]
+    [GroupRootMessage(1)]
     public partial class TestMessage
     {
         public int Id { get; set; }
@@ -35,20 +35,20 @@ namespace MyCode
         }
 
         [Fact]
-        public void MessageGroupElementAttribute_Should_GenerateCompilableCode()
+        public void GroupElementMessageAttribute_Should_GenerateCompilableCode()
         {
             const string source = """
 using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageGroupRoot(1)]
+    [GroupRootMessage(1)]
     public partial class TestRoot
     {
         public int Id { get; set; }
     }
 
-    [MessageGroupElement(10)]
+    [GroupElementMessage(10)]
     public partial class TestElement : TestRoot
     {
         public int Value { get; set; }
@@ -65,15 +65,15 @@ namespace MyCode
         }
 
         [Fact]
-        public void MessageStandaloneAttribute_Should_GenerateCompilableCode()
+        public void StandaloneMessageAttribute_Should_GenerateCompilableCode()
         {
             const string source = """
 using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageStandalone(0)]
-    public partial class StandaloneMessage
+    [StandaloneMessage(0)]
+    public partial class StandalonePayload
     {
         public string Data { get; set; }
     }
@@ -89,14 +89,14 @@ namespace MyCode
         }
 
         [Fact]
-        public void MessageAttribute_Should_GenerateCompilableCode()
+        public void NonIdMessageAttribute_Should_GenerateCompilableCode()
         {
             const string source = """
 using MessageProtocol;
 
 namespace MyCode
 {
-    [Message]
+    [NonIdMessage]
     public partial class PlainMessage
     {
         public int Value { get; set; }
@@ -120,20 +120,20 @@ using MessageProtocol;
 
 namespace MyCode
 {
-    [MessageGroupRoot(1)]
+    [GroupRootMessage(1)]
     public partial class RootMessage
     {
         public int Id { get; set; }
     }
 
-    [MessageGroupElement(10)]
+    [GroupElementMessage(10)]
     public partial class ElementMessage : RootMessage
     {
         public string Name { get; set; }
     }
 
-    [MessageStandalone(0)]
-    public partial class StandaloneMessage
+    [StandaloneMessage(0)]
+    public partial class StandalonePayload
     {
         public bool Flag { get; set; }
     }
@@ -180,7 +180,7 @@ namespace MyCode
     {
         public partial class Middle
         {
-            [Message]
+            [NonIdMessage]
             public partial class NestedMessage
             {
                 public int Value { get; set; }
@@ -203,14 +203,14 @@ namespace MyCode
         }
 
         [Fact]
-        public void MessageAttribute_OnStruct_Should_GeneratePartialStruct()
+        public void NonIdMessageAttribute_OnStruct_Should_GeneratePartialStruct()
         {
             const string source = """
 using MessageProtocol;
 
 namespace MyCode
 {
-    [Message]
+    [NonIdMessage]
     public partial struct StructMessage
     {
         public int Value { get; set; }

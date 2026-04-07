@@ -19,9 +19,9 @@ namespace MessageProtocol.CodeGenerator.Generate
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            var classesWithMessage = context.SyntaxProvider
+            var classesWithNonIdMessage = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.MessageAttribute",
+                    fullyQualifiedMetadataName: "MessageProtocol.NonIdMessageAttribute",
                     predicate: static (node, token) =>
                     {
                         return (node is ClassDeclarationSyntax
@@ -34,9 +34,9 @@ namespace MessageProtocol.CodeGenerator.Generate
                         return (TypeDeclarationSyntax)context.TargetNode;
                     }).Where(static result => result != null);
 
-            var classesWithMessageGroupRoot = context.SyntaxProvider
+            var classesWithGroupRootMessage = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.MessageGroupRootAttribute",
+                    fullyQualifiedMetadataName: "MessageProtocol.GroupRootMessageAttribute",
                     predicate: static (node, token) =>
                     {
                         return (node is ClassDeclarationSyntax
@@ -49,9 +49,9 @@ namespace MessageProtocol.CodeGenerator.Generate
                         return (TypeDeclarationSyntax)context.TargetNode;
                     }).Where(static result => result != null);
 
-            var classesWithMessageGroupElement = context.SyntaxProvider
+            var classesWithGroupElementMessage = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.MessageGroupElementAttribute",
+                    fullyQualifiedMetadataName: "MessageProtocol.GroupElementMessageAttribute",
                     predicate: static (node, token) =>
                     {
                         return (node is ClassDeclarationSyntax
@@ -64,9 +64,9 @@ namespace MessageProtocol.CodeGenerator.Generate
                         return (TypeDeclarationSyntax)context.TargetNode;
                     }).Where(static result => result != null);
 
-            var classesWithMessageStandalone = context.SyntaxProvider
+            var classesWithStandaloneMessage = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.MessageStandaloneAttribute",
+                    fullyQualifiedMetadataName: "MessageProtocol.StandaloneMessageAttribute",
                     predicate: static (node, token) =>
                     {
                         return (node is ClassDeclarationSyntax
@@ -82,7 +82,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             var compilation = context.CompilationProvider;
 
             {
-                var source = classesWithMessage.Combine(compilation);
+                var source = classesWithNonIdMessage.Combine(compilation);
                 context.RegisterSourceOutput(
                     source,
                     static (context, source) =>
@@ -93,7 +93,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             {
-                var source = classesWithMessageGroupRoot.Combine(compilation);
+                var source = classesWithGroupRootMessage.Combine(compilation);
                 context.RegisterSourceOutput(
                     source,
                     static (context, source) =>
@@ -104,7 +104,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             {
-                var source = classesWithMessageGroupElement.Combine(compilation);
+                var source = classesWithGroupElementMessage.Combine(compilation);
                 context.RegisterSourceOutput(
                     source,
                     static (context, source) =>
@@ -115,7 +115,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             {
-                var source = classesWithMessageStandalone.Combine(compilation);
+                var source = classesWithStandaloneMessage.Combine(compilation);
                 context.RegisterSourceOutput(
                     source,
                     static (context, source) =>
@@ -170,7 +170,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             // Root 메시지가 abstract이면 코드 생성을 건너뛰기 (abstract Root는 상속용이므로)
-            if (typeMeta.IsGroupedRootMessage && typeSymbol.IsAbstract)
+            if (typeMeta.IsGroupRootMessage && typeSymbol.IsAbstract)
             {
                 return;
             }
@@ -226,13 +226,13 @@ namespace MessageProtocol.CodeGenerator.Generate
         {
             // Element 메시지인데 Root가 없으면 에러
             // MessageRootId가 0이어도 Root 메시지가 있을 수 있으므로, BaseTypeMetadata에서 확인
-            if (typeMeta.IsGroupedElementMessage)
+            if (typeMeta.IsGroupElementMessage)
             {
                 bool hasRoot = false;
                 var current = typeMeta;
                 while (current != null)
                 {
-                    if (current.IsGroupedRootMessage)
+                    if (current.IsGroupRootMessage)
                     {
                         hasRoot = true;
                         break;
@@ -251,12 +251,12 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             // Root 메시지인데 부모에 Root가 있으면 에러
-            if (typeMeta.IsGroupedRootMessage)
+            if (typeMeta.IsGroupRootMessage)
             {
                 var baseType = typeSymbol.BaseType;
                 while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
                 {
-                    var parentRootAttribute = baseType.FindAttribute(attributeReferences.MessageGroupRootAttributeType);
+                    var parentRootAttribute = baseType.FindAttribute(attributeReferences.GroupRootMessageAttributeType);
                     if (parentRootAttribute != null)
                     {
                         context.ReportDiagnostic(Diagnostic.Create(
