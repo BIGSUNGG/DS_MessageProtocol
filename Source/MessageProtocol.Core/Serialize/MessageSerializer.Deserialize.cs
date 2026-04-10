@@ -56,7 +56,7 @@ namespace MessageProtocol.Serialize
             uint messageId = (uint)messageFlag << 24;
 
             // first bit == 1: Message only, trailing 3 bytes are not part of message id.
-            if ((((MessageFlag)messageFlag) & MessageFlag.Message) != 0)
+            if ((((MessageFlag)messageFlag) & MessageFlag.NonIdMessage) != 0)
                 return messageId;
 
             if (data.Length < 4)
@@ -72,6 +72,8 @@ namespace MessageProtocol.Serialize
         private static void RegisterDeserializeInvoker(Type messageType)
         {
             uint messageId = GetMessageIdByType(messageType);
+            if ((((MessageFlag)(messageId >> 24)) & MessageFlag.NonIdMessage) != 0)
+                return;
 
             try
             {

@@ -11,7 +11,7 @@ namespace MessageProtocol.Serialize
 {
     public static partial class MessageSerializer
     {
-        static ConcurrentDictionary<uint, Type> _registeredType = new();
+        static  ConcurrentDictionary<Type, object> _registeredType = new();
 
         static MessageSerializer()
         {
@@ -21,12 +21,12 @@ namespace MessageProtocol.Serialize
         public static void RegisterType(Type type)
         {
             uint messageId = GetMessageIdByType(type);
-            if(_registeredType.TryGetValue(messageId, out var registedType))
+            if(_registeredType.TryGetValue(type, out var registered))
                 throw new InvalidOperationException($@"
 Message type with ID {messageId} is already registered.
-{type.FullName} and {registedType.FullName} overlapped");
+{type.FullName} and {type.FullName} overlapped");
             else
-                _registeredType.TryAdd(messageId, type);
+                _registeredType.TryAdd(type, null);
 
             RegisterSerializeInvoker(type);
             RegisterDeserializeInvoker(type);

@@ -11,7 +11,7 @@ namespace MessageProtocol
 #endif
     {
         None = 0,
-        Message = 1 << 0,
+        NonIdMessage = 1 << 0,
         Standalone = 1 << 1,
         GroupRoot = 1 << 2,
         GroupElement = 1 << 3,

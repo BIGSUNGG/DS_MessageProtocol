@@ -27,7 +27,7 @@ namespace MessageProtocol.Serialize
         public static byte[] Serialize(object message)
         {
             var messageType = message.GetType();
-
+            
             if(!_serializeCache.TryGetValue(messageType, out var invoker))
                 invoker = RegisterSerializeInvoker(messageType);
 

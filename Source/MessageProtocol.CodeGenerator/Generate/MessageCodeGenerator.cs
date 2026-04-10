@@ -183,8 +183,9 @@ namespace MessageProtocol.CodeGenerator.Generate
 #pragma warning disable RS1035 // Do not use APIs banned for analyzers
             try
             {
-                var debugFilePath = Path.Combine("C:\\Debug\\", $"{typeMeta.Symbol.Name}.g.debug.cs");
-                if(File.Exists(debugFilePath))
+                var generatedFileName = GetGeneratedFileName(typeMeta.Symbol);
+                var debugFilePath = Path.Combine("C:\\Debug\\", $"{generatedFileName}.g.debug.cs");
+                if(Directory.Exists(@"C:\Debug"))
                     File.WriteAllText(debugFilePath, serializeCode);
             }
             catch
@@ -194,7 +195,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 #pragma warning restore RS1035
 
             // Step4 : Output Code
-            context.AddSource($"{typeMeta.Symbol.Name}.g.cs", SourceText.From(serializeCode, Encoding.UTF8));
+            context.AddSource($"{GetGeneratedFileName(typeMeta.Symbol)}.g.cs", SourceText.From(serializeCode, Encoding.UTF8));
         }
 
         static bool IsPartial(TypeDeclarationSyntax typeDeclaration)
@@ -220,6 +221,22 @@ namespace MessageProtocol.CodeGenerator.Generate
         static bool IsNested(TypeDeclarationSyntax typeDeclaration)
         {
             return typeDeclaration.Parent is TypeDeclarationSyntax;
+        }
+
+        static string GetGeneratedFileName(INamedTypeSymbol typeSymbol)
+        {
+            if (typeSymbol.ContainingType == null)
+            {
+                return typeSymbol.Name;
+            }
+
+            var typeNames = new System.Collections.Generic.Stack<string>();
+            for (var current = typeSymbol; current != null; current = current.ContainingType)
+            {
+                typeNames.Push(current.Name);
+            }
+
+            return string.Join("_", typeNames);
         }
 
         static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences, TypeDeclarationSyntax syntax, SourceProductionContext context)

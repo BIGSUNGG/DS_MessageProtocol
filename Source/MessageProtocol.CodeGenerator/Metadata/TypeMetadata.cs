@@ -78,7 +78,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
             uint flags = 0;
             if (IsNonIdMessage)
             {
-                flags |= (uint)MessageFlag.Message;
+                flags |= (uint)MessageFlag.NonIdMessage;
             }
 
             if (IsStandaloneMessage)
