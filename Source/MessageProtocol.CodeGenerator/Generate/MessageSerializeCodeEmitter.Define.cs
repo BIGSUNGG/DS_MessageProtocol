@@ -77,18 +77,26 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
                 
                 // 인터페이스 추가 (using 문에 이미 포함되어 있으므로 네임스페이스 없이)
-                parts.Add($"IMessageSerializable<{typeMeta.Symbol.Name}>");
+                // Group / Standalone 은 MessageId를 프로토콜 식별자로 쓰므로 IHasIdMessageSerializable
+                bool hasIdInProtocol = typeMeta.IsGroupMessage || typeMeta.IsStandaloneMessage;
+                parts.Add(hasIdInProtocol
+                    ? $"IHasIdMessageSerializable<{typeMeta.Symbol.Name}>"
+                    : $"IMessageSerializable<{typeMeta.Symbol.Name}>");
                 
                 // 기존에 구현된 인터페이스들도 추가 (원본 클래스 선언에 있는 인터페이스들)
                 foreach (var interfaceType in typeMeta.Symbol.Interfaces)
                 {
-                    // IMessageSerializable은 이미 추가했으므로 제외
-                    bool isMessageSerializable = interfaceType.Name == "IMessageSerializable" && 
+                    // 생성기가 이미 추가한 직렬화 인터페이스는 제외
+                    bool isSameMessageSerializable = interfaceType.Name == "IMessageSerializable" &&
+                                               interfaceType.IsGenericType &&
+                                               interfaceType.TypeArguments.Length == 1 &&
+                                               interfaceType.TypeArguments[0].Equals(typeMeta.Symbol, SymbolEqualityComparer.Default);
+                    bool isSameHasIdMessageSerializable = interfaceType.Name == "IHasIdMessageSerializable" &&
                                                interfaceType.IsGenericType &&
                                                interfaceType.TypeArguments.Length == 1 &&
                                                interfaceType.TypeArguments[0].Equals(typeMeta.Symbol, SymbolEqualityComparer.Default);
                     
-                    if (!isMessageSerializable)
+                    if (!isSameMessageSerializable && !isSameHasIdMessageSerializable)
                     {
                         parts.Add(interfaceType.ToDisplayString());
                     }
