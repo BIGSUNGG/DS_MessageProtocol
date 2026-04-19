@@ -61,7 +61,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}        uint id = {id};");
                 sb.AppendLine($@"{indent}        byte messageFlag = (byte)(id >> 24);");
                 sb.AppendLine($@"{indent}        writer.Write(messageFlag);");
-                sb.AppendLine($@"{indent}        if ((messageFlag & 0x01) == 0)");
+                sb.AppendLine($@"{indent}        if ((messageFlag & 0x10) == 0)");
                 sb.AppendLine($@"{indent}        {{");
                 sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 16));");
                 sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 8));");
@@ -92,7 +92,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    {{");
                 sb.AppendLine($@"{indent}        byte messageFlag = reader.ReadByte();");
                 sb.AppendLine($@"{indent}        uint id = (uint)messageFlag << 24;");
-                sb.AppendLine($@"{indent}        if ((messageFlag & 0x01) == 0)");
+                sb.AppendLine($@"{indent}        if ((messageFlag & 0x10) == 0)");
                 sb.AppendLine($@"{indent}        {{");
                 sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 16;");
                 sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 8;");

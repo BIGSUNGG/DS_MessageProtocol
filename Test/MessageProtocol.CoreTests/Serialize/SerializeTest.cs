@@ -115,12 +115,59 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void MessageId_FlagBits_Should_BeEncodedInFirstByte()
+        public void MessageId_FirstByte_Should_EncodeFlagNibbleAndCategoryNibble()
         {
-            Assert.Equal(0x04000001u, RootMessage.MessageId);
-            Assert.Equal(0x0800000Au, ElementMessage.MessageId);
-            Assert.Equal(0x02000000u, StandalonePayload.MessageId);
-            Assert.Equal(0x01000000u, PlainPayload.MessageId);
+            // 상위 4비트: MessageFlag, 하위 4비트: Category(기본 0)
+            Assert.Equal(0x40000001u, RootMessage.MessageId);
+            Assert.Equal(0x8000000Au, ElementMessage.MessageId);
+            Assert.Equal(0x20000000u, StandalonePayload.MessageId);
+            Assert.Equal(0x10000000u, PlainPayload.MessageId);
+            Assert.Equal(0x43000001u, CategorizedRootMessage.MessageId);
+        }
+
+        [Fact]
+        public void MessageCategory_WithoutAttribute_Should_DefaultToCategory0()
+        {
+            Assert.Equal(0u, (RootMessage.MessageId >> 24) & 0x0Fu);
+            Assert.Equal(0u, (ElementMessage.MessageId >> 24) & 0x0Fu);
+            Assert.Equal(0u, (StandalonePayload.MessageId >> 24) & 0x0Fu);
+        }
+
+        [Fact]
+        public void MessageCategory_WithAttribute_Should_EncodeInMessageIdLowNibble()
+        {
+            Assert.Equal(3u, (CategorizedRootMessage.MessageId >> 24) & 0x0Fu);
+            Assert.Equal(15u, (StandaloneCategory15.MessageId >> 24) & 0x0Fu);
+        }
+
+        [Fact]
+        public void MessageCategory_Should_AppearInSerializedFirstByteLowNibble()
+        {
+            var root = new CategorizedRootMessage { Id = 5 };
+            var bytes = MessageSerializer.Serialize(root);
+
+            Assert.True(bytes.Length >= 4);
+            Assert.Equal(3, bytes[0] & 0x0F);
+            Assert.Equal(0x4, (bytes[0] >> 4) & 0x0F);
+        }
+
+        [Fact]
+        public void CategorizedRootMessage_Serialize_Deserialize_Should_PreservePayload()
+        {
+            var original = new CategorizedRootMessage { Id = 91 };
+            var bytes = MessageSerializer.Serialize(original);
+
+            var deserialized = MessageSerializer.Deserialize(bytes) as CategorizedRootMessage;
+
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Id, deserialized.Id);
+        }
+
+        [Fact]
+        public void StandaloneCategory15_MessageId_Should_MatchFlagAndCategoryNibbles()
+        {
+            Assert.Equal(0x2Fu, (StandaloneCategory15.MessageId >> 24) & 0xFF);
+            Assert.Equal(0x2F000000u, StandaloneCategory15.MessageId);
         }
 
         [Fact]
@@ -133,7 +180,7 @@ namespace MessageProtocol.Tests.Serialize
 
             Assert.NotNull(bytes);
             Assert.True(bytes.Length >= 5);
-            Assert.Equal(0x01, bytes[0] & 0x01);
+            Assert.NotEqual(0, (bytes[0] >> 4) & 0x01);
         }
 
         [Fact]
@@ -187,7 +234,7 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void Deserialize_WithTooShortGroupedMessageHeader_Should_ThrowArgumentException()
         {
-            byte[] bytes = [0x04, 0x00, 0x01];
+            byte[] bytes = [0x40, 0x00, 0x01];
 
             Assert.Throws<ArgumentException>(() => MessageSerializer.Deserialize(bytes));
         }
@@ -195,10 +242,17 @@ namespace MessageProtocol.Tests.Serialize
         [Fact]
         public void Deserialize_Object_WithUnregisteredMessageId_Should_ThrowKeyNotFoundException()
         {
-            byte[] bytes = [0x02, 0x00, 0x00, 0x7F];
+            byte[] bytes = [0x20, 0x00, 0x00, 0x7F];
 
             Assert.Throws<KeyNotFoundException>(() => MessageSerializer.Deserialize(bytes));
         }
+    }
+
+    [GroupRootMessage(1)]
+    [MessageCategory(MessageCategory.Category3)]
+    public partial class CategorizedRootMessage
+    {
+        public int Id { get; set; }
     }
 
     [GroupRootMessage(1)]
@@ -211,6 +265,13 @@ namespace MessageProtocol.Tests.Serialize
     public partial class ElementMessage : RootMessage
     {
         public string? Name { get; set; }
+    }
+
+    [StandaloneMessage(0)]
+    [MessageCategory(MessageCategory.Category15)]
+    public partial class StandaloneCategory15
+    {
+        public int Value { get; set; }
     }
 
     [StandaloneMessage(0)]

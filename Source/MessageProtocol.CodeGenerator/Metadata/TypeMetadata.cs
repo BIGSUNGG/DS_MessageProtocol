@@ -25,6 +25,9 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public uint GroupRootMessageId { get; }
         public uint GroupElementMessageId { get; }
 
+        /// <summary>첫 바이트 하위 4비트(0~15). <see cref="MessageCategoryAttribute"/>가 없으면 0.</summary>
+        public byte Category { get; }
+
         public TypeMetadata? BaseTypeMetadata { get; }
         public ContainingTypeMetadata[] ContainingTypes { get; }
         public MemberMetadata[] Members { get; }
@@ -49,6 +52,9 @@ namespace MessageProtocol.CodeGenerator.Metadata
             StandaloneMessageId = ReadMessageIdOrDefault(standaloneMessageAttribute);
             GroupRootMessageId = ReadMessageIdOrDefault(groupRootMessageAttribute);
             GroupElementMessageId = ReadMessageIdOrDefault(groupElementMessageAttribute);
+
+            var messageCategoryAttribute = typeSymbol.FindAttribute(references.MessageCategoryAttributeType);
+            Category = ReadMessageCategoryOrDefault(messageCategoryAttribute);
 
             var baseTypeSymbol = typeSymbol.BaseType;
             if (baseTypeSymbol != null &&
@@ -96,7 +102,8 @@ namespace MessageProtocol.CodeGenerator.Metadata
                 flags |= (uint)MessageFlag.GroupElement;
             }
 
-            return (flags << 24) | (GetMessageIdValue() & MessageIdValueMask);
+            uint headerByte = ((flags & 0x0Fu) << 4) | (uint)(Category & 0x0Fu);
+            return (headerByte << 24) | (GetMessageIdValue() & MessageIdValueMask);
         }
 
         uint GetMessageIdValue()
@@ -129,6 +136,21 @@ namespace MessageProtocol.CodeGenerator.Metadata
             return TryConvertToUInt32(attributeData.ConstructorArguments[0].Value, out uint value)
                 ? value
                 : 0;
+        }
+
+        static byte ReadMessageCategoryOrDefault(AttributeData? attributeData)
+        {
+            if (attributeData == null || attributeData.ConstructorArguments.Length == 0)
+            {
+                return 0;
+            }
+
+            if (!TryConvertToUInt32(attributeData.ConstructorArguments[0].Value, out uint value))
+            {
+                return 0;
+            }
+
+            return (byte)(value & 0x0Fu);
         }
 
         internal static bool TryConvertToUInt32(object? value, out uint result)

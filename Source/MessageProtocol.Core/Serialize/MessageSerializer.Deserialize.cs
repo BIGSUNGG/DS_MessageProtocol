@@ -23,8 +23,9 @@ namespace MessageProtocol.Serialize
             if (data.Length == 0)
                 throw new ArgumentException("Message data is empty.", nameof(data));
 
-            byte messageFlag = data[0];
-            if ((((MessageFlag)messageFlag) & MessageFlag.StandaloneOrGroup) != 0)
+            byte header = data[0];
+            var flags = (MessageFlag)((header >> 4) & 0x0F);
+            if ((flags & MessageFlag.StandaloneOrGroup) != 0)
                 return (T)Deserialize(data);
 
             return T.Deserialize(data);
@@ -36,8 +37,9 @@ namespace MessageProtocol.Serialize
             if (data.Length == 0)
                 throw new ArgumentException("Message data is empty.", nameof(data));
 
-            byte messageFlag = data[0];
-            if ((((MessageFlag)messageFlag) & MessageFlag.StandaloneOrGroup) == 0)
+            byte header = data[0];
+            var flags = (MessageFlag)((header >> 4) & 0x0F);
+            if ((flags & MessageFlag.StandaloneOrGroup) == 0)
                 throw new InvalidCastException("Message is not a standalone or group message.");
 
             uint messageId = ReadMessageId(data);
@@ -52,11 +54,12 @@ namespace MessageProtocol.Serialize
             if (data.Length == 0)
                 throw new ArgumentException("Message data is empty.", nameof(data));
 
-            byte messageFlag = data[0];
-            uint messageId = (uint)messageFlag << 24;
+            byte header = data[0];
+            uint messageId = (uint)header << 24;
 
-            // first bit == 1: Message only, trailing 3 bytes are not part of message id.
-            if ((((MessageFlag)messageFlag) & MessageFlag.NonIdMessage) != 0)
+            // 상위 니블: 플래그. NonIdMessage면 뒤 3바이트는 MessageId 값에 포함하지 않음.
+            var flags = (MessageFlag)((header >> 4) & 0x0F);
+            if ((flags & MessageFlag.NonIdMessage) != 0)
                 return messageId;
 
             if (data.Length < 4)
@@ -72,7 +75,9 @@ namespace MessageProtocol.Serialize
         private static void RegisterDeserializeInvoker(Type messageType)
         {
             uint messageId = GetMessageIdByType(messageType);
-            if ((((MessageFlag)(messageId >> 24)) & MessageFlag.NonIdMessage) != 0)
+            byte header = (byte)(messageId >> 24);
+            var flags = (MessageFlag)((header >> 4) & 0x0F);
+            if ((flags & MessageFlag.NonIdMessage) != 0)
                 return;
 
             try
