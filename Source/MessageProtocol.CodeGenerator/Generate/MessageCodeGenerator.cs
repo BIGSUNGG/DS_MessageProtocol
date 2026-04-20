@@ -170,7 +170,21 @@ namespace MessageProtocol.CodeGenerator.Generate
                 error = $"Generated source is empty for type '{typeSymbol.ToDisplayString()}'.";
                 return false;
             }
-
+            
+#pragma warning disable RS1035 // Do not use APIs banned for analyzers
+            try
+            {
+                var generatedFileName = GetGeneratedFileName(typeMeta.Symbol);
+                var debugFilePath = Path.Combine("C:\\Debug\\", $"{generatedFileName}.g.debug.cs");
+                if(Directory.Exists(@"C:\Debug"))
+                    File.WriteAllText(debugFilePath, serializeCode);
+            }
+            catch
+            {
+                // 디버그 파일 생성 실패는 무시
+            }
+#pragma warning restore RS1035
+            
             return true;
         }
 

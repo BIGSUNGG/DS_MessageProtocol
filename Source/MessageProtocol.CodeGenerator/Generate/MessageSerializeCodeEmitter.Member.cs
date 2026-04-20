@@ -13,6 +13,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 string memberAccess = $"message.{member.Name}";
                 string typeName = member.Type.ToDisplayString();
 
+                if (member.IsMessage)
+                {
+                    return $@"{indent}var {member.Name}_bytes = MessageSerializer.Serialize({memberAccess});
+{indent}writer.Write({member.Name}_bytes.Length);
+{indent}writer.Write({member.Name}_bytes);
+";
+                }
+
                 // 기본 타입 처리
                 if (member.Type.SpecialType == SpecialType.System_Boolean)
                     return $"{indent}writer.Write({memberAccess});\n";
@@ -42,9 +50,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
 
                 // 배열 처리
-                if (member.Type is IArrayTypeSymbol arrayType)
+                if (member.Type is IArrayTypeSymbol)
                 {
-                    string elementType = arrayType.ElementType.ToDisplayString();
                     return $@"{indent}if ({memberAccess} == null)
 {indent}{{
 {indent}    writer.Write(0);
@@ -67,7 +74,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                     if (genericTypeName.StartsWith("System.Collections.Generic.List<") ||
                         genericTypeName.StartsWith("System.Collections.Generic.IList<"))
                     {
-                        string elementType = namedType.TypeArguments[0].ToDisplayString();
                         return $@"{indent}if ({memberAccess} == null)
 {indent}{{
 {indent}    writer.Write(0);
@@ -92,6 +98,14 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 string memberAccess = $"result.{member.Name}";
                 string typeName = member.Type.ToDisplayString();
+
+                if (member.IsMessage)
+                {
+                    return $@"{indent}int {member.Name}_length = reader.ReadInt32();
+{indent}byte[] {member.Name}_bytes = reader.ReadBytes({member.Name}_length);
+{indent}{memberAccess} = MessageSerializer.Deserialize<{typeName}>({member.Name}_bytes);
+";
+                }
 
                 // 기본 타입 처리
                 if (member.Type.SpecialType == SpecialType.System_Boolean)

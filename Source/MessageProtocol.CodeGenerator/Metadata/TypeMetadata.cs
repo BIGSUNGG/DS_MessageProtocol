@@ -75,7 +75,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
                     if (include) return true;
                     return m.DeclaredAccessibility is Accessibility.Public;
                 })
-                .Select(m => new MemberMetadata(m))
+                .Select(m => new MemberMetadata(m, references))
                 .ToArray();
         }
 

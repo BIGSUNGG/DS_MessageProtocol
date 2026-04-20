@@ -215,6 +215,29 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
+        public void NestedMessageMember_Serialize_Deserialize_Test()
+        {
+            var original = new OuterMessage
+            {
+                Id = 700,
+                Nested = new NestedMessage
+                {
+                    Value = 321,
+                },
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize(bytes) as OuterMessage;
+
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length > 0);
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Id, deserialized.Id);
+            Assert.NotNull(deserialized.Nested);
+            Assert.Equal(original.Nested.Value, deserialized.Nested.Value);
+        }
+
+        [Fact]
         public void Deserialize_Object_WithNonIdMessage_Should_ThrowInvalidCastException()
         {
             PlainPayload original = new();
@@ -291,5 +314,18 @@ namespace MessageProtocol.Tests.Serialize
     {
         public int Value { get; set; }
         public bool Flag { get; set; }
+    }
+
+    [StandaloneMessage(12)]
+    public partial class NestedMessage
+    {
+        public int Value { get; set; }
+    }
+
+    [StandaloneMessage(13)]
+    public partial class OuterMessage
+    {
+        public int Id { get; set; }
+        public NestedMessage? Nested { get; set; }
     }
 }
