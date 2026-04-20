@@ -3,14 +3,12 @@ using MessageProtocol.CodeGenerator.Metadata;
 using MessageProtocol.CodeGenerator.Generate;
 using MessageProtocol.CodeGenerator;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Collections.Immutable;
 using System.Linq;
 using System;
 using System.IO;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
+using System.Collections.Generic;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
@@ -19,142 +17,50 @@ namespace MessageProtocol.CodeGenerator.Generate
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            var classesWithNonIdMessage = context.SyntaxProvider
-                .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.NonIdMessageAttribute",
-                    predicate: static (node, token) =>
-                    {
-                        return (node is ClassDeclarationSyntax
-                                     or StructDeclarationSyntax
-                                     or RecordDeclarationSyntax
-                                     or InterfaceDeclarationSyntax);
-                    },
-                    transform: static (context, token) =>
-                    {
-                        return (TypeDeclarationSyntax)context.TargetNode;
-                    }).Where(static result => result != null);
+            context.RegisterSourceOutput(
+                context.CompilationProvider,
+                static (spc, compilation) =>
+                {
+                    GenerateFromCompilation(compilation, spc);
+                });
+        }
 
-            var classesWithGroupRootMessage = context.SyntaxProvider
-                .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.GroupRootMessageAttribute",
-                    predicate: static (node, token) =>
-                    {
-                        return (node is ClassDeclarationSyntax
-                                     or StructDeclarationSyntax
-                                     or RecordDeclarationSyntax
-                                     or InterfaceDeclarationSyntax);
-                    },
-                    transform: static (context, token) =>
-                    {
-                        return (TypeDeclarationSyntax)context.TargetNode;
-                    }).Where(static result => result != null);
+        static void GenerateFromCompilation(Compilation compilation, SourceProductionContext context)
+        {
+            var attributeReferences = new AttributeReferences(compilation);
+            var targetSymbols = EnumerateAllNamedTypes(compilation.Assembly.GlobalNamespace)
+                .Where(typeSymbol => HasMessageAttribute(typeSymbol, attributeReferences))
+                .Distinct(NamedTypeSymbolComparer.Instance);
 
-            var classesWithGroupElementMessage = context.SyntaxProvider
-                .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.GroupElementMessageAttribute",
-                    predicate: static (node, token) =>
-                    {
-                        return (node is ClassDeclarationSyntax
-                                     or StructDeclarationSyntax
-                                     or RecordDeclarationSyntax
-                                     or InterfaceDeclarationSyntax);
-                    },
-                    transform: static (context, token) =>
-                    {
-                        return (TypeDeclarationSyntax)context.TargetNode;
-                    }).Where(static result => result != null);
-
-            var classesWithStandaloneMessage = context.SyntaxProvider
-                .ForAttributeWithMetadataName(
-                    fullyQualifiedMetadataName: "MessageProtocol.StandaloneMessageAttribute",
-                    predicate: static (node, token) =>
-                    {
-                        return (node is ClassDeclarationSyntax
-                                     or StructDeclarationSyntax
-                                     or RecordDeclarationSyntax
-                                     or InterfaceDeclarationSyntax);
-                    },
-                    transform: static (context, token) =>
-                    {
-                        return (TypeDeclarationSyntax)context.TargetNode;
-                    }).Where(static result => result != null);
-
-            var compilation = context.CompilationProvider;
-
+            foreach (var typeSymbol in targetSymbols)
             {
-                var source = classesWithNonIdMessage.Combine(compilation);
-                context.RegisterSourceOutput(
-                    source,
-                    static (context, source) =>
-                    {
-                        var (typeDeclaration, compilation) = source;
-                        Generate(typeDeclaration, compilation, context);
-                    });
-            }
-
-            {
-                var source = classesWithGroupRootMessage.Combine(compilation);
-                context.RegisterSourceOutput(
-                    source,
-                    static (context, source) =>
-                    {
-                        var (typeDeclaration, compilation) = source;
-                        Generate(typeDeclaration, compilation, context);
-                    });
-            }
-
-            {
-                var source = classesWithGroupElementMessage.Combine(compilation);
-                context.RegisterSourceOutput(
-                    source,
-                    static (context, source) =>
-                    {
-                        var (typeDeclaration, compilation) = source;
-                        Generate(typeDeclaration, compilation, context);
-                    });
-            }
-
-            {
-                var source = classesWithStandaloneMessage.Combine(compilation);
-                context.RegisterSourceOutput(
-                    source,
-                    static (context, source) =>
-                    {
-                        var (typeDeclaration, compilation) = source;
-                        Generate(typeDeclaration, compilation, context);
-                    });
+                Generate(typeSymbol, compilation, context, attributeReferences);
             }
         }
 
-        internal static void Generate(TypeDeclarationSyntax syntax, Compilation compilation, SourceProductionContext context)
+        internal static void Generate(INamedTypeSymbol typeSymbol, Compilation compilation, SourceProductionContext context, AttributeReferences? cachedReferences = null)
         {
-            var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
-
-            var typeSymbol = semanticModel.GetDeclaredSymbol(syntax) as INamedTypeSymbol;
-            if (typeSymbol == null)
-            {
-                return;
-            }
+            var location = typeSymbol.Locations.FirstOrDefault() ?? Location.None;
+            var attributeReferences = cachedReferences ?? new AttributeReferences(compilation);
 
             // verify is partial
-            if (!IsPartial(syntax))
+            if (!IsPartial(typeSymbol))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustBePartial, syntax.Identifier.GetLocation(), typeSymbol.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustBePartial, location, typeSymbol.Name));
                 return;
             }
 
-            if (IsNested(syntax) && !IsNestedContainingTypesPartial(syntax))
+            if (typeSymbol.ContainingType != null && !IsNestedContainingTypesPartial(typeSymbol))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedContainingTypesMustBePartial, syntax.Identifier.GetLocation(), typeSymbol.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedContainingTypesMustBePartial, location, typeSymbol.Name));
                 return;
             }
 
-            var attributeReferences = new AttributeReferences(compilation);
             if (!TypeMetadataValidator.TryValidateMessageIdRange(typeSymbol, attributeReferences, out string invalidAttributeName, out string invalidAttributeValue))
             {
                 context.ReportDiagnostic(Diagnostic.Create(
                     DiagnosticDescriptors.MessageAttributeValueOutOfRange,
-                    syntax.Identifier.GetLocation(),
+                    location,
                     typeSymbol.Name,
                     invalidAttributeName,
                     invalidAttributeValue));
@@ -164,7 +70,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
 
             // Root 계층 구조 검증
-            if (!ValidateRootHierarchy(typeSymbol, typeMeta, attributeReferences, syntax, context))
+            if (!ValidateRootHierarchy(typeSymbol, typeMeta, attributeReferences, context, location))
             {
                 return;
             }
@@ -198,29 +104,139 @@ namespace MessageProtocol.CodeGenerator.Generate
             context.AddSource($"{GetGeneratedFileName(typeMeta.Symbol)}.g.cs", SourceText.From(serializeCode, Encoding.UTF8));
         }
 
-        static bool IsPartial(TypeDeclarationSyntax typeDeclaration)
+        public static bool TryGenerateMessageSource(
+            INamedTypeSymbol typeSymbol,
+            Compilation compilation,
+            out string? serializeCode)
         {
-            return typeDeclaration.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword));
+            return TryGenerateMessageSource(typeSymbol, compilation, out serializeCode, out _);
         }
 
-        static bool IsNestedContainingTypesPartial(TypeDeclarationSyntax typeDeclaration)
+        public static bool TryGenerateMessageSource(
+            INamedTypeSymbol typeSymbol,
+            Compilation compilation,
+            out string? serializeCode,
+            out string? error)
         {
-            if (typeDeclaration.Parent is TypeDeclarationSyntax parentTypeDeclaration)
+            serializeCode = null;
+            error = null;
+
+            if (!IsPartial(typeSymbol))
             {
-                if (!IsPartial(parentTypeDeclaration))
+                error = $"Type '{typeSymbol.ToDisplayString()}' must be partial.";
+                return false;
+            }
+
+            if (typeSymbol.ContainingType != null && !IsNestedContainingTypesPartial(typeSymbol))
+            {
+                error = $"All containing types of '{typeSymbol.ToDisplayString()}' must be partial.";
+                return false;
+            }
+
+            var attributeReferences = new AttributeReferences(compilation);
+            if (!HasMessageAttribute(typeSymbol, attributeReferences))
+            {
+                error = $"Type '{typeSymbol.ToDisplayString()}' has no message attribute.";
+                return false;
+            }
+
+            if (!TypeMetadataValidator.TryValidateMessageIdRange(
+                    typeSymbol,
+                    attributeReferences,
+                    out string invalidAttributeName,
+                    out string invalidAttributeValue))
+            {
+                error = $"Message attribute value is out of range. Attribute='{invalidAttributeName}', Value='{invalidAttributeValue}'.";
+                return false;
+            }
+
+            var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
+            if (!ValidateRootHierarchy(typeSymbol, typeMeta, attributeReferences))
+            {
+                error = $"Type '{typeSymbol.ToDisplayString()}' has invalid root/group hierarchy.";
+                return false;
+            }
+
+            if (typeMeta.IsGroupRootMessage && typeSymbol.IsAbstract)
+            {
+                error = $"Abstract group root type '{typeSymbol.ToDisplayString()}' does not emit serialization source.";
+                return false;
+            }
+
+            var serializeCodeEmitter = new MessageSerializeCodeEmitter(typeMeta);
+            serializeCode = serializeCodeEmitter.Emit();
+            if (string.IsNullOrWhiteSpace(serializeCode))
+            {
+                error = $"Generated source is empty for type '{typeSymbol.ToDisplayString()}'.";
+                return false;
+            }
+
+            return true;
+        }
+
+        static bool HasMessageAttribute(INamedTypeSymbol typeSymbol, AttributeReferences attributeReferences)
+        {
+            return typeSymbol.ContainAttribute(attributeReferences.NonIdMessageAttributeType)
+                || typeSymbol.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
+                || typeSymbol.ContainAttribute(attributeReferences.GroupRootMessageAttributeType)
+                || typeSymbol.ContainAttribute(attributeReferences.GroupElementMessageAttributeType);
+        }
+
+        static IEnumerable<INamedTypeSymbol> EnumerateAllNamedTypes(INamespaceSymbol namespaceSymbol)
+        {
+            foreach (var member in namespaceSymbol.GetMembers())
+            {
+                if (member is INamespaceSymbol childNamespace)
+                {
+                    foreach (var nestedType in EnumerateAllNamedTypes(childNamespace))
+                    {
+                        yield return nestedType;
+                    }
+                }
+                else if (member is INamedTypeSymbol namedType)
+                {
+                    foreach (var nestedType in EnumerateTypeAndNested(namedType))
+                    {
+                        yield return nestedType;
+                    }
+                }
+            }
+        }
+
+        static IEnumerable<INamedTypeSymbol> EnumerateTypeAndNested(INamedTypeSymbol typeSymbol)
+        {
+            yield return typeSymbol;
+            foreach (var nestedType in typeSymbol.GetTypeMembers())
+            {
+                foreach (var deepNested in EnumerateTypeAndNested(nestedType))
+                {
+                    yield return deepNested;
+                }
+            }
+        }
+
+        static bool IsPartial(INamedTypeSymbol typeSymbol)
+        {
+            return typeSymbol.DeclaringSyntaxReferences
+                .Select(static reference => reference.GetSyntax())
+                .Any(static syntax => syntax is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax declarationSyntax
+                    && declarationSyntax.Modifiers.Any(static modifier => modifier.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)));
+        }
+
+        static bool IsNestedContainingTypesPartial(INamedTypeSymbol typeSymbol)
+        {
+            var containingType = typeSymbol.ContainingType;
+            while (containingType != null)
+            {
+                if (!IsPartial(containingType))
+                {
                     return false;
+                }
 
-                return IsNestedContainingTypesPartial(parentTypeDeclaration);
+                containingType = containingType.ContainingType;
             }
-            else
-            {
-                return true;
-            }
-        }
 
-        static bool IsNested(TypeDeclarationSyntax typeDeclaration)
-        {
-            return typeDeclaration.Parent is TypeDeclarationSyntax;
+            return true;
         }
 
         static string GetGeneratedFileName(INamedTypeSymbol typeSymbol)
@@ -239,10 +255,8 @@ namespace MessageProtocol.CodeGenerator.Generate
             return string.Join("_", typeNames);
         }
 
-        static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences, TypeDeclarationSyntax syntax, SourceProductionContext context)
+        static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences)
         {
-            // Element 메시지인데 Root가 없으면 에러
-            // MessageRootId가 0이어도 Root 메시지가 있을 수 있으므로, BaseTypeMetadata에서 확인
             if (typeMeta.IsGroupElementMessage)
             {
                 bool hasRoot = false;
@@ -256,18 +270,13 @@ namespace MessageProtocol.CodeGenerator.Generate
                     }
                     current = current.BaseTypeMetadata;
                 }
-                
+
                 if (!hasRoot)
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        DiagnosticDescriptors.ElementMessageMustHaveRoot,
-                        syntax.Identifier.GetLocation(),
-                        typeSymbol.Name));
                     return false;
                 }
             }
 
-            // Root 메시지인데 부모에 Root가 있으면 에러
             if (typeMeta.IsGroupRootMessage)
             {
                 var baseType = typeSymbol.BaseType;
@@ -276,10 +285,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                     var parentRootAttribute = baseType.FindAttribute(attributeReferences.GroupRootMessageAttributeType);
                     if (parentRootAttribute != null)
                     {
-                        context.ReportDiagnostic(Diagnostic.Create(
-                            DiagnosticDescriptors.RootMessageCannotHaveRootParent,
-                            syntax.Identifier.GetLocation(),
-                            typeSymbol.Name));
                         return false;
                     }
                     baseType = baseType.BaseType;
@@ -287,6 +292,44 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             return true;
+        }
+
+        static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences, SourceProductionContext context, Location location)
+        {
+            if (ValidateRootHierarchy(typeSymbol, typeMeta, attributeReferences))
+            {
+                return true;
+            }
+
+            if (typeMeta.IsGroupElementMessage)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.ElementMessageMustHaveRoot,
+                    location,
+                    typeSymbol.Name));
+                return false;
+            }
+
+            context.ReportDiagnostic(Diagnostic.Create(
+                DiagnosticDescriptors.RootMessageCannotHaveRootParent,
+                location,
+                typeSymbol.Name));
+            return false;
+        }
+
+        sealed class NamedTypeSymbolComparer : IEqualityComparer<INamedTypeSymbol>
+        {
+            public static readonly NamedTypeSymbolComparer Instance = new();
+
+            public bool Equals(INamedTypeSymbol? x, INamedTypeSymbol? y)
+            {
+                return SymbolEqualityComparer.Default.Equals(x, y);
+            }
+
+            public int GetHashCode(INamedTypeSymbol obj)
+            {
+                return SymbolEqualityComparer.Default.GetHashCode(obj);
+            }
         }
     }
 }
