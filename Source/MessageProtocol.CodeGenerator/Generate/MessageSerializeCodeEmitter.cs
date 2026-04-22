@@ -1,26 +1,22 @@
 ﻿using MessageProtocol.CodeGenerator.Metadata;
+using MessageProtocol.CodeGenerator.Reference;
+using MessageProtocol.CodeGenerator.Graph;
 using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class MessageSerializeCodeEmitter
+    internal static partial class MessageSerializeCodeEmitter
     {
-        TypeMetadata _typeMeta;
-
-        public MessageSerializeCodeEmitter(TypeMetadata typeMeta)
+        public static string Emit(TypeMetadata typeMeta, AttributeReferences attributeReferences)
         {
-            _typeMeta = typeMeta;
-        }
-
-        public string Emit()
-        {
+            var serializationGraph = SerializationGraph.Create(typeMeta, attributeReferences);
             StringBuilder sb = new StringBuilder();
             
             // Header: 네임스페이스와 using 추가
-            sb.Append(Header.Emit(_typeMeta, out bool hasNamespace));
+            sb.Append(Header.Emit(typeMeta, out bool hasNamespace));
             
             // Class: 클래스 선언 및 상속
-            sb.Append(Define.Emit(_typeMeta));
+            sb.Append(Define.Emit(typeMeta, serializationGraph));
             
             // 네임스페이스 닫기
             if (hasNamespace)

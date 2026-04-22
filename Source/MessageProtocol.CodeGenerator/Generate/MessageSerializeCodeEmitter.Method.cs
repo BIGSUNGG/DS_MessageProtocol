@@ -1,12 +1,10 @@
 using MessageProtocol.CodeGenerator.Metadata;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using MessageProtocol.CodeGenerator.Graph;
 using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class MessageSerializeCodeEmitter
+    internal static partial class MessageSerializeCodeEmitter
     {
         // Method: 직렬화, 역직렬화 함수 추가
         internal static class Method
@@ -24,30 +22,9 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return sb.ToString();
             }
 
-            static IEnumerable<MemberMetadata> GetMembers(TypeMetadata typeMeta)
+            public static string EmitSerialize(TypeMetadata typeMeta, string indent, SerializationGraph serializationGraph)
             {
-                var memberDict = new Dictionary<string, MemberMetadata>();
-                
-                // 부모 타입의 멤버부터 수집 (부모 -> 자식 순서)
-                if (typeMeta.BaseTypeMetadata != null)
-                {
-                    foreach (var member in GetMembers(typeMeta.BaseTypeMetadata))
-                    {
-                        memberDict[member.Name] = member;
-                    }
-                }
-                
-                // 현재 타입의 멤버 추가 (같은 이름이면 덮어씀 - 자식이 부모를 override)
-                foreach (var member in typeMeta.Members)
-                {
-                    memberDict[member.Name] = member;
-                }
-                
-                return memberDict.Values;
-            }
-
-            public static string EmitSerialize(TypeMetadata typeMeta, string indent)
-            {
+                var rootModel = serializationGraph.RootType;
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine($@"public static byte[] Serialize({typeMeta.Symbol.Name} message)");
                 sb.AppendLine($@"{indent}{{");
@@ -67,23 +44,18 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 8));");
                 sb.AppendLine($@"{indent}            writer.Write((byte)id);");
                 sb.AppendLine($@"{indent}        }}");
-                
-                // 각 멤버 직렬화
-                foreach (var member in GetMembers(typeMeta))
-                {
-                    string memberCode = Member.EmitSerialize(member, indent + "        ");
-                    sb.Append(memberCode);
-                }
-                
+                sb.AppendLine($@"{indent}        var context = new __MessageProtocolSerializeContext();");
+                sb.AppendLine($@"{indent}        {rootModel.WritePayloadMethodName}(writer, message, context);");
                 sb.AppendLine($@"{indent}        return ms.ToArray();");
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
-                
+
                 return sb.ToString();
             }
 
-            public static string EmitDeserialize(TypeMetadata typeMeta, string indent)
+            public static string EmitDeserialize(TypeMetadata typeMeta, string indent, SerializationGraph serializationGraph)
             {
+                var rootModel = serializationGraph.RootType;
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine($@"public static {typeMeta.Symbol.Name} Deserialize(byte[] data)");
                 sb.AppendLine($@"{indent}{{");
@@ -98,21 +70,281 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 8;");
                 sb.AppendLine($@"{indent}            id |= reader.ReadByte();");
                 sb.AppendLine($@"{indent}        }}");
-                sb.AppendLine();
-                sb.AppendLine($@"{indent}        var result = new {typeMeta.Symbol.Name}();");
-                sb.AppendLine();
-                
-                // 각 멤버 역직렬화
-                foreach (var member in GetMembers(typeMeta))
+                sb.AppendLine($@"{indent}        var context = new __MessageProtocolDeserializeContext();");
+                if (rootModel.IsReferenceType)
                 {
-                    string memberCode = Member.EmitDeserialize(member, indent + "        ");
-                    sb.Append(memberCode);
+                    sb.AppendLine($@"{indent}        var result = {rootModel.CreateInstanceMethodName}();");
+                    sb.AppendLine($@"{indent}        {rootModel.PopulatePayloadMethodName}(reader, result, context);");
+                    sb.AppendLine($@"{indent}        return result;");
                 }
-                
-                sb.AppendLine($@"{indent}        return result;");
+                else
+                {
+                    sb.AppendLine($@"{indent}        return {rootModel.ReadPayloadMethodName}(reader, context);");
+                }
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
-                
+
+                return sb.ToString();
+            }
+
+            public static string EmitHelperMethods(string indent, SerializationGraph serializationGraph)
+            {
+                var sb = new StringBuilder();
+                sb.Append(EmitSharedContextTypes(indent));
+                sb.AppendLine();
+                sb.Append(EmitSharedHelperMethods(indent));
+                sb.AppendLine();
+                sb.Append(EmitTypeMethods(serializationGraph.RootType, indent, serializationGraph));
+
+                foreach (var typeModel in serializationGraph.ReachableTypes)
+                {
+                    sb.AppendLine();
+                    sb.Append(EmitTypeMethods(typeModel, indent, serializationGraph));
+                }
+
+                return sb.ToString();
+            }
+
+            static string EmitSharedContextTypes(string indent)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                sb.AppendLine($@"private enum __MessageProtocolReferenceKind : byte");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    BackReference = 0,");
+                sb.AppendLine($@"{indent}    NewObject = 1,");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private sealed class __MessageProtocolReferenceComparer : IEqualityComparer<object>");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    public static readonly __MessageProtocolReferenceComparer Instance = new __MessageProtocolReferenceComparer();");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    bool IEqualityComparer<object>.Equals(object x, object y)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        return ReferenceEquals(x, y);");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    int IEqualityComparer<object>.GetHashCode(object obj)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        return RuntimeHelpers.GetHashCode(obj);");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private sealed class __MessageProtocolSerializeContext");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    readonly Dictionary<object, int> _objectIds = new Dictionary<object, int>(__MessageProtocolReferenceComparer.Instance);");
+                sb.AppendLine($@"{indent}    int _nextObjectId = 1;");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    public bool TryGetObjectId(object value, out int objectId)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        return _objectIds.TryGetValue(value, out objectId);");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    public int RegisterObject(object value)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        int objectId = _nextObjectId++;");
+                sb.AppendLine($@"{indent}        _objectIds[value] = objectId;");
+                sb.AppendLine($@"{indent}        return objectId;");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private sealed class __MessageProtocolDeserializeContext");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    readonly Dictionary<int, object> _objects = new Dictionary<int, object>();");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    public void RegisterObject(int objectId, object value)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        _objects[objectId] = value;");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    public object GetObject(int objectId)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        return _objects[objectId];");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+
+                return sb.ToString();
+            }
+
+            static string EmitSharedHelperMethods(string indent)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                sb.AppendLine($@"private static void __MessageProtocolWriteSizedReference<T>(");
+                sb.AppendLine($@"{indent}BinaryWriter writer,");
+                sb.AppendLine($@"{indent}T value,");
+                sb.AppendLine($@"{indent}__MessageProtocolSerializeContext context,");
+                sb.AppendLine($@"{indent}Action<BinaryWriter, T, __MessageProtocolSerializeContext> writePayload)");
+                sb.AppendLine($@"{indent}where T : class");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    if (value == null)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        writer.Write(-1);");
+                sb.AppendLine($@"{indent}        return;");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream())");
+                sb.AppendLine($@"{indent}    using (var nestedWriter = new BinaryWriter(ms))");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        if (context.TryGetObjectId(value, out int objectId))");
+                sb.AppendLine($@"{indent}        {{");
+                sb.AppendLine($@"{indent}            nestedWriter.Write((byte)__MessageProtocolReferenceKind.BackReference);");
+                sb.AppendLine($@"{indent}            nestedWriter.Write(objectId);");
+                sb.AppendLine($@"{indent}        }}");
+                sb.AppendLine($@"{indent}        else");
+                sb.AppendLine($@"{indent}        {{");
+                sb.AppendLine($@"{indent}            objectId = context.RegisterObject(value);");
+                sb.AppendLine($@"{indent}            nestedWriter.Write((byte)__MessageProtocolReferenceKind.NewObject);");
+                sb.AppendLine($@"{indent}            nestedWriter.Write(objectId);");
+                sb.AppendLine($@"{indent}            writePayload(nestedWriter, value, context);");
+                sb.AppendLine($@"{indent}        }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}        writer.Write((int)ms.Length);");
+                sb.AppendLine($@"{indent}        writer.Write(ms.ToArray());");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private static T __MessageProtocolReadSizedReference<T>(");
+                sb.AppendLine($@"{indent}BinaryReader reader,");
+                sb.AppendLine($@"{indent}__MessageProtocolDeserializeContext context,");
+                sb.AppendLine($@"{indent}Func<T> createValue,");
+                sb.AppendLine($@"{indent}Action<BinaryReader, T, __MessageProtocolDeserializeContext> populatePayload)");
+                sb.AppendLine($@"{indent}where T : class");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    int size = reader.ReadInt32();");
+                sb.AppendLine($@"{indent}    if (size < 0)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        return null;");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    byte[] bytes = reader.ReadBytes(size);");
+                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream(bytes))");
+                sb.AppendLine($@"{indent}    using (var nestedReader = new BinaryReader(ms))");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        var referenceKind = (__MessageProtocolReferenceKind)nestedReader.ReadByte();");
+                sb.AppendLine($@"{indent}        int objectId = nestedReader.ReadInt32();");
+                sb.AppendLine($@"{indent}        if (referenceKind == __MessageProtocolReferenceKind.BackReference)");
+                sb.AppendLine($@"{indent}        {{");
+                sb.AppendLine($@"{indent}            return (T)context.GetObject(objectId);");
+                sb.AppendLine($@"{indent}        }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}        if (referenceKind != __MessageProtocolReferenceKind.NewObject)");
+                sb.AppendLine($@"{indent}        {{");
+                sb.AppendLine($@"{indent}            throw new InvalidDataException(""Invalid reference kind."");");
+                sb.AppendLine($@"{indent}        }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}        T value = createValue();");
+                sb.AppendLine($@"{indent}        context.RegisterObject(objectId, value);");
+                sb.AppendLine($@"{indent}        populatePayload(nestedReader, value, context);");
+                sb.AppendLine($@"{indent}        return value;");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private static void __MessageProtocolWriteSizedValue<T>(");
+                sb.AppendLine($@"{indent}BinaryWriter writer,");
+                sb.AppendLine($@"{indent}T value,");
+                sb.AppendLine($@"{indent}__MessageProtocolSerializeContext context,");
+                sb.AppendLine($@"{indent}Action<BinaryWriter, T, __MessageProtocolSerializeContext> writePayload)");
+                sb.AppendLine($@"{indent}where T : struct");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream())");
+                sb.AppendLine($@"{indent}    using (var nestedWriter = new BinaryWriter(ms))");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        writePayload(nestedWriter, value, context);");
+                sb.AppendLine($@"{indent}        writer.Write((int)ms.Length);");
+                sb.AppendLine($@"{indent}        writer.Write(ms.ToArray());");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private static T __MessageProtocolReadSizedValue<T>(");
+                sb.AppendLine($@"{indent}BinaryReader reader,");
+                sb.AppendLine($@"{indent}__MessageProtocolDeserializeContext context,");
+                sb.AppendLine($@"{indent}Func<BinaryReader, __MessageProtocolDeserializeContext, T> readPayload)");
+                sb.AppendLine($@"{indent}where T : struct");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    int size = reader.ReadInt32();");
+                sb.AppendLine($@"{indent}    if (size < 0)");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        throw new InvalidDataException(""Value type payload cannot be null."");");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine();
+                sb.AppendLine($@"{indent}    byte[] bytes = reader.ReadBytes(size);");
+                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream(bytes))");
+                sb.AppendLine($@"{indent}    using (var nestedReader = new BinaryReader(ms))");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        return readPayload(nestedReader, context);");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+
+                return sb.ToString();
+            }
+
+            static string EmitTypeMethods(
+                SerializableTypeModel typeModel,
+                string indent,
+                SerializationGraph serializationGraph)
+            {
+                return typeModel.IsReferenceType
+                    ? EmitReferenceTypeMethods(typeModel, indent, serializationGraph)
+                    : EmitValueTypeMethods(typeModel, indent, serializationGraph);
+            }
+
+            static string EmitReferenceTypeMethods(
+                SerializableTypeModel typeModel,
+                string indent,
+                SerializationGraph serializationGraph)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                sb.AppendLine($@"private static {typeModel.TypeName} {typeModel.CreateInstanceMethodName}()");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    return new {typeModel.TypeName}();");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, __MessageProtocolSerializeContext context)");
+                sb.AppendLine($@"{indent}{{");
+                foreach (var member in GetAllMembers(typeModel.Metadata))
+                {
+                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", serializationGraph));
+                }
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private static void {typeModel.PopulatePayloadMethodName}(BinaryReader reader, {typeModel.TypeName} result, __MessageProtocolDeserializeContext context)");
+                sb.AppendLine($@"{indent}{{");
+                foreach (var member in GetAllMembers(typeModel.Metadata))
+                {
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", serializationGraph));
+                }
+                sb.AppendLine($@"{indent}}}");
+
+                return sb.ToString();
+            }
+
+            static string EmitValueTypeMethods(
+                SerializableTypeModel typeModel,
+                string indent,
+                SerializationGraph serializationGraph)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, __MessageProtocolSerializeContext context)");
+                sb.AppendLine($@"{indent}{{");
+                foreach (var member in GetAllMembers(typeModel.Metadata))
+                {
+                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", serializationGraph));
+                }
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+                sb.AppendLine($@"private static {typeModel.TypeName} {typeModel.ReadPayloadMethodName}(BinaryReader reader, __MessageProtocolDeserializeContext context)");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    var result = new {typeModel.TypeName}();");
+                foreach (var member in GetAllMembers(typeModel.Metadata))
+                {
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", serializationGraph));
+                }
+                sb.AppendLine($@"{indent}    return result;");
+                sb.AppendLine($@"{indent}}}");
+
                 return sb.ToString();
             }
         }

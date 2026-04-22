@@ -82,8 +82,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             // Step2 : Generate Code
-            var serializeCodeEmitter = new MessageSerializeCodeEmitter(typeMeta);
-            string serializeCode = serializeCodeEmitter.Emit();
+            string serializeCode = MessageSerializeCodeEmitter.Emit(typeMeta, attributeReferences);
 
             // Step3 : Debug - Save generated code to file
 #pragma warning disable RS1035 // Do not use APIs banned for analyzers
@@ -163,8 +162,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return false;
             }
 
-            var serializeCodeEmitter = new MessageSerializeCodeEmitter(typeMeta);
-            serializeCode = serializeCodeEmitter.Emit();
+            serializeCode = MessageSerializeCodeEmitter.Emit(typeMeta, attributeReferences);
             if (string.IsNullOrWhiteSpace(serializeCode))
             {
                 error = $"Generated source is empty for type '{typeSymbol.ToDisplayString()}'.";

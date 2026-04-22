@@ -257,6 +257,160 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
+        public void NonIdMessage_WithDeepPlainClassChain_Should_RoundTrip()
+        {
+            var original = new PlainReferenceMessage
+            {
+                Root = new PlainNode
+                {
+                    Value = 1,
+                    Next = new PlainNode
+                    {
+                        Value = 2,
+                        Next = new PlainNode
+                        {
+                            Value = 3,
+                            Next = new PlainNode
+                            {
+                                Value = 4
+                            }
+                        }
+                    }
+                }
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize<PlainReferenceMessage>(bytes);
+
+            Assert.NotNull(deserialized.Root);
+            Assert.Equal(1, deserialized.Root.Value);
+            Assert.NotNull(deserialized.Root.Next);
+            Assert.Equal(2, deserialized.Root.Next.Value);
+            Assert.NotNull(deserialized.Root.Next.Next);
+            Assert.Equal(3, deserialized.Root.Next.Next.Value);
+            Assert.NotNull(deserialized.Root.Next.Next.Next);
+            Assert.Equal(4, deserialized.Root.Next.Next.Next.Value);
+        }
+
+        [Fact]
+        public void NonIdMessage_WithNullPlainClassMember_Should_WriteMinusOneSizeAndRoundTrip()
+        {
+            var original = new PlainReferenceMessage
+            {
+                Root = null
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize<PlainReferenceMessage>(bytes);
+
+            Assert.Equal(5, bytes.Length);
+            Assert.Equal(-1, BitConverter.ToInt32(bytes, 1));
+            Assert.Null(deserialized.Root);
+        }
+
+        [Fact]
+        public void NonIdMessage_WithPlainStructMember_Should_RoundTrip()
+        {
+            var original = new PlainStructHolderMessage
+            {
+                Payload = new PlainStructPayload
+                {
+                    Count = 5,
+                    Nested = new PlainNode
+                    {
+                        Value = 99,
+                        Next = new PlainNode
+                        {
+                            Value = 100
+                        }
+                    }
+                }
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize<PlainStructHolderMessage>(bytes);
+
+            Assert.Equal(original.Payload.Count, deserialized.Payload.Count);
+            Assert.NotNull(deserialized.Payload.Nested);
+            Assert.Equal(original.Payload.Nested.Value, deserialized.Payload.Nested.Value);
+            Assert.NotNull(deserialized.Payload.Nested.Next);
+            Assert.Equal(original.Payload.Nested.Next.Value, deserialized.Payload.Nested.Next.Value);
+        }
+
+        [Fact]
+        public void NonIdMessage_WithPlainCycle_Should_PreserveReferenceCycle()
+        {
+            var root = new PlainNode { Value = 10 };
+            var child = new PlainNode { Value = 20 };
+            root.Next = child;
+            child.Next = root;
+
+            var original = new CycleHolderMessage
+            {
+                Root = root
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize<CycleHolderMessage>(bytes);
+
+            Assert.NotNull(deserialized.Root);
+            Assert.NotNull(deserialized.Root.Next);
+            Assert.Equal(10, deserialized.Root.Value);
+            Assert.Equal(20, deserialized.Root.Next.Value);
+            Assert.Same(deserialized.Root, deserialized.Root.Next.Next);
+        }
+
+        [Fact]
+        public void NonIdMessage_WithSharedPlainReference_Should_PreserveIdentity()
+        {
+            var shared = new PlainNode { Value = 55 };
+            var original = new SharedReferenceMessage
+            {
+                Left = shared,
+                Right = shared
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize<SharedReferenceMessage>(bytes);
+
+            Assert.NotNull(deserialized.Left);
+            Assert.NotNull(deserialized.Right);
+            Assert.Equal(55, deserialized.Left.Value);
+            Assert.Same(deserialized.Left, deserialized.Right);
+        }
+
+        [Fact]
+        public void NonIdMessage_WithPlainListMember_Should_RoundTrip()
+        {
+            var original = new PlainCollectionMessage
+            {
+                Items = new List<PlainNode>
+                {
+                    new PlainNode { Value = 1 },
+                    new PlainNode
+                    {
+                        Value = 2,
+                        Next = new PlainNode
+                        {
+                            Value = 3
+                        }
+                    }
+                }
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize<PlainCollectionMessage>(bytes);
+
+            Assert.NotNull(deserialized.Items);
+            Assert.Equal(2, deserialized.Items.Count);
+            Assert.Equal(1, deserialized.Items[0].Value);
+            Assert.Equal(2, deserialized.Items[1].Value);
+            var nested = deserialized.Items[1].Next;
+            Assert.NotNull(nested);
+            Assert.Equal(3, nested.Value);
+        }
+
+        [Fact]
         public void Deserialize_Object_WithNonIdMessage_Should_ThrowInvalidCastException()
         {
             PlainPayload original = new();
@@ -346,5 +500,48 @@ namespace MessageProtocol.Tests.Serialize
     {
         public int Id { get; set; }
         public NestedMessage? Nested { get; set; }
+    }
+
+    [NonIdMessage]
+    public partial class PlainReferenceMessage
+    {
+        public PlainNode? Root { get; set; }
+    }
+
+    [NonIdMessage]
+    public partial class PlainStructHolderMessage
+    {
+        public PlainStructPayload Payload { get; set; }
+    }
+
+    [NonIdMessage]
+    public partial class CycleHolderMessage
+    {
+        public PlainNode? Root { get; set; }
+    }
+
+    [NonIdMessage]
+    public partial class SharedReferenceMessage
+    {
+        public PlainNode? Left { get; set; }
+        public PlainNode? Right { get; set; }
+    }
+
+    [NonIdMessage]
+    public partial class PlainCollectionMessage
+    {
+        public List<PlainNode>? Items { get; set; }
+    }
+
+    public class PlainNode
+    {
+        public int Value { get; set; }
+        public PlainNode? Next { get; set; }
+    }
+
+    public struct PlainStructPayload
+    {
+        public int Count { get; set; }
+        public PlainNode? Nested { get; set; }
     }
 }

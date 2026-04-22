@@ -1,16 +1,17 @@
 using MessageProtocol.CodeGenerator.Metadata;
+using MessageProtocol.CodeGenerator.Graph;
 using Microsoft.CodeAnalysis;
 using System.Collections.Generic;
 using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
-    internal sealed partial class MessageSerializeCodeEmitter
+    internal static partial class MessageSerializeCodeEmitter
     {
         // Class: 클래스 선언 및 상속
         internal static class Define
         {
-            public static string Emit(TypeMetadata typeMeta)
+            public static string Emit(TypeMetadata typeMeta, SerializationGraph serializationGraph)
             {
                 StringBuilder sb = new StringBuilder();
                 string indent = GetTypeIndent(typeMeta);
@@ -33,9 +34,11 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($"{declarationIndent}    public static uint MessageId => {typeMeta.GetMessageId()};");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}");
                 sb.AppendLine($"{declarationIndent}");
-                sb.AppendLine($"{declarationIndent}    {Method.EmitSerialize(typeMeta, indent + "    ")}");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitSerialize(typeMeta, indent + "    ", serializationGraph)}");
                 sb.AppendLine($"{declarationIndent}");
-                sb.AppendLine($"{declarationIndent}    {Method.EmitDeserialize(typeMeta, indent + "    ")}");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitDeserialize(typeMeta, indent + "    ", serializationGraph)}");
+                sb.AppendLine($"{declarationIndent}");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitHelperMethods(indent + "    ", serializationGraph)}");
                 sb.AppendLine($"{declarationIndent}}}");
                 
                 // 괄호 닫기

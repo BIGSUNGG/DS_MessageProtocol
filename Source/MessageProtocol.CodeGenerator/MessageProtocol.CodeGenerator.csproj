@@ -29,4 +29,8 @@
     <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Graph\" />
+  </ItemGroup>
+
 </Project>

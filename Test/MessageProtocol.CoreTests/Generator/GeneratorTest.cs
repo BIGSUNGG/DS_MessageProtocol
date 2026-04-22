@@ -228,5 +228,48 @@ namespace MyCode
             Assert.Contains("public partial struct StructMessage", generatedCode);
             Assert.DoesNotContain("public partial class StructMessage", generatedCode);
         }
+
+        [Fact]
+        public void NonIdMessage_WithPlainNestedTypes_Should_GenerateCompilableCode()
+        {
+            const string source = """
+using System.Collections.Generic;
+using MessageProtocol;
+
+namespace MyCode
+{
+    [NonIdMessage]
+    public partial class PlainMessage
+    {
+        public PlainNode Root { get; set; }
+        public PlainPayload Payload { get; set; }
+        public List<PlainNode> Items { get; set; }
+    }
+
+    public class PlainNode
+    {
+        public int Value { get; set; }
+        public PlainNode Next { get; set; }
+    }
+
+    public struct PlainPayload
+    {
+        public int Count { get; set; }
+        public PlainNode Nested { get; set; }
+    }
+}
+""";
+
+            var (runResult, outputCompilation, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+
+            Assert.Empty(diagnostics);
+            Assert.Single(runResult.GeneratedTrees);
+            Assert.Empty(runResult.Diagnostics);
+            GeneratorTestHelper.AssertNoCompilationErrors(outputCompilation);
+
+            var generatedCode = runResult.Results.Single().GeneratedSources[0].SourceText.ToString();
+            Assert.Contains("__MessageProtocolWriteSizedReference", generatedCode);
+            Assert.Contains("__MessageProtocolWritePayload_Type0", generatedCode);
+        }
     }
 }
