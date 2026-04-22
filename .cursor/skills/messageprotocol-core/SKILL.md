@@ -1,6 +1,6 @@
 ---
 name: messageprotocol-core
-description: Maintain MessageProtocol runtime APIs in Source/MessageProtocol.Core: public message attributes, IMessageSerializable contracts, MessageSerializer registration and generic/object dispatch, MessageFlag, MessageCategory, and MessageId parsing. Use when working on runtime serialization or deserialization, registration/cache bugs, InvalidCastException or KeyNotFoundException paths, or public contract changes.
+description: "Maintain MessageProtocol runtime APIs in Source/MessageProtocol.Core: public message attributes, IMessageSerializable contracts, MessageSerializer registration and generic/object dispatch, MessageFlag, MessageCategory, and MessageId parsing. Use when working on runtime serialization or deserialization, registration/cache bugs, InvalidCastException or KeyNotFoundException paths, or public contract changes."
 ---
 
 # MessageProtocol Core
