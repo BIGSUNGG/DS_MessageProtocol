@@ -21,6 +21,9 @@ namespace MessageProtocol.Serialize
             if (message == null) 
                 throw new ArgumentNullException(nameof(message));
 
+            if (message is IHasIdMessageSerializable<T> hasIdMessage)
+                return Serialize((object)message);
+
             return T.Serialize(message);
         }
 

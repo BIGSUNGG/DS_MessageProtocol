@@ -41,7 +41,7 @@ namespace MessageProtocol.Tests.Serialize
             original.Id = 20;
             original.Name = "TestElement";
 
-            var bytes = MessageSerializer.Serialize(original);
+            var bytes = MessageSerializer.Serialize<ElementMessage>(original);
 
             Assert.NotNull(bytes);
             Assert.True(bytes.Length > 0);
