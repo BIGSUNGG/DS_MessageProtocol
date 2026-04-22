@@ -15,9 +15,16 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (member.IsMessage)
                 {
-                    return $@"{indent}var {member.Name}_bytes = MessageSerializer.Serialize({memberAccess});
-{indent}writer.Write({member.Name}_bytes.Length);
-{indent}writer.Write({member.Name}_bytes);
+                    return $@"{indent}if ({memberAccess} == null)
+{indent}{{
+{indent}    writer.Write(-1);
+{indent}}}
+{indent}else
+{indent}{{
+{indent}    var {member.Name}_bytes = MessageSerializer.Serialize({memberAccess});
+{indent}    writer.Write({member.Name}_bytes.Length);
+{indent}    writer.Write({member.Name}_bytes);
+{indent}}}
 ";
                 }
 
@@ -102,8 +109,15 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (member.IsMessage)
                 {
                     return $@"{indent}int {member.Name}_length = reader.ReadInt32();
-{indent}byte[] {member.Name}_bytes = reader.ReadBytes({member.Name}_length);
-{indent}{memberAccess} = MessageSerializer.Deserialize<{typeName}>({member.Name}_bytes);
+{indent}if ({member.Name}_length < 0)
+{indent}{{
+{indent}    {memberAccess} = null;
+{indent}}}
+{indent}else
+{indent}{{
+{indent}    byte[] {member.Name}_bytes = reader.ReadBytes({member.Name}_length);
+{indent}    {memberAccess} = MessageSerializer.Deserialize<{typeName}>({member.Name}_bytes);
+{indent}}}
 ";
                 }
 

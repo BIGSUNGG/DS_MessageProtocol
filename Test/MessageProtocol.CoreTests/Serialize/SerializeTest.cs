@@ -238,6 +238,25 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
+        public void NestedNullMessageMember_Serialize_Deserialize_Test()
+        {
+            var original = new OuterMessage
+            {
+                Id = 700,
+                Nested = null
+            };
+
+            var bytes = MessageSerializer.Serialize(original);
+            var deserialized = MessageSerializer.Deserialize(bytes) as OuterMessage;
+
+            Assert.NotNull(bytes);
+            Assert.True(bytes.Length > 0);
+            Assert.NotNull(deserialized);
+            Assert.Equal(original.Id, deserialized.Id);
+            Assert.Null(deserialized.Nested);
+        }
+
+        [Fact]
         public void Deserialize_Object_WithNonIdMessage_Should_ThrowInvalidCastException()
         {
             PlainPayload original = new();
