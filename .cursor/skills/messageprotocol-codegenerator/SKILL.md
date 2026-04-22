@@ -1,6 +1,6 @@
 ---
 name: messageprotocol-codegenerator
-description: Maintain and extend the MessageProtocol Roslyn source generator that emits message serialization code. Use when working in Source/MessageProtocol.CodeGenerator, fixing generated Serialize/Deserialize code, changing MessageId or message attribute behavior, adding supported member or collection types, or debugging generator/runtime mismatches with MessageProtocol.Core/Serialize/MessageSerializer.
+description: Maintain the Roslyn generator in Source/MessageProtocol.CodeGenerator that emits MessageId, Serialize, Deserialize, helper methods, and module registration code. Use when a message type fails to generate, member inclusion is wrong, nested plain objects or lists need support, diagnostics need updates, or generated code disagrees with the runtime contract in MessageProtocol.Core.
 ---
 
 # MessageProtocol Code Generator
