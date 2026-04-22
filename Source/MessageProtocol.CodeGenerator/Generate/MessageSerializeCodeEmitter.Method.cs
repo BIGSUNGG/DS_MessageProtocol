@@ -44,7 +44,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 8));");
                 sb.AppendLine($@"{indent}            writer.Write((byte)id);");
                 sb.AppendLine($@"{indent}        }}");
-                sb.AppendLine($@"{indent}        var context = new __MessageProtocolSerializeContext();");
+                sb.AppendLine($@"{indent}        var context = new __SerializeContext();");
                 sb.AppendLine($@"{indent}        {rootModel.WritePayloadMethodName}(writer, message, context);");
                 sb.AppendLine($@"{indent}        return ms.ToArray();");
                 sb.AppendLine($@"{indent}    }}");
@@ -70,7 +70,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 8;");
                 sb.AppendLine($@"{indent}            id |= reader.ReadByte();");
                 sb.AppendLine($@"{indent}        }}");
-                sb.AppendLine($@"{indent}        var context = new __MessageProtocolDeserializeContext();");
+                sb.AppendLine($@"{indent}        var context = new __DeserializeContext();");
                 if (rootModel.IsReferenceType)
                 {
                     sb.AppendLine($@"{indent}        var result = {rootModel.CreateInstanceMethodName}();");
@@ -109,15 +109,15 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 StringBuilder sb = new StringBuilder();
 
-                sb.AppendLine($@"private enum __MessageProtocolReferenceKind : byte");
+                sb.AppendLine($@"private enum __ReferenceKind : byte");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    BackReference = 0,");
                 sb.AppendLine($@"{indent}    NewObject = 1,");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private sealed class __MessageProtocolReferenceComparer : IEqualityComparer<object>");
+                sb.AppendLine($@"private sealed class __ReferenceComparer : IEqualityComparer<object>");
                 sb.AppendLine($@"{indent}{{");
-                sb.AppendLine($@"{indent}    public static readonly __MessageProtocolReferenceComparer Instance = new __MessageProtocolReferenceComparer();");
+                sb.AppendLine($@"{indent}    public static readonly __ReferenceComparer Instance = new __ReferenceComparer();");
                 sb.AppendLine();
                 sb.AppendLine($@"{indent}    bool IEqualityComparer<object>.Equals(object x, object y)");
                 sb.AppendLine($@"{indent}    {{");
@@ -130,9 +130,9 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private sealed class __MessageProtocolSerializeContext");
+                sb.AppendLine($@"private sealed class __SerializeContext");
                 sb.AppendLine($@"{indent}{{");
-                sb.AppendLine($@"{indent}    readonly Dictionary<object, int> _objectIds = new Dictionary<object, int>(__MessageProtocolReferenceComparer.Instance);");
+                sb.AppendLine($@"{indent}    readonly Dictionary<object, int> _objectIds = new Dictionary<object, int>(__ReferenceComparer.Instance);");
                 sb.AppendLine($@"{indent}    int _nextObjectId = 1;");
                 sb.AppendLine();
                 sb.AppendLine($@"{indent}    public bool TryGetObjectId(object value, out int objectId)");
@@ -148,7 +148,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private sealed class __MessageProtocolDeserializeContext");
+                sb.AppendLine($@"private sealed class __DeserializeContext");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    readonly Dictionary<int, object> _objects = new Dictionary<int, object>();");
                 sb.AppendLine();
@@ -170,11 +170,11 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 StringBuilder sb = new StringBuilder();
 
-                sb.AppendLine($@"private static void __MessageProtocolWriteSizedReference<T>(");
+                sb.AppendLine($@"private static void __WriteSizedReference<T>(");
                 sb.AppendLine($@"{indent}BinaryWriter writer,");
                 sb.AppendLine($@"{indent}T value,");
-                sb.AppendLine($@"{indent}__MessageProtocolSerializeContext context,");
-                sb.AppendLine($@"{indent}Action<BinaryWriter, T, __MessageProtocolSerializeContext> writePayload)");
+                sb.AppendLine($@"{indent}__SerializeContext context,");
+                sb.AppendLine($@"{indent}Action<BinaryWriter, T, __SerializeContext> writePayload)");
                 sb.AppendLine($@"{indent}where T : class");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    if (value == null)");
@@ -188,13 +188,13 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    {{");
                 sb.AppendLine($@"{indent}        if (context.TryGetObjectId(value, out int objectId))");
                 sb.AppendLine($@"{indent}        {{");
-                sb.AppendLine($@"{indent}            nestedWriter.Write((byte)__MessageProtocolReferenceKind.BackReference);");
+                sb.AppendLine($@"{indent}            nestedWriter.Write((byte)__ReferenceKind.BackReference);");
                 sb.AppendLine($@"{indent}            nestedWriter.Write(objectId);");
                 sb.AppendLine($@"{indent}        }}");
                 sb.AppendLine($@"{indent}        else");
                 sb.AppendLine($@"{indent}        {{");
                 sb.AppendLine($@"{indent}            objectId = context.RegisterObject(value);");
-                sb.AppendLine($@"{indent}            nestedWriter.Write((byte)__MessageProtocolReferenceKind.NewObject);");
+                sb.AppendLine($@"{indent}            nestedWriter.Write((byte)__ReferenceKind.NewObject);");
                 sb.AppendLine($@"{indent}            nestedWriter.Write(objectId);");
                 sb.AppendLine($@"{indent}            writePayload(nestedWriter, value, context);");
                 sb.AppendLine($@"{indent}        }}");
@@ -204,11 +204,11 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static T __MessageProtocolReadSizedReference<T>(");
+                sb.AppendLine($@"private static T __ReadSizedReference<T>(");
                 sb.AppendLine($@"{indent}BinaryReader reader,");
-                sb.AppendLine($@"{indent}__MessageProtocolDeserializeContext context,");
+                sb.AppendLine($@"{indent}__DeserializeContext context,");
                 sb.AppendLine($@"{indent}Func<T> createValue,");
-                sb.AppendLine($@"{indent}Action<BinaryReader, T, __MessageProtocolDeserializeContext> populatePayload)");
+                sb.AppendLine($@"{indent}Action<BinaryReader, T, __DeserializeContext> populatePayload)");
                 sb.AppendLine($@"{indent}where T : class");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    int size = reader.ReadInt32();");
@@ -221,14 +221,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    using (var ms = new MemoryStream(bytes))");
                 sb.AppendLine($@"{indent}    using (var nestedReader = new BinaryReader(ms))");
                 sb.AppendLine($@"{indent}    {{");
-                sb.AppendLine($@"{indent}        var referenceKind = (__MessageProtocolReferenceKind)nestedReader.ReadByte();");
+                sb.AppendLine($@"{indent}        var referenceKind = (__ReferenceKind)nestedReader.ReadByte();");
                 sb.AppendLine($@"{indent}        int objectId = nestedReader.ReadInt32();");
-                sb.AppendLine($@"{indent}        if (referenceKind == __MessageProtocolReferenceKind.BackReference)");
+                sb.AppendLine($@"{indent}        if (referenceKind == __ReferenceKind.BackReference)");
                 sb.AppendLine($@"{indent}        {{");
                 sb.AppendLine($@"{indent}            return (T)context.GetObject(objectId);");
                 sb.AppendLine($@"{indent}        }}");
                 sb.AppendLine();
-                sb.AppendLine($@"{indent}        if (referenceKind != __MessageProtocolReferenceKind.NewObject)");
+                sb.AppendLine($@"{indent}        if (referenceKind != __ReferenceKind.NewObject)");
                 sb.AppendLine($@"{indent}        {{");
                 sb.AppendLine($@"{indent}            throw new InvalidDataException(""Invalid reference kind."");");
                 sb.AppendLine($@"{indent}        }}");
@@ -240,11 +240,11 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static void __MessageProtocolWriteSizedValue<T>(");
+                sb.AppendLine($@"private static void __WriteSizedValue<T>(");
                 sb.AppendLine($@"{indent}BinaryWriter writer,");
                 sb.AppendLine($@"{indent}T value,");
-                sb.AppendLine($@"{indent}__MessageProtocolSerializeContext context,");
-                sb.AppendLine($@"{indent}Action<BinaryWriter, T, __MessageProtocolSerializeContext> writePayload)");
+                sb.AppendLine($@"{indent}__SerializeContext context,");
+                sb.AppendLine($@"{indent}Action<BinaryWriter, T, __SerializeContext> writePayload)");
                 sb.AppendLine($@"{indent}where T : struct");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    using (var ms = new MemoryStream())");
@@ -256,10 +256,10 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static T __MessageProtocolReadSizedValue<T>(");
+                sb.AppendLine($@"private static T __ReadSizedValue<T>(");
                 sb.AppendLine($@"{indent}BinaryReader reader,");
-                sb.AppendLine($@"{indent}__MessageProtocolDeserializeContext context,");
-                sb.AppendLine($@"{indent}Func<BinaryReader, __MessageProtocolDeserializeContext, T> readPayload)");
+                sb.AppendLine($@"{indent}__DeserializeContext context,");
+                sb.AppendLine($@"{indent}Func<BinaryReader, __DeserializeContext, T> readPayload)");
                 sb.AppendLine($@"{indent}where T : struct");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    int size = reader.ReadInt32();");
@@ -301,7 +301,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    return new {typeModel.TypeName}();");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, __MessageProtocolSerializeContext context)");
+                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, __SerializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
@@ -309,7 +309,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static void {typeModel.PopulatePayloadMethodName}(BinaryReader reader, {typeModel.TypeName} result, __MessageProtocolDeserializeContext context)");
+                sb.AppendLine($@"private static void {typeModel.PopulatePayloadMethodName}(BinaryReader reader, {typeModel.TypeName} result, __DeserializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
@@ -327,7 +327,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 StringBuilder sb = new StringBuilder();
 
-                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, __MessageProtocolSerializeContext context)");
+                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, __SerializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
@@ -335,7 +335,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static {typeModel.TypeName} {typeModel.ReadPayloadMethodName}(BinaryReader reader, __MessageProtocolDeserializeContext context)");
+                sb.AppendLine($@"private static {typeModel.TypeName} {typeModel.ReadPayloadMethodName}(BinaryReader reader, __DeserializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    var result = new {typeModel.TypeName}();");
                 foreach (var member in GetAllMembers(typeModel.Metadata))

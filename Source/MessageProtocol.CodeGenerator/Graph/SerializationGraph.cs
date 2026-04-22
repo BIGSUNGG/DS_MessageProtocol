@@ -9,30 +9,26 @@ namespace MessageProtocol.CodeGenerator.Graph
     internal sealed class SerializationGraph
     {
         readonly AttributeReferences _references;
-        readonly List<SerializableTypeModel> _reachableTypes;
         readonly Dictionary<ITypeSymbol, SerializableTypeModel> _lookup;
 
         SerializationGraph(
             SerializableTypeModel rootType,
             AttributeReferences references,
-            List<SerializableTypeModel> reachableTypes,
             Dictionary<ITypeSymbol, SerializableTypeModel> lookup)
         {
             RootType = rootType;
             _references = references;
-            _reachableTypes = reachableTypes;
             _lookup = lookup;
         }
 
         public SerializableTypeModel RootType { get; }
-        public IReadOnlyList<SerializableTypeModel> ReachableTypes => _reachableTypes;
+        public IReadOnlyCollection<SerializableTypeModel> ReachableTypes => _lookup.Values;
 
         public static SerializationGraph Create(TypeMetadata rootType, AttributeReferences references)
         {
             var rootModel = new SerializableTypeModel(rootType, "Root");
-            var reachableTypes = new List<SerializableTypeModel>();
             var lookup = new Dictionary<ITypeSymbol, SerializableTypeModel>(SymbolEqualityComparer.Default);
-            var graph = new SerializationGraph(rootModel, references, reachableTypes, lookup);
+            var graph = new SerializationGraph(rootModel, references, lookup);
             graph.Collect(rootType);
             return graph;
         }
@@ -111,9 +107,9 @@ namespace MessageProtocol.CodeGenerator.Graph
 
             var typeModel = new SerializableTypeModel(
                 new TypeMetadata(namedType, _references),
-                $"Type{_reachableTypes.Count}");
+                $"{(namedType.ContainingNamespace == null || namedType.ContainingNamespace.IsGlobalNamespace ? "" : namedType.ContainingNamespace.ToDisplayString().Replace('.', '_') + "_")}{namedType.MetadataName}");
+           
 
-            _reachableTypes.Add(typeModel);
             _lookup[namedType] = typeModel;
 
             Collect(typeModel.Metadata);

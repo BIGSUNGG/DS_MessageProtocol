@@ -104,8 +104,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (serializationGraph.TryGetSerializableObjectType(typeSymbol, out var typeModel))
                 {
                     string helperCall = typeModel.IsReferenceType
-                        ? $"__MessageProtocolWriteSizedReference(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});"
-                        : $"__MessageProtocolWriteSizedValue(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});";
+                        ? $"__WriteSizedReference(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});"
+                        : $"__WriteSizedValue(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});";
                     return $"{indent}{helperCall}\n";
                 }
 
@@ -187,8 +187,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (serializationGraph.TryGetSerializableObjectType(typeSymbol, out var typeModel))
                 {
                     string helperCall = typeModel.IsReferenceType
-                        ? $"__MessageProtocolReadSizedReference(reader, context, {typeModel.CreateInstanceMethodName}, {typeModel.PopulatePayloadMethodName})"
-                        : $"__MessageProtocolReadSizedValue(reader, context, {typeModel.ReadPayloadMethodName})";
+                        ? $"__ReadSizedReference(reader, context, {typeModel.CreateInstanceMethodName}, {typeModel.PopulatePayloadMethodName})"
+                        : $"__ReadSizedValue(reader, context, {typeModel.ReadPayloadMethodName})";
                     return $"{indent}{targetExpression} = {helperCall};\n";
                 }
 

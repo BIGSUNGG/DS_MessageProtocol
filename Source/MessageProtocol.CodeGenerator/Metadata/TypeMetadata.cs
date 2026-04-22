@@ -31,7 +31,6 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public TypeMetadata? BaseTypeMetadata { get; }
         public ContainingTypeMetadata[] ContainingTypes { get; }
         public MemberMetadata[] Members { get; }
-
         public TypeMetadata(INamedTypeSymbol typeSymbol, AttributeReferences references)
         {
             Symbol = typeSymbol;
