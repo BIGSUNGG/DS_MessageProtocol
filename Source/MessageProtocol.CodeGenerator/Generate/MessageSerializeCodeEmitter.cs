@@ -16,7 +16,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             sb.Append(Header.Emit(typeMeta, out bool hasNamespace));
             
             // Class: 클래스 선언 및 상속
-            sb.Append(Define.Emit(typeMeta, serializationGraph));
+            sb.Append(Define.Emit(typeMeta, serializationGraph, attributeReferences));
             
             // 네임스페이스 닫기
             if (hasNamespace)

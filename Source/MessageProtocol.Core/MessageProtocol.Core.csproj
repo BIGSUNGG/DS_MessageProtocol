@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />
+    <Compile Include="..\Shared\MessageWireFormat.cs" Link="MessageWireFormat.cs" />
   </ItemGroup>
 
 </Project>

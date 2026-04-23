@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using MessageProtocol;
 
 namespace MessageProtocol.Serialize
 {
@@ -70,29 +71,25 @@ namespace MessageProtocol.Serialize
         {
             if (value == null)
             {
-                writer.Write(-1);
+                writer.Write(MessageWireFormat.NullSizedPayloadLength);
                 return;
             }
 
-            using (var ms = new MemoryStream())
-            using (var nestedWriter = new BinaryWriter(ms))
+            long lengthPosition = BeginSizedPayload(writer);
+            if (context.TryGetObjectId(value, out int objectId))
             {
-                if (context.TryGetObjectId(value, out int objectId))
-                {
-                    nestedWriter.Write((byte)ReferenceKind.BackReference);
-                    nestedWriter.Write(objectId);
-                }
-                else
-                {
-                    objectId = context.RegisterObject(value);
-                    nestedWriter.Write((byte)ReferenceKind.NewObject);
-                    nestedWriter.Write(objectId);
-                    writePayload(nestedWriter, value, context);
-                }
-
-                writer.Write((int)ms.Length);
-                writer.Write(ms.ToArray());
+                writer.Write((byte)ReferenceKind.BackReference);
+                writer.Write(objectId);
             }
+            else
+            {
+                objectId = context.RegisterObject(value);
+                writer.Write((byte)ReferenceKind.NewObject);
+                writer.Write(objectId);
+                writePayload(writer, value, context);
+            }
+
+            CompleteSizedPayload(writer, lengthPosition);
         }
 
         public static T ReadSizedReference<T>(
@@ -108,27 +105,26 @@ namespace MessageProtocol.Serialize
                 return null!;
             }
 
-            byte[] bytes = reader.ReadBytes(size);
-            using (var ms = new MemoryStream(bytes))
-            using (var nestedReader = new BinaryReader(ms))
+            long payloadEndPosition = GetPayloadEndPosition(reader, size);
+            var referenceKind = (ReferenceKind)reader.ReadByte();
+            int objectId = reader.ReadInt32();
+            if (referenceKind == ReferenceKind.BackReference)
             {
-                var referenceKind = (ReferenceKind)nestedReader.ReadByte();
-                int objectId = nestedReader.ReadInt32();
-                if (referenceKind == ReferenceKind.BackReference)
-                {
-                    return (T)context.GetObject(objectId);
-                }
-
-                if (referenceKind != ReferenceKind.NewObject)
-                {
-                    throw new InvalidDataException("Invalid reference kind.");
-                }
-
-                T value = createValue();
-                context.RegisterObject(objectId, value);
-                populatePayload(nestedReader, value, context);
+                T value = (T)context.GetObject(objectId);
+                VerifyPayloadConsumed(reader, payloadEndPosition);
                 return value;
             }
+
+            if (referenceKind != ReferenceKind.NewObject)
+            {
+                throw new InvalidDataException("Invalid reference kind.");
+            }
+
+            T createdValue = createValue();
+            context.RegisterObject(objectId, createdValue);
+            populatePayload(reader, createdValue, context);
+            VerifyPayloadConsumed(reader, payloadEndPosition);
+            return createdValue;
         }
 
         public static void WriteSizedValue<T>(
@@ -138,13 +134,9 @@ namespace MessageProtocol.Serialize
             Action<BinaryWriter, T, SerializeContext> writePayload)
             where T : struct
         {
-            using (var ms = new MemoryStream())
-            using (var nestedWriter = new BinaryWriter(ms))
-            {
-                writePayload(nestedWriter, value, context);
-                writer.Write((int)ms.Length);
-                writer.Write(ms.ToArray());
-            }
+            long lengthPosition = BeginSizedPayload(writer);
+            writePayload(writer, value, context);
+            CompleteSizedPayload(writer, lengthPosition);
         }
 
         public static T ReadSizedValue<T>(
@@ -159,11 +151,61 @@ namespace MessageProtocol.Serialize
                 throw new InvalidDataException("Value type payload cannot be null.");
             }
 
-            byte[] bytes = reader.ReadBytes(size);
-            using (var ms = new MemoryStream(bytes))
-            using (var nestedReader = new BinaryReader(ms))
+            long payloadEndPosition = GetPayloadEndPosition(reader, size);
+            T value = readPayload(reader, context);
+            VerifyPayloadConsumed(reader, payloadEndPosition);
+            return value;
+        }
+
+        static long BeginSizedPayload(BinaryWriter writer)
+        {
+            EnsureSeekable(writer.BaseStream, "Sized payloads require a seekable stream.");
+            long lengthPosition = writer.BaseStream.Position;
+            writer.Write(0);
+            return lengthPosition;
+        }
+
+        static void CompleteSizedPayload(BinaryWriter writer, long lengthPosition)
+        {
+            Stream stream = writer.BaseStream;
+            long payloadEndPosition = stream.Position;
+            long payloadStartPosition = lengthPosition + sizeof(int);
+            int payloadLength = checked((int)(payloadEndPosition - payloadStartPosition));
+
+            stream.Position = lengthPosition;
+            writer.Write(payloadLength);
+            stream.Position = payloadEndPosition;
+        }
+
+        static long GetPayloadEndPosition(BinaryReader reader, int size)
+        {
+            Stream stream = reader.BaseStream;
+            EnsureSeekable(stream, "Sized payloads require a seekable stream.");
+
+            long payloadEndPosition = checked(stream.Position + size);
+            if (payloadEndPosition > stream.Length)
             {
-                return readPayload(nestedReader, context);
+                throw new EndOfStreamException("Sized payload exceeds the available data.");
+            }
+
+            return payloadEndPosition;
+        }
+
+        static void VerifyPayloadConsumed(BinaryReader reader, long payloadEndPosition)
+        {
+            long currentPosition = reader.BaseStream.Position;
+            if (currentPosition != payloadEndPosition)
+            {
+                throw new InvalidDataException(
+                    $"Sized payload was not fully consumed. Expected end position {payloadEndPosition}, actual {currentPosition}.");
+            }
+        }
+
+        static void EnsureSeekable(Stream stream, string errorMessage)
+        {
+            if (!stream.CanSeek)
+            {
+                throw new NotSupportedException(errorMessage);
             }
         }
     }

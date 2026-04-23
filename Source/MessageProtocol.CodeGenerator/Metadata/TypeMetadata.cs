@@ -7,9 +7,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
 {
     internal sealed class TypeMetadata
     {
-        const uint MessageIdValueMask = 0x00FF_FFFF;
-
-        public const uint MaxMessageAttributeValue = MessageIdValueMask;
+        public const uint MaxMessageAttributeValue = MessageWireFormat.MessageIdValueMask;
 
         public INamedTypeSymbol Symbol { get; }
         public TypeDeclarationKind DeclarationKind { get; }
@@ -80,29 +78,28 @@ namespace MessageProtocol.CodeGenerator.Metadata
 
         public uint GetMessageId()
         {
-            uint flags = 0;
+            MessageFlag flags = MessageFlag.None;
             if (IsNonIdMessage)
             {
-                flags |= (uint)MessageFlag.NonIdMessage;
+                flags |= MessageFlag.NonIdMessage;
             }
 
             if (IsStandaloneMessage)
             {
-                flags |= (uint)MessageFlag.Standalone;
+                flags |= MessageFlag.Standalone;
             }
 
             if (IsGroupRootMessage)
             {
-                flags |= (uint)MessageFlag.GroupRoot;
+                flags |= MessageFlag.GroupRoot;
             }
 
             if (IsGroupElementMessage)
             {
-                flags |= (uint)MessageFlag.GroupElement;
+                flags |= MessageFlag.GroupElement;
             }
 
-            uint headerByte = ((flags & 0x0Fu) << 4) | (uint)(Category & 0x0Fu);
-            return (headerByte << 24) | (GetMessageIdValue() & MessageIdValueMask);
+            return MessageWireFormat.ComposeMessageId(flags, Category, GetMessageIdValue());
         }
 
         uint GetMessageIdValue()

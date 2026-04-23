@@ -5,10 +5,10 @@ using MessageProtocol.CodeGenerator;
 using Microsoft.CodeAnalysis;
 using System.Linq;
 using System;
-using System.IO;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
 using System.Collections.Generic;
+using System.IO;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {

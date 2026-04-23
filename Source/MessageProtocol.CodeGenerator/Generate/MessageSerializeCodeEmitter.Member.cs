@@ -51,7 +51,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                     {
                         return $@"{indent}if ({valueExpression} == null)
 {indent}{{
-{indent}    writer.Write(-1);
+{indent}    writer.Write({MessageWireFormat.NullSizedPayloadLength});
 {indent}}}
 {indent}else
 {indent}{{

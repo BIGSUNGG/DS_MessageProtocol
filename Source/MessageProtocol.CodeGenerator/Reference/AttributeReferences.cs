@@ -11,16 +11,20 @@ namespace MessageProtocol.CodeGenerator.Reference
         public INamedTypeSymbol? MessageIgnoreAttributeType { get; set; }
         public INamedTypeSymbol? MessageIncludeAttributeType { get; set; }
         public INamedTypeSymbol? MessageCategoryAttributeType { get; set; }
+        public INamedTypeSymbol? MessageSerializableInterfaceType { get; set; }
+        public INamedTypeSymbol? HasIdMessageSerializableInterfaceType { get; set; }
 
         public AttributeReferences(Compilation compilation)
         {
-            NonIdMessageAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.NonIdMessageAttribute");
-            GroupRootMessageAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.GroupRootMessageAttribute");
-            GroupElementMessageAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.GroupElementMessageAttribute");
-            StandaloneMessageAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.StandaloneMessageAttribute");
-            MessageIgnoreAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.MessageIgnoreAttribute");
-            MessageIncludeAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.MessageIncludeAttribute");
-            MessageCategoryAttributeType = compilation.GetTypeByMetadataName("MessageProtocol.MessageCategoryAttribute");
+            NonIdMessageAttributeType = compilation.GetTypeByMetadataName(MetadataNames.NonIdMessageAttribute);
+            GroupRootMessageAttributeType = compilation.GetTypeByMetadataName(MetadataNames.GroupRootMessageAttribute);
+            GroupElementMessageAttributeType = compilation.GetTypeByMetadataName(MetadataNames.GroupElementMessageAttribute);
+            StandaloneMessageAttributeType = compilation.GetTypeByMetadataName(MetadataNames.StandaloneMessageAttribute);
+            MessageIgnoreAttributeType = compilation.GetTypeByMetadataName(MetadataNames.MessageIgnoreAttribute);
+            MessageIncludeAttributeType = compilation.GetTypeByMetadataName(MetadataNames.MessageIncludeAttribute);
+            MessageCategoryAttributeType = compilation.GetTypeByMetadataName(MetadataNames.MessageCategoryAttribute);
+            MessageSerializableInterfaceType = compilation.GetTypeByMetadataName(MetadataNames.MessageSerializableInterface);
+            HasIdMessageSerializableInterfaceType = compilation.GetTypeByMetadataName(MetadataNames.HasIdMessageSerializableInterface);
         }
     }
 }

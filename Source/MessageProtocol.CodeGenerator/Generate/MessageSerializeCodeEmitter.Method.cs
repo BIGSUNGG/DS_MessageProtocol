@@ -11,10 +11,11 @@ namespace MessageProtocol.CodeGenerator.Generate
         {
             public static string EmitOnModuleInitialize(TypeMetadata typeMeta, string indent)
             {
+                string staticHidingModifier = GetStaticHidingModifier(typeMeta);
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine($@"
 {indent}[ModuleInitializer]
-{indent}internal static void Initialize()
+{indent}internal {staticHidingModifier}static void Initialize()
 {indent}{{
 {indent}    MessageSerializer.RegisterType(typeof({typeMeta.Symbol.Name}));
 {indent}}}");
@@ -28,7 +29,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine($@"public static byte[] Serialize({typeMeta.Symbol.Name} message)");
                 sb.AppendLine($@"{indent}{{");
-                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream())");
+                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream({MessageWireFormat.DefaultStreamCapacity}))");
                 sb.AppendLine($@"{indent}    using (var writer = new BinaryWriter(ms))");
                 sb.AppendLine($@"{indent}    {{");
                 
@@ -36,9 +37,9 @@ namespace MessageProtocol.CodeGenerator.Generate
                 uint id = typeMeta.GetMessageId();
 
                 sb.AppendLine($@"{indent}        uint id = {id};");
-                sb.AppendLine($@"{indent}        byte messageFlag = (byte)(id >> 24);");
-                sb.AppendLine($@"{indent}        writer.Write(messageFlag);");
-                sb.AppendLine($@"{indent}        if ((messageFlag & 0x10) == 0)");
+                sb.AppendLine($@"{indent}        byte headerByte = (byte)(id >> 24);");
+                sb.AppendLine($@"{indent}        writer.Write(headerByte);");
+                sb.AppendLine($@"{indent}        if ((headerByte & {((byte)MessageFlag.NonIdMessage) << 4}) == 0)");
                 sb.AppendLine($@"{indent}        {{");
                 sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 16));");
                 sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 8));");
@@ -60,15 +61,16 @@ namespace MessageProtocol.CodeGenerator.Generate
             public static string EmitDeserialize(TypeMetadata typeMeta, string indent, SerializationGraph serializationGraph)
             {
                 var rootModel = serializationGraph.RootType;
+                string staticHidingModifier = GetStaticHidingModifier(typeMeta);
                 StringBuilder sb = new StringBuilder();
-                sb.AppendLine($@"public static {typeMeta.Symbol.Name} Deserialize(byte[] data)");
+                sb.AppendLine($@"public {staticHidingModifier}static {typeMeta.Symbol.Name} Deserialize(byte[] data)");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    using (var ms = new MemoryStream(data))");
                 sb.AppendLine($@"{indent}    using (var reader = new BinaryReader(ms))");
                 sb.AppendLine($@"{indent}    {{");
-                sb.AppendLine($@"{indent}        byte messageFlag = reader.ReadByte();");
-                sb.AppendLine($@"{indent}        uint id = (uint)messageFlag << 24;");
-                sb.AppendLine($@"{indent}        if ((messageFlag & 0x10) == 0)");
+                sb.AppendLine($@"{indent}        byte headerByte = reader.ReadByte();");
+                sb.AppendLine($@"{indent}        uint id = (uint)headerByte << 24;");
+                sb.AppendLine($@"{indent}        if ((headerByte & {((byte)MessageFlag.NonIdMessage) << 4}) == 0)");
                 sb.AppendLine($@"{indent}        {{");
                 sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 16;");
                 sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 8;");
@@ -178,6 +180,19 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}}}");
 
                 return sb.ToString();
+            }
+
+            static string GetStaticHidingModifier(TypeMetadata typeMeta)
+            {
+                var baseType = typeMeta.BaseTypeMetadata;
+                if (baseType == null)
+                {
+                    return string.Empty;
+                }
+
+                return baseType.IsNonIdMessage || baseType.IsStandaloneMessage || baseType.IsGroupMessage
+                    ? "new "
+                    : string.Empty;
             }
         }
     }

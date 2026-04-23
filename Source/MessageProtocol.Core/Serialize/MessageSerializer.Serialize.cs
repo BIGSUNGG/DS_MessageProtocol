@@ -1,10 +1,5 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using MessageProtocol;
 
 namespace MessageProtocol.Serialize
 {
@@ -14,14 +9,14 @@ namespace MessageProtocol.Serialize
         /// Key : Message Type
         /// Value : Serialize 메서드를 호출하는 객체
         /// </summary>
-        static Dictionary<Type, NonGenericSerializeInvoker> _serializeCache = new Dictionary<Type, NonGenericSerializeInvoker>();
+        static readonly ConcurrentDictionary<Type, NonGenericSerializeInvoker> _serializeCache = new();
 
         public static byte[] Serialize<T>(T message) where T : IMessageSerializable<T>
         {
-            if (message == null) 
+            if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            if (message is IHasIdMessageSerializable<T> hasIdMessage)
+            if (message is IHasIdMessageSerializable<T>)
                 return Serialize((object)message);
 
             return T.Serialize(message);
@@ -29,15 +24,18 @@ namespace MessageProtocol.Serialize
 
         public static byte[] Serialize(object message)
         {
-            var messageType = message.GetType();
-            
-            if(!_serializeCache.TryGetValue(messageType, out var invoker))
-                invoker = RegisterSerializeInvoker(messageType);
+            if (message == null)
+                throw new ArgumentNullException(nameof(message));
 
-            return invoker.Serialize(message);
+            return RegisterSerializeInvoker(message.GetType()).Serialize(message);
         }
 
         private static NonGenericSerializeInvoker RegisterSerializeInvoker(Type messageType)
+        {
+            return _serializeCache.GetOrAdd(messageType, CreateSerializeInvoker);
+        }
+
+        static NonGenericSerializeInvoker CreateSerializeInvoker(Type messageType)
         {
             try
             {
@@ -47,9 +45,8 @@ namespace MessageProtocol.Serialize
                 {
                     throw new InvalidOperationException($"Failed to create instance of GenericSerializeInvoker<{messageType.Name}>");
                 }
-                NonGenericSerializeInvoker invoker = (NonGenericSerializeInvoker)instance;
-                _serializeCache[messageType] = invoker;
-                return invoker;
+
+                return (NonGenericSerializeInvoker)instance;
             }
             catch (ArgumentException ex) when (ex.Message.Contains("violates the constraint"))
             {

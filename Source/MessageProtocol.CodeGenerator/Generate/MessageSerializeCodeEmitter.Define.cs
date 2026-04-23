@@ -1,5 +1,6 @@
 using MessageProtocol.CodeGenerator.Metadata;
 using MessageProtocol.CodeGenerator.Graph;
+using MessageProtocol.CodeGenerator.Reference;
 using Microsoft.CodeAnalysis;
 using System.Collections.Generic;
 using System.Text;
@@ -11,7 +12,7 @@ namespace MessageProtocol.CodeGenerator.Generate
         // Class: 클래스 선언 및 상속
         internal static class Define
         {
-            public static string Emit(TypeMetadata typeMeta, SerializationGraph serializationGraph)
+            public static string Emit(TypeMetadata typeMeta, SerializationGraph serializationGraph, AttributeReferences attributeReferences)
             {
                 StringBuilder sb = new StringBuilder();
                 string indent = GetTypeIndent(typeMeta);
@@ -28,10 +29,11 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
                 
                 // 메시지 클래스 정의
-                string baseAndInterfaces = GetBaseAndInterfaces(typeMeta);
+                string baseAndInterfaces = GetBaseAndInterfaces(typeMeta, attributeReferences);
+                string staticHidingModifier = GetStaticHidingModifier(typeMeta);
                 sb.AppendLine($"{declarationIndent}public partial {typeMeta.DeclarationKeyword} {typeMeta.Symbol.Name}{baseAndInterfaces}");
                 sb.AppendLine($"{declarationIndent}{{");
-                sb.AppendLine($"{declarationIndent}    public static uint MessageId => {typeMeta.GetMessageId()};");
+                sb.AppendLine($"{declarationIndent}    public {staticHidingModifier}static uint MessageId => {typeMeta.GetMessageId()};");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}");
                 sb.AppendLine($"{declarationIndent}");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitSerialize(typeMeta, indent + "    ", serializationGraph)}");
@@ -63,7 +65,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return GetNamespaceIndent(typeMeta) + new string(' ', typeMeta.ContainingTypes.Length * 4);
             }
 
-            private static string GetBaseAndInterfaces(TypeMetadata typeMeta)
+            private static string GetBaseAndInterfaces(TypeMetadata typeMeta, AttributeReferences attributeReferences)
             {
                 var parts = new List<string>();
                 
@@ -90,14 +92,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 foreach (var interfaceType in typeMeta.Symbol.Interfaces)
                 {
                     // 생성기가 이미 추가한 직렬화 인터페이스는 제외
-                    bool isSameMessageSerializable = interfaceType.Name == "IMessageSerializable" &&
-                                               interfaceType.IsGenericType &&
-                                               interfaceType.TypeArguments.Length == 1 &&
-                                               interfaceType.TypeArguments[0].Equals(typeMeta.Symbol, SymbolEqualityComparer.Default);
-                    bool isSameHasIdMessageSerializable = interfaceType.Name == "IHasIdMessageSerializable" &&
-                                               interfaceType.IsGenericType &&
-                                               interfaceType.TypeArguments.Length == 1 &&
-                                               interfaceType.TypeArguments[0].Equals(typeMeta.Symbol, SymbolEqualityComparer.Default);
+                    bool isSameMessageSerializable = IsGeneratedSerializationInterface(
+                        interfaceType,
+                        attributeReferences.MessageSerializableInterfaceType,
+                        typeMeta.Symbol);
+                    bool isSameHasIdMessageSerializable = IsGeneratedSerializationInterface(
+                        interfaceType,
+                        attributeReferences.HasIdMessageSerializableInterfaceType,
+                        typeMeta.Symbol);
                     
                     if (!isSameMessageSerializable && !isSameHasIdMessageSerializable)
                     {
@@ -111,6 +113,31 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
                 
                 return " : " + string.Join(", ", parts);
+            }
+
+            static string GetStaticHidingModifier(TypeMetadata typeMeta)
+            {
+                var baseType = typeMeta.BaseTypeMetadata;
+                if (baseType == null)
+                {
+                    return string.Empty;
+                }
+
+                return baseType.IsNonIdMessage || baseType.IsStandaloneMessage || baseType.IsGroupMessage
+                    ? "new "
+                    : string.Empty;
+            }
+
+            static bool IsGeneratedSerializationInterface(
+                INamedTypeSymbol interfaceType,
+                INamedTypeSymbol? expectedDefinition,
+                INamedTypeSymbol messageType)
+            {
+                return expectedDefinition != null &&
+                    interfaceType.IsGenericType &&
+                    interfaceType.TypeArguments.Length == 1 &&
+                    SymbolEqualityComparer.Default.Equals(interfaceType.OriginalDefinition, expectedDefinition) &&
+                    SymbolEqualityComparer.Default.Equals(interfaceType.TypeArguments[0], messageType);
             }
         }
     }

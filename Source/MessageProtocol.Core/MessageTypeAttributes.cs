@@ -9,7 +9,7 @@ namespace MessageProtocol;
 
 static class MessageAttributeRange
 {
-    public const uint MaxValue = 0x00FF_FFFF;
+    public const uint MaxValue = MessageWireFormat.MessageIdValueMask;
 
     public static void Validate(uint value, string parameterName)
     {

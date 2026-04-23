@@ -414,6 +414,41 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
+        public void Serialize_Object_Should_BeThreadSafe_WhenCalledConcurrently()
+        {
+            var messages = new ConcurrentManualMessage[64];
+            for (int i = 0; i < messages.Length; i++)
+            {
+                messages[i] = new ConcurrentManualMessage { Value = i };
+            }
+
+            Parallel.ForEach(messages, message =>
+            {
+                var bytes = MessageSerializer.Serialize((object)message);
+                var roundTrip = ConcurrentManualMessage.Deserialize(bytes);
+                Assert.Equal(message.Value, roundTrip.Value);
+            });
+        }
+
+        [Fact]
+        public void RegisterType_WithDuplicateMessageId_Should_ThrowInvalidOperationException()
+        {
+            try
+            {
+                MessageSerializer.RegisterType(typeof(DuplicateMessageIdA));
+            }
+            catch (InvalidOperationException duplicateRegistration) when (duplicateRegistration.Message.Contains(nameof(DuplicateMessageIdA)))
+            {
+                // 같은 프로세스에서 테스트를 다시 실행하는 경우를 허용한다.
+            }
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                MessageSerializer.RegisterType(typeof(DuplicateMessageIdB)));
+
+            Assert.Contains(nameof(DuplicateMessageIdA), exception.Message);
+        }
+
+        [Fact]
         public void Deserialize_Object_WithNonIdMessage_Should_ThrowInvalidCastException()
         {
             PlainPayload original = new();
@@ -496,7 +531,7 @@ namespace MessageProtocol.Tests.Serialize
     public partial class NestedMessage
     {
         public int Value { get; set; }
-        public OuterMessage Outer { get; set; }
+        public OuterMessage? Outer { get; set; }
     }
 
     [StandaloneMessage(13)]
@@ -547,5 +582,55 @@ namespace MessageProtocol.Tests.Serialize
     {
         public int Count { get; set; }
         public PlainNode? Nested { get; set; }
+    }
+
+    public sealed class ConcurrentManualMessage : IHasIdMessageSerializable<ConcurrentManualMessage>
+    {
+        public static uint MessageId => 0x2000ABCD;
+
+        public int Value { get; set; }
+
+        public static byte[] Serialize(ConcurrentManualMessage message)
+        {
+            return BitConverter.GetBytes(message.Value);
+        }
+
+        public static ConcurrentManualMessage Deserialize(byte[] data)
+        {
+            return new ConcurrentManualMessage
+            {
+                Value = BitConverter.ToInt32(data, 0)
+            };
+        }
+    }
+
+    public sealed class DuplicateMessageIdA : IHasIdMessageSerializable<DuplicateMessageIdA>
+    {
+        public static uint MessageId => 0x2000ABCE;
+
+        public static byte[] Serialize(DuplicateMessageIdA message)
+        {
+            return [];
+        }
+
+        public static DuplicateMessageIdA Deserialize(byte[] data)
+        {
+            return new DuplicateMessageIdA();
+        }
+    }
+
+    public sealed class DuplicateMessageIdB : IHasIdMessageSerializable<DuplicateMessageIdB>
+    {
+        public static uint MessageId => DuplicateMessageIdA.MessageId;
+
+        public static byte[] Serialize(DuplicateMessageIdB message)
+        {
+            return [];
+        }
+
+        public static DuplicateMessageIdB Deserialize(byte[] data)
+        {
+            return new DuplicateMessageIdB();
+        }
     }
 }

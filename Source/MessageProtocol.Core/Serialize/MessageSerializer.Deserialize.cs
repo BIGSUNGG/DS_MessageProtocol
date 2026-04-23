@@ -1,10 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Text;
 using MessageProtocol;
 
 namespace MessageProtocol.Serialize
@@ -15,7 +11,7 @@ namespace MessageProtocol.Serialize
         /// Key : Message Id
         /// Value : Deserialize 메서드를 호출하는 객체
         /// </summary>
-        static Dictionary<uint, NonGenericDeserializeInvoker> _deserializeCache = new Dictionary<uint, NonGenericDeserializeInvoker>();
+        static readonly ConcurrentDictionary<uint, NonGenericDeserializeInvoker> _deserializeCache = new();
 
         public static T Deserialize<T>(byte[] data) where T : IMessageSerializable<T>
         {
@@ -24,7 +20,7 @@ namespace MessageProtocol.Serialize
                 throw new ArgumentException("Message data is empty.", nameof(data));
 
             byte header = data[0];
-            var flags = (MessageFlag)((header >> 4) & 0x0F);
+            var flags = MessageWireFormat.GetFlags(header);
             if ((flags & MessageFlag.StandaloneOrGroup) != 0)
                 return (T)Deserialize(data);
 
@@ -38,12 +34,12 @@ namespace MessageProtocol.Serialize
                 throw new ArgumentException("Message data is empty.", nameof(data));
 
             byte header = data[0];
-            var flags = (MessageFlag)((header >> 4) & 0x0F);
+            var flags = MessageWireFormat.GetFlags(header);
             if ((flags & MessageFlag.StandaloneOrGroup) == 0)
                 throw new InvalidCastException("Message is not a standalone or group message.");
 
             uint messageId = ReadMessageId(data);
-            if(!_deserializeCache.TryGetValue(messageId, out var invoker))
+            if (!_deserializeCache.TryGetValue(messageId, out var invoker))
                 throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
 
             return invoker.Deserialize(data);
@@ -58,12 +54,11 @@ namespace MessageProtocol.Serialize
             uint messageId = (uint)header << 24;
 
             // 상위 니블: 플래그. NonIdMessage면 뒤 3바이트는 MessageId 값에 포함하지 않음.
-            var flags = (MessageFlag)((header >> 4) & 0x0F);
-            if ((flags & MessageFlag.NonIdMessage) != 0)
+            if (!MessageWireFormat.HasEmbeddedMessageId(header))
                 return messageId;
 
-            if (data.Length < 4)
-                throw new ArgumentException("Message data is too short to read 4-byte message id.", nameof(data));
+            if (data.Length < MessageWireFormat.IdHeaderSize)
+                throw new ArgumentException($"Message data is too short to read the {MessageWireFormat.IdHeaderSize}-byte message id.", nameof(data));
 
             messageId |= (uint)data[1] << 16;
             messageId |= (uint)data[2] << 8;
@@ -72,14 +67,13 @@ namespace MessageProtocol.Serialize
             return messageId;
         }
 
-        private static void RegisterDeserializeInvoker(Type messageType)
+        private static void RegisterDeserializeInvoker(Type messageType, uint messageId)
         {
-            uint messageId = GetMessageIdByType(messageType);
-            byte header = (byte)(messageId >> 24);
-            var flags = (MessageFlag)((header >> 4) & 0x0F);
-            if ((flags & MessageFlag.NonIdMessage) != 0)
-                return;
+            _deserializeCache.GetOrAdd(messageId, _ => CreateDeserializeInvoker(messageType));
+        }
 
+        static NonGenericDeserializeInvoker CreateDeserializeInvoker(Type messageType)
+        {
             try
             {
                 var genericInvokerType = typeof(GenericDeserializeInvoker<>).MakeGenericType(messageType);
@@ -88,8 +82,8 @@ namespace MessageProtocol.Serialize
                 {
                     throw new InvalidOperationException($"Failed to create instance of GenericDeserializeInvoker<{messageType.Name}>");
                 }
-                NonGenericDeserializeInvoker invoker = (NonGenericDeserializeInvoker)instance;
-                _deserializeCache[messageId] = invoker;
+
+                return (NonGenericDeserializeInvoker)instance;
             }
             catch (ArgumentException ex) when (ex.Message.Contains("violates the constraint"))
             {

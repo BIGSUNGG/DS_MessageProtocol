@@ -18,15 +18,13 @@
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>MessageProtocol.Core.Tests</_Parameter1>
-    </AssemblyAttribute>
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>MessageProtocol.Tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />
+    <Compile Include="..\Shared\MessageWireFormat.cs" Link="MessageWireFormat.cs" />
   </ItemGroup>
 
   <ItemGroup>
