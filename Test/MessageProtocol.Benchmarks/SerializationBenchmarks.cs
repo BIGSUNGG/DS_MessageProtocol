@@ -26,17 +26,49 @@ public class FlatStandaloneBenchmarks
         _serialized = MessageSerializer.Serialize(_message);
     }
 
-    [Benchmark]
-    public byte[] SerializeGeneric() => MessageSerializer.Serialize(_message);
+    [Benchmark(Baseline = true)]
+    public byte[] SerializeByteArray() => MessageSerializer.Serialize(_message);
 
     [Benchmark]
     public byte[] SerializeObject() => MessageSerializer.Serialize(_boxedMessage);
 
     [Benchmark]
-    public FlatStandaloneMessage DeserializeGeneric() => MessageSerializer.Deserialize<FlatStandaloneMessage>(_serialized);
+    public int SerializePooled()
+    {
+        using var buffer = MessageSerializer.SerializePooled(_message);
+        return buffer.Length;
+    }
+
+    [Benchmark]
+    public int SerializeDirect()
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            FlatStandaloneMessage.Serialize(_message, ref writer);
+            return writer.Length;
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public FlatStandaloneMessage DeserializeByteArray() => MessageSerializer.Deserialize<FlatStandaloneMessage>(_serialized);
 
     [Benchmark]
     public object DeserializeObject() => MessageSerializer.Deserialize(_serialized);
+
+    [Benchmark]
+    public FlatStandaloneMessage DeserializeSpan() => MessageSerializer.Deserialize<FlatStandaloneMessage>(new ReadOnlySpan<byte>(_serialized));
+
+    [Benchmark]
+    public FlatStandaloneMessage DeserializeDirect()
+    {
+        var reader = new MessageBufferReader(_serialized);
+        return FlatStandaloneMessage.Deserialize(ref reader);
+    }
 }
 
 [MemoryDiagnoser]
@@ -57,17 +89,46 @@ public class DeepGraphBenchmarks
         _serialized = MessageSerializer.Serialize(_message);
     }
 
-    [Benchmark]
-    public byte[] SerializeGeneric() => MessageSerializer.Serialize(_message);
+    [Benchmark(Baseline = true)]
+    public byte[] SerializeByteArray() => MessageSerializer.Serialize(_message);
 
     [Benchmark]
     public byte[] SerializeObject() => MessageSerializer.Serialize(_boxedMessage);
 
     [Benchmark]
-    public DeepGraphMessage DeserializeGeneric() => MessageSerializer.Deserialize<DeepGraphMessage>(_serialized);
+    public int SerializePooled()
+    {
+        using var buffer = MessageSerializer.SerializePooled(_message);
+        return buffer.Length;
+    }
 
     [Benchmark]
-    public object DeserializeObject() => MessageSerializer.Deserialize(_serialized);
+    public int SerializeDirect()
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            DeepGraphMessage.Serialize(_message, ref writer);
+            return writer.Length;
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public DeepGraphMessage DeserializeByteArray() => MessageSerializer.Deserialize<DeepGraphMessage>(_serialized);
+
+    [Benchmark]
+    public DeepGraphMessage DeserializeSpan() => MessageSerializer.Deserialize<DeepGraphMessage>(new ReadOnlySpan<byte>(_serialized));
+
+    [Benchmark]
+    public DeepGraphMessage DeserializeDirect()
+    {
+        var reader = new MessageBufferReader(_serialized);
+        return DeepGraphMessage.Deserialize(ref reader);
+    }
 }
 
 [MemoryDiagnoser]
@@ -94,17 +155,46 @@ public class LargeCollectionBenchmarks
         _serialized = MessageSerializer.Serialize(_message);
     }
 
-    [Benchmark]
-    public byte[] SerializeGeneric() => MessageSerializer.Serialize(_message);
+    [Benchmark(Baseline = true)]
+    public byte[] SerializeByteArray() => MessageSerializer.Serialize(_message);
 
     [Benchmark]
     public byte[] SerializeObject() => MessageSerializer.Serialize(_boxedMessage);
 
     [Benchmark]
-    public LargeCollectionMessage DeserializeGeneric() => MessageSerializer.Deserialize<LargeCollectionMessage>(_serialized);
+    public int SerializePooled()
+    {
+        using var buffer = MessageSerializer.SerializePooled(_message);
+        return buffer.Length;
+    }
 
     [Benchmark]
-    public object DeserializeObject() => MessageSerializer.Deserialize(_serialized);
+    public int SerializeDirect()
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            LargeCollectionMessage.Serialize(_message, ref writer);
+            return writer.Length;
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public LargeCollectionMessage DeserializeByteArray() => MessageSerializer.Deserialize<LargeCollectionMessage>(_serialized);
+
+    [Benchmark]
+    public LargeCollectionMessage DeserializeSpan() => MessageSerializer.Deserialize<LargeCollectionMessage>(new ReadOnlySpan<byte>(_serialized));
+
+    [Benchmark]
+    public LargeCollectionMessage DeserializeDirect()
+    {
+        var reader = new MessageBufferReader(_serialized);
+        return LargeCollectionMessage.Deserialize(ref reader);
+    }
 }
 
 [MemoryDiagnoser]
@@ -127,17 +217,46 @@ public class SharedReferenceBenchmarks
         _serialized = MessageSerializer.Serialize(_message);
     }
 
-    [Benchmark]
-    public byte[] SerializeGeneric() => MessageSerializer.Serialize(_message);
+    [Benchmark(Baseline = true)]
+    public byte[] SerializeByteArray() => MessageSerializer.Serialize(_message);
 
     [Benchmark]
     public byte[] SerializeObject() => MessageSerializer.Serialize(_boxedMessage);
 
     [Benchmark]
-    public SharedReferenceBenchmarkMessage DeserializeGeneric() => MessageSerializer.Deserialize<SharedReferenceBenchmarkMessage>(_serialized);
+    public int SerializePooled()
+    {
+        using var buffer = MessageSerializer.SerializePooled(_message);
+        return buffer.Length;
+    }
 
     [Benchmark]
-    public object DeserializeObject() => MessageSerializer.Deserialize(_serialized);
+    public int SerializeDirect()
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            SharedReferenceBenchmarkMessage.Serialize(_message, ref writer);
+            return writer.Length;
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public SharedReferenceBenchmarkMessage DeserializeByteArray() => MessageSerializer.Deserialize<SharedReferenceBenchmarkMessage>(_serialized);
+
+    [Benchmark]
+    public SharedReferenceBenchmarkMessage DeserializeSpan() => MessageSerializer.Deserialize<SharedReferenceBenchmarkMessage>(new ReadOnlySpan<byte>(_serialized));
+
+    [Benchmark]
+    public SharedReferenceBenchmarkMessage DeserializeDirect()
+    {
+        var reader = new MessageBufferReader(_serialized);
+        return SharedReferenceBenchmarkMessage.Deserialize(ref reader);
+    }
 }
 
 static class BenchmarkDataFactory

@@ -12,9 +12,9 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine("using System;");
-                sb.AppendLine("using System.IO;");
                 sb.AppendLine("using System.Collections.Generic;");
                 sb.AppendLine("using System.Runtime.CompilerServices;");
+                sb.AppendLine("using System.Runtime.InteropServices;");
                 sb.AppendLine("using MessageProtocol.Serialize;");
                 sb.AppendLine();
 
@@ -40,4 +40,3 @@ namespace MessageProtocol.CodeGenerator.Generate
         }
     }
 }
-

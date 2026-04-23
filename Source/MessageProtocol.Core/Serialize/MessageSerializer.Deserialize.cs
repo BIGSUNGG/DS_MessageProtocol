@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using MessageProtocol;
 
 namespace MessageProtocol.Serialize
@@ -8,107 +9,129 @@ namespace MessageProtocol.Serialize
     public static partial class MessageSerializer
     {
         /// <summary>
-        /// Key : Message Id
-        /// Value : Deserialize 메서드를 호출하는 객체
+        /// 메시지 id 로 dispatch 되는 reader 델리게이트.
         /// </summary>
-        static readonly ConcurrentDictionary<uint, NonGenericDeserializeInvoker> _deserializeCache = new();
+        public delegate object BufferReaderFunc(ref MessageBufferReader reader);
 
+        static readonly ConcurrentDictionary<uint, BufferReaderFunc> _readerDispatch = new();
+
+        /// <summary>
+        /// 제네릭 hot path. 버퍼 reader 에서 T 를 역직렬화합니다.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static T Deserialize<T>(ref MessageBufferReader reader) where T : IMessageSerializable<T>
+        {
+            return T.Deserialize(ref reader);
+        }
+
+        /// <summary>
+        /// 제네릭 API: ReadOnlySpan 에서 역직렬화.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static T Deserialize<T>(ReadOnlySpan<byte> data) where T : IMessageSerializable<T>
+        {
+            if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
+            var reader = new MessageBufferReader(data);
+            return T.Deserialize(ref reader);
+        }
+
+        /// <summary>
+        /// 제네릭 API: ReadOnlyMemory 에서 역직렬화.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static T Deserialize<T>(ReadOnlyMemory<byte> data) where T : IMessageSerializable<T>
+        {
+            return Deserialize<T>(data.Span);
+        }
+
+        /// <summary>
+        /// 제네릭 API: byte[] 호환 경로.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static T Deserialize<T>(byte[] data) where T : IMessageSerializable<T>
         {
-            if (data == null) throw new ArgumentNullException(nameof(data));
-            if (data.Length == 0)
-                throw new ArgumentException("Message data is empty.", nameof(data));
-
-            byte header = data[0];
-            var flags = MessageWireFormat.GetFlags(header);
-            if ((flags & MessageFlag.StandaloneOrGroup) != 0)
-                return (T)Deserialize(data);
-
+            if (data is null) throw new ArgumentNullException(nameof(data));
+            if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
             return T.Deserialize(data);
         }
 
+        /// <summary>
+        /// object dispatch API: 헤더의 messageId 로 dispatch.
+        /// </summary>
         public static object Deserialize(byte[] data)
         {
-            if (data == null) throw new ArgumentNullException(nameof(data));
-            if (data.Length == 0)
-                throw new ArgumentException("Message data is empty.", nameof(data));
+            if (data is null) throw new ArgumentNullException(nameof(data));
+            return Deserialize(new ReadOnlySpan<byte>(data));
+        }
+
+        public static object Deserialize(ReadOnlyMemory<byte> data) => Deserialize(data.Span);
+
+        public static object Deserialize(ReadOnlySpan<byte> data)
+        {
+            if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
 
             byte header = data[0];
             var flags = MessageWireFormat.GetFlags(header);
             if ((flags & MessageFlag.StandaloneOrGroup) == 0)
+            {
                 throw new InvalidCastException("Message is not a standalone or group message.");
+            }
 
-            uint messageId = ReadMessageId(data);
-            if (!_deserializeCache.TryGetValue(messageId, out var invoker))
+            uint messageId = ReadMessageIdFromHeader(data);
+            if (!_readerDispatch.TryGetValue(messageId, out var invoker))
+            {
                 throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
+            }
 
-            return invoker.Deserialize(data);
+            var reader = new MessageBufferReader(data);
+            return invoker(ref reader);
         }
 
-        static uint ReadMessageId(byte[] data)
+        /// <summary>
+        /// 중첩된 object dispatch 에서 사용. 현재 reader 위치의 헤더를 보고 등록된 타입으로 dispatch 합니다.
+        /// </summary>
+        public static object DeserializeFromReader(ref MessageBufferReader reader)
         {
-            if (data.Length == 0)
-                throw new ArgumentException("Message data is empty.", nameof(data));
+            var unread = reader.UnreadSpan;
+            if (unread.Length == 0) throw new ArgumentException("Reader has no data to deserialize.");
 
+            uint messageId = ReadMessageIdFromHeader(unread);
+            if (!_readerDispatch.TryGetValue(messageId, out var invoker))
+            {
+                throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
+            }
+            return invoker(ref reader);
+        }
+
+        static uint ReadMessageIdFromHeader(ReadOnlySpan<byte> data)
+        {
             byte header = data[0];
             uint messageId = (uint)header << 24;
-
-            // 상위 니블: 플래그. NonIdMessage면 뒤 3바이트는 MessageId 값에 포함하지 않음.
             if (!MessageWireFormat.HasEmbeddedMessageId(header))
+            {
                 return messageId;
-
+            }
             if (data.Length < MessageWireFormat.IdHeaderSize)
-                throw new ArgumentException($"Message data is too short to read the {MessageWireFormat.IdHeaderSize}-byte message id.", nameof(data));
-
+            {
+                throw new ArgumentException($"Message data is too short to read the {MessageWireFormat.IdHeaderSize}-byte message id.");
+            }
             messageId |= (uint)data[1] << 16;
             messageId |= (uint)data[2] << 8;
             messageId |= data[3];
-
             return messageId;
         }
 
-        private static void RegisterDeserializeInvoker(Type messageType, uint messageId)
+        internal static void RegisterReaderInvoker(uint messageId, BufferReaderFunc invoker)
         {
-            _deserializeCache.GetOrAdd(messageId, _ => CreateDeserializeInvoker(messageType));
-        }
-
-        static NonGenericDeserializeInvoker CreateDeserializeInvoker(Type messageType)
-        {
-            try
+            if (!_readerDispatch.TryAdd(messageId, invoker))
             {
-                var genericInvokerType = typeof(GenericDeserializeInvoker<>).MakeGenericType(messageType);
-                var instance = Activator.CreateInstance(genericInvokerType);
-                if (instance == null)
-                {
-                    throw new InvalidOperationException($"Failed to create instance of GenericDeserializeInvoker<{messageType.Name}>");
-                }
-
-                return (NonGenericDeserializeInvoker)instance;
-            }
-            catch (ArgumentException ex) when (ex.Message.Contains("violates the constraint"))
-            {
-                throw new InvalidOperationException(
-                    $"Type '{messageType.FullName}' does not implement 'IMessageSerializable<{messageType.Name}>'. " +
-                    $"This usually means the source generator (MessageProtocol.CodeGenerator) did not generate the required partial class implementation. " +
-                    $"Please ensure that:\n" +
-                    $"1. 'MessageProtocol.CodeGenerator' is properly referenced as an analyzer in your project\n" +
-                    $"2. The project uses ProjectReference (not a DLL reference) to MessageProtocol.Core\n" +
-                    $"3. The message class is marked as 'partial' and has the appropriate attribute ([NonIdMessage], [GroupElementMessage], [GroupRootMessage], or [StandaloneMessage])\n" +
-                    $"Original error: {ex.Message}", ex);
+                throw new InvalidOperationException($"Message id {messageId} already registered for deserialization.");
             }
         }
 
-        class GenericDeserializeInvoker<T> : NonGenericDeserializeInvoker where T : IMessageSerializable<T>
+        internal static bool TryRemoveReaderInvoker(uint messageId)
         {
-            public override object Deserialize(byte[] data)
-            {
-                return T.Deserialize(data);
-            }
-        }
-
-        abstract class NonGenericDeserializeInvoker
-        {
-            public abstract object Deserialize(byte[] data);
+            return _readerDispatch.TryRemove(messageId, out _);
         }
     }
 }

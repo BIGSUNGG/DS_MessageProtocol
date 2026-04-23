@@ -12,169 +12,200 @@ namespace MessageProtocol.CodeGenerator.Generate
             public static string EmitOnModuleInitialize(TypeMetadata typeMeta, string indent)
             {
                 string staticHidingModifier = GetStaticHidingModifier(typeMeta);
-                StringBuilder sb = new StringBuilder();
+                string registerMethod = (typeMeta.IsStandaloneMessage || typeMeta.IsGroupMessage)
+                    ? "RegisterHasIdMessage"
+                    : "RegisterNonIdMessage";
+
+                var sb = new StringBuilder();
                 sb.AppendLine($@"
 {indent}[ModuleInitializer]
 {indent}internal {staticHidingModifier}static void Initialize()
 {indent}{{
-{indent}    MessageSerializer.RegisterType(typeof({typeMeta.Symbol.Name}));
+{indent}    MessageSerializer.{registerMethod}<{typeMeta.Symbol.Name}>();
 {indent}}}");
-
                 return sb.ToString();
             }
 
-            public static string EmitSerialize(TypeMetadata typeMeta, string indent, SerializationGraph serializationGraph)
+            public static string EmitSerialize(TypeMetadata typeMeta, string indent, SerializationGraph graph)
             {
-                var rootModel = serializationGraph.RootType;
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine($@"public static byte[] Serialize({typeMeta.Symbol.Name} message)");
-                sb.AppendLine($@"{indent}{{");
-                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream({MessageWireFormat.DefaultStreamCapacity}))");
-                sb.AppendLine($@"{indent}    using (var writer = new BinaryWriter(ms))");
-                sb.AppendLine($@"{indent}    {{");
-                
-                // id 구성: 앞 8비트(standaloneId) + 그 다음 8비트(groupRootId) + 그 다음 16비트(elementId)
+                var rootModel = graph.RootType;
                 uint id = typeMeta.GetMessageId();
+                byte headerByte = (byte)(id >> 24);
+                byte idB1 = (byte)(id >> 16);
+                byte idB2 = (byte)(id >> 8);
+                byte idB3 = (byte)id;
+                bool hasEmbeddedId = typeMeta.IsStandaloneMessage || typeMeta.IsGroupMessage;
 
-                sb.AppendLine($@"{indent}        uint id = {id};");
-                sb.AppendLine($@"{indent}        byte headerByte = (byte)(id >> 24);");
-                sb.AppendLine($@"{indent}        writer.Write(headerByte);");
-                sb.AppendLine($@"{indent}        if ((headerByte & {((byte)MessageFlag.NonIdMessage) << 4}) == 0)");
-                sb.AppendLine($@"{indent}        {{");
-                sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 16));");
-                sb.AppendLine($@"{indent}            writer.Write((byte)(id >> 8));");
-                sb.AppendLine($@"{indent}            writer.Write((byte)id);");
-                sb.AppendLine($@"{indent}        }}");
-                sb.AppendLine($@"{indent}        var context = new MessageSerializer.SerializeContext();");
+                var sb = new StringBuilder();
+
+                // Hot path: writer 기반
+                sb.AppendLine($@"public static void Serialize({typeMeta.Symbol.Name} message, ref MessageBufferWriter writer)");
+                sb.AppendLine($@"{indent}{{");
                 if (rootModel.IsReferenceType)
                 {
-                    sb.AppendLine($@"{indent}        context.RegisterObject(message);");
+                    sb.AppendLine($@"{indent}    if (message is null) throw new ArgumentNullException(nameof(message));");
                 }
-                sb.AppendLine($@"{indent}        {rootModel.WritePayloadMethodName}(writer, message, context);");
-                sb.AppendLine($@"{indent}        return ms.ToArray();");
+                sb.AppendLine($@"{indent}    writer.WriteByte(0x{headerByte:X2});");
+                if (hasEmbeddedId)
+                {
+                    sb.AppendLine($@"{indent}    writer.WriteByte(0x{idB1:X2});");
+                    sb.AppendLine($@"{indent}    writer.WriteByte(0x{idB2:X2});");
+                    sb.AppendLine($@"{indent}    writer.WriteByte(0x{idB3:X2});");
+                }
+                sb.AppendLine($@"{indent}    var __context = default(MessageSerializer.SerializeContext);");
+                if (rootModel.IsReferenceType)
+                {
+                    sb.AppendLine($@"{indent}    __context.RegisterObject(message);");
+                }
+                sb.AppendLine($@"{indent}    {rootModel.WritePayloadMethodName}(ref writer, message, ref __context);");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+
+                // Compat: byte[] 반환
+                sb.AppendLine($@"{indent}public static byte[] Serialize({typeMeta.Symbol.Name} message)");
+                sb.AppendLine($@"{indent}{{");
+                if (rootModel.IsReferenceType)
+                {
+                    sb.AppendLine($@"{indent}    if (message is null) throw new ArgumentNullException(nameof(message));");
+                }
+                sb.AppendLine($@"{indent}    var __writer = MessageBufferWriter.Create();");
+                sb.AppendLine($@"{indent}    try");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        Serialize(message, ref __writer);");
+                sb.AppendLine($@"{indent}        return __writer.ToArray();");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}    finally");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        __writer.Dispose();");
                 sb.AppendLine($@"{indent}    }}");
                 sb.AppendLine($@"{indent}}}");
 
                 return sb.ToString();
             }
 
-            public static string EmitDeserialize(TypeMetadata typeMeta, string indent, SerializationGraph serializationGraph)
+            public static string EmitDeserialize(TypeMetadata typeMeta, string indent, SerializationGraph graph)
             {
-                var rootModel = serializationGraph.RootType;
+                var rootModel = graph.RootType;
                 string staticHidingModifier = GetStaticHidingModifier(typeMeta);
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine($@"public {staticHidingModifier}static {typeMeta.Symbol.Name} Deserialize(byte[] data)");
+
+                var sb = new StringBuilder();
+
+                // Hot path: reader 기반
+                sb.AppendLine($@"public {staticHidingModifier}static {typeMeta.Symbol.Name} Deserialize(ref MessageBufferReader reader)");
                 sb.AppendLine($@"{indent}{{");
-                sb.AppendLine($@"{indent}    using (var ms = new MemoryStream(data))");
-                sb.AppendLine($@"{indent}    using (var reader = new BinaryReader(ms))");
+                sb.AppendLine($@"{indent}    byte __headerByte = reader.ReadByte();");
+                sb.AppendLine($@"{indent}    if ((__headerByte & {((byte)MessageFlag.NonIdMessage) << 4}) == 0)");
                 sb.AppendLine($@"{indent}    {{");
-                sb.AppendLine($@"{indent}        byte headerByte = reader.ReadByte();");
-                sb.AppendLine($@"{indent}        uint id = (uint)headerByte << 24;");
-                sb.AppendLine($@"{indent}        if ((headerByte & {((byte)MessageFlag.NonIdMessage) << 4}) == 0)");
-                sb.AppendLine($@"{indent}        {{");
-                sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 16;");
-                sb.AppendLine($@"{indent}            id |= (uint)reader.ReadByte() << 8;");
-                sb.AppendLine($@"{indent}            id |= reader.ReadByte();");
-                sb.AppendLine($@"{indent}        }}");
-                sb.AppendLine($@"{indent}        var context = new MessageSerializer.DeserializeContext();");
+                sb.AppendLine($@"{indent}        reader.ReadByte();");
+                sb.AppendLine($@"{indent}        reader.ReadByte();");
+                sb.AppendLine($@"{indent}        reader.ReadByte();");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}    var __context = default(MessageSerializer.DeserializeContext);");
                 if (rootModel.IsReferenceType)
                 {
-                    sb.AppendLine($@"{indent}        var result = {rootModel.CreateInstanceMethodName}();");
-                    sb.AppendLine($@"{indent}        context.RegisterObject(1, result);");
-                    sb.AppendLine($@"{indent}        {rootModel.PopulatePayloadMethodName}(reader, result, context);");
-                    sb.AppendLine($@"{indent}        return result;");
+                    sb.AppendLine($@"{indent}    var result = {rootModel.CreateInstanceMethodName}();");
+                    sb.AppendLine($@"{indent}    __context.RegisterNewObject(result);");
+                    sb.AppendLine($@"{indent}    {rootModel.PopulatePayloadMethodName}(ref reader, result, ref __context);");
+                    sb.AppendLine($@"{indent}    return result;");
                 }
                 else
                 {
-                    sb.AppendLine($@"{indent}        return {rootModel.ReadPayloadMethodName}(reader, context);");
+                    sb.AppendLine($@"{indent}    return {rootModel.ReadPayloadMethodName}(ref reader, ref __context);");
                 }
-                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}}}");
+                sb.AppendLine();
+
+                // Compat: byte[] 입력
+                sb.AppendLine($@"{indent}public {staticHidingModifier}static {typeMeta.Symbol.Name} Deserialize(byte[] data)");
+                sb.AppendLine($@"{indent}{{");
+                sb.AppendLine($@"{indent}    if (data is null) throw new ArgumentNullException(nameof(data));");
+                sb.AppendLine($@"{indent}    var __reader = new MessageBufferReader(data);");
+                sb.AppendLine($@"{indent}    return Deserialize(ref __reader);");
                 sb.AppendLine($@"{indent}}}");
 
                 return sb.ToString();
             }
 
-            public static string EmitHelperMethods(string indent, SerializationGraph serializationGraph)
+            public static string EmitHelperMethods(string indent, SerializationGraph graph)
             {
                 var sb = new StringBuilder();
-                sb.Append(EmitTypeMethods(serializationGraph.RootType, indent, serializationGraph));
+                sb.Append(EmitTypeMethods(graph.RootType, indent, graph));
 
-                foreach (var typeModel in serializationGraph.ReachableTypes)
+                foreach (var typeModel in graph.ReachableTypes)
                 {
-                    if (ReferenceEquals(typeModel, serializationGraph.RootType))
+                    if (ReferenceEquals(typeModel, graph.RootType))
                     {
                         continue;
                     }
 
                     sb.AppendLine();
-                    sb.Append(EmitTypeMethods(typeModel, indent, serializationGraph));
+                    sb.Append(EmitTypeMethods(typeModel, indent, graph));
                 }
 
                 return sb.ToString();
             }
 
-            static string EmitTypeMethods(
-                SerializableTypeModel typeModel,
-                string indent,
-                SerializationGraph serializationGraph)
+            static string EmitTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph)
             {
                 return typeModel.IsReferenceType
-                    ? EmitReferenceTypeMethods(typeModel, indent, serializationGraph)
-                    : EmitValueTypeMethods(typeModel, indent, serializationGraph);
+                    ? EmitReferenceTypeMethods(typeModel, indent, graph)
+                    : EmitValueTypeMethods(typeModel, indent, graph);
             }
 
-            static string EmitReferenceTypeMethods(
-                SerializableTypeModel typeModel,
-                string indent,
-                SerializationGraph serializationGraph)
+            static string EmitReferenceTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph)
             {
-                StringBuilder sb = new StringBuilder();
+                var sb = new StringBuilder();
 
+                // CreateInstance
                 sb.AppendLine($@"private static {typeModel.TypeName} {typeModel.CreateInstanceMethodName}()");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    return new {typeModel.TypeName}();");
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, MessageSerializer.SerializeContext context)");
+
+                // WritePayload
+                sb.AppendLine($@"{indent}private static void {typeModel.WritePayloadMethodName}(ref MessageBufferWriter writer, {typeModel.TypeName} message, ref MessageSerializer.SerializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", serializationGraph));
+                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", graph));
                 }
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static void {typeModel.PopulatePayloadMethodName}(BinaryReader reader, {typeModel.TypeName} result, MessageSerializer.DeserializeContext context)");
+
+                // PopulatePayload
+                sb.AppendLine($@"{indent}private static void {typeModel.PopulatePayloadMethodName}(ref MessageBufferReader reader, {typeModel.TypeName} result, ref MessageSerializer.DeserializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", serializationGraph));
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph));
                 }
                 sb.AppendLine($@"{indent}}}");
 
                 return sb.ToString();
             }
 
-            static string EmitValueTypeMethods(
-                SerializableTypeModel typeModel,
-                string indent,
-                SerializationGraph serializationGraph)
+            static string EmitValueTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph)
             {
-                StringBuilder sb = new StringBuilder();
+                var sb = new StringBuilder();
 
-                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(BinaryWriter writer, {typeModel.TypeName} message, MessageSerializer.SerializeContext context)");
+                // WritePayload
+                sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(ref MessageBufferWriter writer, {typeModel.TypeName} message, ref MessageSerializer.SerializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", serializationGraph));
+                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", graph));
                 }
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
-                sb.AppendLine($@"private static {typeModel.TypeName} {typeModel.ReadPayloadMethodName}(BinaryReader reader, MessageSerializer.DeserializeContext context)");
+
+                // ReadPayload (returns new instance)
+                sb.AppendLine($@"{indent}private static {typeModel.TypeName} {typeModel.ReadPayloadMethodName}(ref MessageBufferReader reader, ref MessageSerializer.DeserializeContext context)");
                 sb.AppendLine($@"{indent}{{");
-                sb.AppendLine($@"{indent}    var result = new {typeModel.TypeName}();");
+                sb.AppendLine($@"{indent}    var result = default({typeModel.TypeName});");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", serializationGraph));
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph));
                 }
                 sb.AppendLine($@"{indent}    return result;");
                 sb.AppendLine($@"{indent}}}");
@@ -197,4 +228,3 @@ namespace MessageProtocol.CodeGenerator.Generate
         }
     }
 }
-

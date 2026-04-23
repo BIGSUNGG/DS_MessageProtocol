@@ -1,77 +1,156 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace MessageProtocol.Serialize
 {
     public static partial class MessageSerializer
     {
         /// <summary>
-        /// Key : Message Type
-        /// Value : Serialize 메서드를 호출하는 객체
+        /// 버퍼 writer 에 전체 메시지를 쓰는 타입별 델리게이트 등록 테이블. object 경로에서만 사용됩니다.
         /// </summary>
-        static readonly ConcurrentDictionary<Type, NonGenericSerializeInvoker> _serializeCache = new();
+        static readonly ConcurrentDictionary<Type, BufferWriterAction> _writerDispatch = new();
 
+        public delegate void BufferWriterAction(object message, ref MessageBufferWriter writer);
+
+        /// <summary>
+        /// 제네릭 hot path. 가능한 한 빠른 경로로 메시지를 직렬화합니다.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Serialize<T>(T message, ref MessageBufferWriter writer) where T : IMessageSerializable<T>
+        {
+            if (message is null) throw new ArgumentNullException(nameof(message));
+            T.Serialize(message, ref writer);
+        }
+
+        /// <summary>
+        /// 제네릭 API: PooledBuffer 반환 (ArrayPool 사용). 호출자가 Dispose 로 반드시 반환해야 합니다.
+        /// </summary>
+        public static PooledBuffer SerializePooled<T>(T message) where T : IMessageSerializable<T>
+        {
+            if (message is null) throw new ArgumentNullException(nameof(message));
+            var writer = MessageBufferWriter.Create();
+            try
+            {
+                T.Serialize(message, ref writer);
+                return writer.ToPooledBuffer();
+            }
+            catch
+            {
+                writer.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 제네릭 API: 호환용 byte[] 반환.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] Serialize<T>(T message) where T : IMessageSerializable<T>
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-
-            if (message is IHasIdMessageSerializable<T>)
-                return Serialize((object)message);
-
+            if (message is null) throw new ArgumentNullException(nameof(message));
             return T.Serialize(message);
         }
 
+        /// <summary>
+        /// object dispatch API: 호환용 byte[] 반환. 타입별 writer 델리게이트로 dispatch 합니다.
+        /// </summary>
         public static byte[] Serialize(object message)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-
-            return RegisterSerializeInvoker(message.GetType()).Serialize(message);
-        }
-
-        private static NonGenericSerializeInvoker RegisterSerializeInvoker(Type messageType)
-        {
-            return _serializeCache.GetOrAdd(messageType, CreateSerializeInvoker);
-        }
-
-        static NonGenericSerializeInvoker CreateSerializeInvoker(Type messageType)
-        {
+            if (message is null) throw new ArgumentNullException(nameof(message));
+            var writer = MessageBufferWriter.Create();
             try
             {
-                var genericInvokerType = typeof(GenericSerializeInvoker<>).MakeGenericType(messageType);
-                var instance = Activator.CreateInstance(genericInvokerType);
-                if (instance == null)
+                var invoker = GetWriterInvoker(message.GetType());
+                invoker(message, ref writer);
+                return writer.ToArray();
+            }
+            finally
+            {
+                writer.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// object dispatch API: PooledBuffer 반환.
+        /// </summary>
+        public static PooledBuffer SerializePooled(object message)
+        {
+            if (message is null) throw new ArgumentNullException(nameof(message));
+            var writer = MessageBufferWriter.Create();
+            try
+            {
+                var invoker = GetWriterInvoker(message.GetType());
+                invoker(message, ref writer);
+                return writer.ToPooledBuffer();
+            }
+            catch
+            {
+                writer.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// object dispatch: 지정된 버퍼 writer 에 직접 기록합니다. 중첩 메시지 용도.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SerializeToWriter(object message, ref MessageBufferWriter writer)
+        {
+            if (message is null) throw new ArgumentNullException(nameof(message));
+            var invoker = GetWriterInvoker(message.GetType());
+            invoker(message, ref writer);
+        }
+
+        static readonly object _lazyRegisterLock = new();
+
+        static BufferWriterAction GetWriterInvoker(Type messageType)
+        {
+            if (_writerDispatch.TryGetValue(messageType, out var invoker))
+            {
+                return invoker;
+            }
+
+            // Lazy registration for manually-implemented types not auto-registered via ModuleInitializer.
+            lock (_lazyRegisterLock)
+            {
+                if (_writerDispatch.TryGetValue(messageType, out invoker))
                 {
-                    throw new InvalidOperationException($"Failed to create instance of GenericSerializeInvoker<{messageType.Name}>");
+                    return invoker;
                 }
 
-                return (NonGenericSerializeInvoker)instance;
+                try
+                {
+                    RegisterType(messageType);
+                }
+                catch (InvalidOperationException) when (_writerDispatch.ContainsKey(messageType))
+                {
+                    // 다른 스레드와의 경쟁 또는 중복 등록 - writer 가 이미 있으면 무시.
+                }
             }
-            catch (ArgumentException ex) when (ex.Message.Contains("violates the constraint"))
+
+            if (_writerDispatch.TryGetValue(messageType, out invoker))
             {
-                throw new InvalidOperationException(
-                    $"Type '{messageType.FullName}' does not implement 'IMessageSerializable<{messageType.Name}>'. " +
-                    $"This usually means the source generator (MessageProtocol.CodeGenerator) did not generate the required partial class implementation. " +
-                    $"Please ensure that:\n" +
-                    $"1. 'MessageProtocol.CodeGenerator' is properly referenced as an analyzer in your project\n" +
-                    $"2. The project uses ProjectReference (not a DLL reference) to MessageProtocol.Core\n" +
-                    $"3. The message class is marked as 'partial' and has the appropriate attribute ([NonIdMessage], [GroupElementMessage], [GroupRootMessage], or [StandaloneMessage])\n" +
-                    $"Original error: {ex.Message}", ex);
+                return invoker;
+            }
+
+            throw new InvalidOperationException(
+                $"Type '{messageType.FullName}' is not registered for serialization. " +
+                $"Ensure the type is generated via MessageProtocol.CodeGenerator and referenced so its ModuleInitializer runs, " +
+                $"or call MessageSerializer.RegisterType(typeof({messageType.Name})) manually.");
+        }
+
+        internal static void RegisterWriterInvoker(Type type, BufferWriterAction invoker)
+        {
+            if (!_writerDispatch.TryAdd(type, invoker))
+            {
+                throw new InvalidOperationException($"Type '{type.FullName}' already registered for serialization.");
             }
         }
 
-        class GenericSerializeInvoker<T> : NonGenericSerializeInvoker where T : IMessageSerializable<T>
+        internal static bool TryRemoveWriterInvoker(Type type)
         {
-            public override byte[] Serialize(object message)
-            {
-                return T.Serialize((T)message);
-            }
-        }
-
-        abstract class NonGenericSerializeInvoker
-        {
-            public abstract byte[] Serialize(object message);
+            return _writerDispatch.TryRemove(type, out _);
         }
     }
 }

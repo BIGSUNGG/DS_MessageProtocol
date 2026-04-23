@@ -179,7 +179,7 @@ namespace MessageProtocol.Tests.Serialize
             var bytes = MessageSerializer.Serialize(original);
 
             Assert.NotNull(bytes);
-            Assert.True(bytes.Length >= 5);
+            Assert.True(bytes.Length >= 5); // 1 byte header + 4 byte int32
             Assert.NotEqual(0, (bytes[0] >> 4) & 0x01);
         }
 
@@ -296,7 +296,7 @@ namespace MessageProtocol.Tests.Serialize
         }
 
         [Fact]
-        public void NonIdMessage_WithNullPlainClassMember_Should_WriteMinusOneSizeAndRoundTrip()
+        public void NonIdMessage_WithNullPlainClassMember_Should_WriteNullRefKindAndRoundTrip()
         {
             var original = new PlainReferenceMessage
             {
@@ -306,8 +306,8 @@ namespace MessageProtocol.Tests.Serialize
             var bytes = MessageSerializer.Serialize(original);
             var deserialized = MessageSerializer.Deserialize<PlainReferenceMessage>(bytes);
 
-            Assert.Equal(5, bytes.Length);
-            Assert.Equal(-1, BitConverter.ToInt32(bytes, 1));
+            Assert.Equal(2, bytes.Length); // 1 byte header + 1 byte RefKind.Null
+            Assert.Equal((byte)MessageSerializer.ReferenceKind.Null, bytes[1]);
             Assert.Null(deserialized.Root);
         }
 
@@ -590,17 +590,37 @@ namespace MessageProtocol.Tests.Serialize
 
         public int Value { get; set; }
 
+        public static void Serialize(ConcurrentManualMessage message, ref MessageBufferWriter writer)
+        {
+            writer.WriteInt32(message.Value);
+        }
+
+        public static ConcurrentManualMessage Deserialize(ref MessageBufferReader reader)
+        {
+            return new ConcurrentManualMessage
+            {
+                Value = reader.ReadInt32()
+            };
+        }
+
         public static byte[] Serialize(ConcurrentManualMessage message)
         {
-            return BitConverter.GetBytes(message.Value);
+            var writer = MessageBufferWriter.Create();
+            try
+            {
+                Serialize(message, ref writer);
+                return writer.ToArray();
+            }
+            finally
+            {
+                writer.Dispose();
+            }
         }
 
         public static ConcurrentManualMessage Deserialize(byte[] data)
         {
-            return new ConcurrentManualMessage
-            {
-                Value = BitConverter.ToInt32(data, 0)
-            };
+            var reader = new MessageBufferReader(data);
+            return Deserialize(ref reader);
         }
     }
 
@@ -608,29 +628,19 @@ namespace MessageProtocol.Tests.Serialize
     {
         public static uint MessageId => 0x2000ABCE;
 
-        public static byte[] Serialize(DuplicateMessageIdA message)
-        {
-            return [];
-        }
-
-        public static DuplicateMessageIdA Deserialize(byte[] data)
-        {
-            return new DuplicateMessageIdA();
-        }
+        public static void Serialize(DuplicateMessageIdA message, ref MessageBufferWriter writer) { }
+        public static DuplicateMessageIdA Deserialize(ref MessageBufferReader reader) => new DuplicateMessageIdA();
+        public static byte[] Serialize(DuplicateMessageIdA message) => Array.Empty<byte>();
+        public static DuplicateMessageIdA Deserialize(byte[] data) => new DuplicateMessageIdA();
     }
 
     public sealed class DuplicateMessageIdB : IHasIdMessageSerializable<DuplicateMessageIdB>
     {
         public static uint MessageId => DuplicateMessageIdA.MessageId;
 
-        public static byte[] Serialize(DuplicateMessageIdB message)
-        {
-            return [];
-        }
-
-        public static DuplicateMessageIdB Deserialize(byte[] data)
-        {
-            return new DuplicateMessageIdB();
-        }
+        public static void Serialize(DuplicateMessageIdB message, ref MessageBufferWriter writer) { }
+        public static DuplicateMessageIdB Deserialize(ref MessageBufferReader reader) => new DuplicateMessageIdB();
+        public static byte[] Serialize(DuplicateMessageIdB message) => Array.Empty<byte>();
+        public static DuplicateMessageIdB Deserialize(byte[] data) => new DuplicateMessageIdB();
     }
 }

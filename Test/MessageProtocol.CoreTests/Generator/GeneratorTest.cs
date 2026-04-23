@@ -268,7 +268,7 @@ namespace MyCode
             GeneratorTestHelper.AssertNoCompilationErrors(outputCompilation);
 
             var generatedCode = runResult.Results.Single().GeneratedSources[0].SourceText.ToString();
-            Assert.Contains("MessageSerializer.WriteSizedReference", generatedCode);
+            Assert.Contains("MessageSerializer.ReferenceKind", generatedCode);
             Assert.Contains("__WritePayload_", generatedCode);
         }
     }

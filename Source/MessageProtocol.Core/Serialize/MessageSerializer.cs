@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using MessageProtocol;
 
@@ -10,80 +11,115 @@ namespace MessageProtocol.Serialize
     {
         static readonly ConcurrentDictionary<Type, byte> _registeredTypes = new();
         static readonly ConcurrentDictionary<uint, Type> _registeredMessageIds = new();
-        static readonly ConcurrentDictionary<Type, uint> _messageIdCache = new();
 
         static MessageSerializer()
         {
-
         }
 
+        /// <summary>
+        /// 생성기가 ModuleInitializer 에서 호출하는 fast path. 제네릭 제약으로 정적 추상 메서드를 직접 참조하므로
+        /// 리플렉션이 전혀 없습니다.
+        /// </summary>
+        public static void RegisterHasIdMessage<T>() where T : IHasIdMessageSerializable<T>
+        {
+            uint messageId = T.MessageId;
+            RegisterCore(typeof(T), messageId, hasId: true,
+                writer: static (object m, ref MessageBufferWriter w) => T.Serialize((T)m, ref w),
+                reader: static (ref MessageBufferReader r) => (object)T.Deserialize(ref r)!);
+        }
+
+        /// <summary>
+        /// 생성기가 ModuleInitializer 에서 호출하는 fast path. NonId 메시지용.
+        /// </summary>
+        public static void RegisterNonIdMessage<T>() where T : IMessageSerializable<T>
+        {
+            RegisterCore(typeof(T), 0u, hasId: false,
+                writer: static (object m, ref MessageBufferWriter w) => T.Serialize((T)m, ref w),
+                reader: null);
+        }
+
+        /// <summary>
+        /// 리플렉션 기반 기존 호환 API. 수동 구현 타입이나 동적으로 등록해야 하는 경우에만 사용하세요.
+        /// </summary>
         public static void RegisterType(Type type)
         {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
+            if (type is null) throw new ArgumentNullException(nameof(type));
+            if (type.IsGenericTypeDefinition)
+            {
+                throw new ArgumentException($"Open generic type '{type.FullName}' cannot be registered.", nameof(type));
+            }
 
-            uint messageId = GetMessageIdByType(type);
+            var iHasId = type.GetInterfaces().FirstOrDefault(i =>
+                i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IHasIdMessageSerializable<>));
+
+            var iMessage = type.GetInterfaces().FirstOrDefault(i =>
+                i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMessageSerializable<>));
+
+            if (iHasId == null && iMessage == null)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{type.FullName}' does not implement 'IMessageSerializable<{type.Name}>'. " +
+                    $"This usually means the source generator (MessageProtocol.CodeGenerator) did not generate the required partial class implementation.");
+            }
+
+            string methodName = iHasId != null ? nameof(RegisterHasIdMessage) : nameof(RegisterNonIdMessage);
+            var generic = typeof(MessageSerializer)
+                .GetMethod(methodName, BindingFlags.Public | BindingFlags.Static)!
+                .MakeGenericMethod(type);
+            try
+            {
+                generic.Invoke(null, null);
+            }
+            catch (TargetInvocationException tie) when (tie.InnerException != null)
+            {
+                throw tie.InnerException;
+            }
+        }
+
+        static void RegisterCore(Type type, uint messageId, bool hasId, BufferWriterAction writer, BufferReaderFunc? reader)
+        {
             if (!_registeredTypes.TryAdd(type, 0))
             {
                 throw new InvalidOperationException($"Message type '{type.FullName}' is already registered.");
             }
 
-            bool registeredMessageId = false;
+            bool writerRegistered = false;
+            bool messageIdRegistered = false;
+            bool readerRegistered = false;
             try
             {
-                RegisterSerializeInvoker(type);
+                RegisterWriterInvoker(type, writer);
+                writerRegistered = true;
 
-                byte headerByte = (byte)(messageId >> 24);
-                if (MessageWireFormat.HasEmbeddedMessageId(headerByte))
+                if (hasId)
                 {
-                    var existingType = _registeredMessageIds.GetOrAdd(messageId, type);
-                    if (!ReferenceEquals(existingType, type))
+                    byte headerByte = (byte)(messageId >> 24);
+                    if (MessageWireFormat.HasEmbeddedMessageId(headerByte))
                     {
-                        throw new InvalidOperationException(
-                            $"Message type with ID {messageId} is already registered by '{existingType.FullName}'.");
-                    }
+                        var existing = _registeredMessageIds.GetOrAdd(messageId, type);
+                        if (!ReferenceEquals(existing, type))
+                        {
+                            throw new InvalidOperationException(
+                                $"Message type with ID {messageId} is already registered by '{existing.FullName}'.");
+                        }
+                        messageIdRegistered = true;
 
-                    registeredMessageId = true;
-                    RegisterDeserializeInvoker(type, messageId);
+                        if (reader != null)
+                        {
+                            RegisterReaderInvoker(messageId, reader);
+                            readerRegistered = true;
+                        }
+                    }
                 }
             }
             catch
             {
                 _registeredTypes.TryRemove(type, out _);
-                _serializeCache.TryRemove(type, out _);
-                if (registeredMessageId)
-                {
-                    _registeredMessageIds.TryRemove(new KeyValuePair<uint, Type>(messageId, type));
-                    _deserializeCache.TryRemove(messageId, out _);
-                }
-
+                if (writerRegistered) TryRemoveWriterInvoker(type);
+                if (readerRegistered) TryRemoveReaderInvoker(messageId);
+                if (messageIdRegistered) _registeredMessageIds.TryRemove(new KeyValuePair<uint, Type>(messageId, type));
                 throw;
             }
         }
-
-        static uint GetMessageIdByType(Type type)
-        {
-            return _messageIdCache.GetOrAdd(type, ResolveMessageIdByType);
-        }
-
-        static uint ResolveMessageIdByType(Type type)
-        {
-            var messageIdProperty = type.GetProperty("MessageId", BindingFlags.Static | BindingFlags.Public);
-            if (messageIdProperty == null)
-            {
-                throw new InvalidOperationException(
-                    $"Type '{type.FullName}' does not expose a public static MessageId property.");
-            }
-
-            object? value = messageIdProperty.GetValue(null);
-            if (value is uint messageId)
-            {
-                return messageId;
-            }
-
-            throw new InvalidOperationException(
-                $"Type '{type.FullName}' has an invalid MessageId property. Expected a uint value.");
-        }
-
     }
 }
