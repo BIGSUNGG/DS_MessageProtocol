@@ -226,6 +226,8 @@ namespace MessageProtocol.Tests.Serialize
                 },
             };
 
+            original.Nested.Outer = original;
+
             var bytes = MessageSerializer.Serialize(original);
             var deserialized = MessageSerializer.Deserialize(bytes) as OuterMessage;
 
@@ -235,6 +237,7 @@ namespace MessageProtocol.Tests.Serialize
             Assert.Equal(original.Id, deserialized.Id);
             Assert.NotNull(deserialized.Nested);
             Assert.Equal(original.Nested.Value, deserialized.Nested.Value);
+            Assert.Same(deserialized, deserialized.Nested.Outer);
         }
 
         [Fact]
@@ -493,6 +496,7 @@ namespace MessageProtocol.Tests.Serialize
     public partial class NestedMessage
     {
         public int Value { get; set; }
+        public OuterMessage Outer { get; set; }
     }
 
     [StandaloneMessage(13)]

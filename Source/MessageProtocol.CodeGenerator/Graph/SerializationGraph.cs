@@ -26,8 +26,11 @@ namespace MessageProtocol.CodeGenerator.Graph
 
         public static SerializationGraph Create(TypeMetadata rootType, AttributeReferences references)
         {
-            var rootModel = new SerializableTypeModel(rootType, "Root");
+            string rootHelperSuffix = $"{(rootType.Symbol.ContainingNamespace == null || rootType.Symbol.ContainingNamespace.IsGlobalNamespace ? "" : rootType.Symbol.ContainingNamespace.ToDisplayString().Replace('.', '_') + "_")}{rootType.Symbol.MetadataName}";
+
+            var rootModel = new SerializableTypeModel(rootType, rootHelperSuffix);
             var lookup = new Dictionary<ITypeSymbol, SerializableTypeModel>(SymbolEqualityComparer.Default);
+            lookup[rootType.Symbol] = rootModel;
             var graph = new SerializationGraph(rootModel, references, lookup);
             graph.Collect(rootType);
             return graph;
@@ -90,7 +93,7 @@ namespace MessageProtocol.CodeGenerator.Graph
                 return;
             }
 
-            if (IsPrimitiveLike(typeSymbol) || IsMessageType(typeSymbol))
+            if (IsPrimitiveLike(typeSymbol))
             {
                 return;
             }

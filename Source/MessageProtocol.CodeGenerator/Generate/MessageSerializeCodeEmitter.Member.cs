@@ -39,6 +39,14 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (serializationGraph.IsMessageType(typeSymbol))
                 {
+                    if (serializationGraph.TryGetSerializableObjectType(typeSymbol, out var messageTypeModel))
+                    {
+                        string helperCall = messageTypeModel.IsReferenceType
+                            ? $"MessageSerializer.WriteSizedReference(writer, {valueExpression}, context, {messageTypeModel.WritePayloadMethodName});"
+                            : $"MessageSerializer.WriteSizedValue(writer, {valueExpression}, context, {messageTypeModel.WritePayloadMethodName});";
+                        return $"{indent}{helperCall}\n";
+                    }
+
                     if (typeSymbol.IsReferenceType)
                     {
                         return $@"{indent}if ({valueExpression} == null)
@@ -104,8 +112,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (serializationGraph.TryGetSerializableObjectType(typeSymbol, out var typeModel))
                 {
                     string helperCall = typeModel.IsReferenceType
-                        ? $"__WriteSizedReference(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});"
-                        : $"__WriteSizedValue(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});";
+                        ? $"MessageSerializer.WriteSizedReference(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});"
+                        : $"MessageSerializer.WriteSizedValue(writer, {valueExpression}, context, {typeModel.WritePayloadMethodName});";
                     return $"{indent}{helperCall}\n";
                 }
 
@@ -122,6 +130,14 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (serializationGraph.IsMessageType(typeSymbol))
                 {
+                    if (serializationGraph.TryGetSerializableObjectType(typeSymbol, out var messageTypeModel))
+                    {
+                        string helperCall = messageTypeModel.IsReferenceType
+                            ? $"MessageSerializer.ReadSizedReference(reader, context, {messageTypeModel.CreateInstanceMethodName}, {messageTypeModel.PopulatePayloadMethodName})"
+                            : $"MessageSerializer.ReadSizedValue(reader, context, {messageTypeModel.ReadPayloadMethodName})";
+                        return $"{indent}{targetExpression} = {helperCall};\n";
+                    }
+
                     if (typeSymbol.IsReferenceType)
                     {
                         return $@"{indent}int nestedLength = reader.ReadInt32();
@@ -187,8 +203,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (serializationGraph.TryGetSerializableObjectType(typeSymbol, out var typeModel))
                 {
                     string helperCall = typeModel.IsReferenceType
-                        ? $"__ReadSizedReference(reader, context, {typeModel.CreateInstanceMethodName}, {typeModel.PopulatePayloadMethodName})"
-                        : $"__ReadSizedValue(reader, context, {typeModel.ReadPayloadMethodName})";
+                        ? $"MessageSerializer.ReadSizedReference(reader, context, {typeModel.CreateInstanceMethodName}, {typeModel.PopulatePayloadMethodName})"
+                        : $"MessageSerializer.ReadSizedValue(reader, context, {typeModel.ReadPayloadMethodName})";
                     return $"{indent}{targetExpression} = {helperCall};\n";
                 }
 
