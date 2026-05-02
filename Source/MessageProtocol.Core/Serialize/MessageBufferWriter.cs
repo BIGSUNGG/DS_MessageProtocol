@@ -144,7 +144,7 @@ namespace MessageProtocol.Serialize
         public void WriteSingle(float value)
         {
             EnsureCapacity(4);
-            BinaryPrimitives.WriteSingleLittleEndian(_buffer.AsSpan(_position), value);
+            BinaryPrimitivesCompat.WriteSingleLittleEndian(_buffer.AsSpan(_position), value);
             _position += 4;
         }
 
@@ -152,7 +152,7 @@ namespace MessageProtocol.Serialize
         public void WriteDouble(double value)
         {
             EnsureCapacity(8);
-            BinaryPrimitives.WriteDoubleLittleEndian(_buffer.AsSpan(_position), value);
+            BinaryPrimitivesCompat.WriteDoubleLittleEndian(_buffer.AsSpan(_position), value);
             _position += 8;
         }
 
@@ -197,7 +197,7 @@ namespace MessageProtocol.Serialize
 
             int maxBytes = Encoding.UTF8.GetMaxByteCount(value.Length);
             EnsureCapacity(4 + maxBytes);
-            int written = Encoding.UTF8.GetBytes(value, _buffer.AsSpan(_position + 4));
+            int written = Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position + 4);
             BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(_position), written);
             _position += 4 + written;
         }

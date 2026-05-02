@@ -125,7 +125,7 @@ namespace MessageProtocol.Serialize
                 _registeredTypes.TryRemove(type, out _);
                 if (writerRegistered) TryRemoveWriterInvoker(type);
                 if (readerRegistered) TryRemoveReaderInvoker(messageId);
-                if (messageIdRegistered) _registeredMessageIds.TryRemove(new KeyValuePair<uint, Type>(messageId, type));
+                if (messageIdRegistered) _registeredMessageIds.TryRemove(messageId, out _);
                 throw;
             }
         }

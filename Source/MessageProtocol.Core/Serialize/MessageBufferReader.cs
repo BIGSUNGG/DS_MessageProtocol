@@ -95,7 +95,7 @@ namespace MessageProtocol.Serialize
         public float ReadSingle()
         {
             EnsureRemaining(4);
-            float value = BinaryPrimitives.ReadSingleLittleEndian(_buffer.Slice(_position));
+            float value = BinaryPrimitivesCompat.ReadSingleLittleEndian(_buffer.Slice(_position));
             _position += 4;
             return value;
         }
@@ -104,7 +104,7 @@ namespace MessageProtocol.Serialize
         public double ReadDouble()
         {
             EnsureRemaining(8);
-            double value = BinaryPrimitives.ReadDoubleLittleEndian(_buffer.Slice(_position));
+            double value = BinaryPrimitivesCompat.ReadDoubleLittleEndian(_buffer.Slice(_position));
             _position += 8;
             return value;
         }
@@ -116,7 +116,7 @@ namespace MessageProtocol.Serialize
         {
             EnsureRemaining(16);
             var span = _buffer.Slice(_position);
-            Span<int> bits = stackalloc int[4];
+            var bits = new int[4];
             bits[0] = BinaryPrimitives.ReadInt32LittleEndian(span);
             bits[1] = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(4));
             bits[2] = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(8));
@@ -140,7 +140,7 @@ namespace MessageProtocol.Serialize
             if (length < 0) return null;
             if (length == 0) return string.Empty;
             var bytes = ReadBytes(length);
-            return Encoding.UTF8.GetString(bytes);
+            return Encoding.UTF8.GetString(bytes.ToArray());
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
