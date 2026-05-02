@@ -14,13 +14,14 @@ namespace MessageProtocol.Serialize
         public delegate void BufferWriterAction(object message, ref MessageBufferWriter writer);
 
         /// <summary>
-        /// 제네릭 hot path. 가능한 한 빠른 경로로 메시지를 직렬화합니다.
+        /// 제네릭 hot path. <see cref="SerializerCache{T}.Serialize"/> 정적 필드 1회 읽기 + 델리게이트 1회 호출만으로
+        /// 직렬화하므로 ConcurrentDictionary lookup 이 없고 구조체 박싱도 발생하지 않습니다.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Serialize<T>(T message, ref MessageBufferWriter writer) where T : IMessageSerializable<T>
         {
             if (message is null) throw new ArgumentNullException(nameof(message));
-            T.Serialize(message, ref writer);
+            SerializerCache<T>.Serialize(message, ref writer);
         }
 
         /// <summary>
@@ -32,7 +33,7 @@ namespace MessageProtocol.Serialize
             var writer = MessageBufferWriter.Create();
             try
             {
-                T.Serialize(message, ref writer);
+                SerializerCache<T>.Serialize(message, ref writer);
                 return writer.ToPooledBuffer();
             }
             catch
@@ -43,13 +44,18 @@ namespace MessageProtocol.Serialize
         }
 
         /// <summary>
-        /// 제네릭 API: 호환용 byte[] 반환.
+        /// 제네릭 API: 호환용 byte[] 반환. T 가 ID 메시지이면 런타임 타입 기반 dispatch 로 라우팅하여
+        /// 다형성(파생 타입을 베이스 타입 매개변수로 전달하는 경우)을 보존합니다.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] Serialize<T>(T message) where T : IMessageSerializable<T>
         {
             if (message is null) throw new ArgumentNullException(nameof(message));
-            return T.Serialize(message);
+
+            if (message is IHasIdMessageSerializable<T>)
+                return Serialize((object)message);
+
+            return SerializerCache<T>.SerializeBytes(message);
         }
 
         /// <summary>

@@ -17,15 +17,23 @@ namespace MessageProtocol.Serialize
         }
 
         /// <summary>
-        /// 생성기가 ModuleInitializer 에서 호출하는 fast path. 제네릭 제약으로 정적 추상 메서드를 직접 참조하므로
-        /// 리플렉션이 전혀 없습니다.
+        /// 생성기가 ModuleInitializer 에서 호출하는 fast path. 첫 호출 시 <see cref="SerializerCache{T}"/>
+        /// 정적 생성자가 리플렉션으로 typed 델리게이트를 한 번 캐싱하므로 이후 핫 경로는 lookup 이 없습니다.
         /// </summary>
         public static void RegisterHasIdMessage<T>() where T : IHasIdMessageSerializable<T>
         {
-            uint messageId = T.MessageId;
+            if (!SerializerCache<T>.HasId)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{typeof(T).FullName}' is registered as a HasId message but exposes no 'public static uint MessageId' property.");
+            }
+
+            uint messageId = SerializerCache<T>.MessageId;
             RegisterCore(typeof(T), messageId, hasId: true,
-                writer: static (object m, ref MessageBufferWriter w) => T.Serialize((T)m, ref w),
-                reader: static (ref MessageBufferReader r) => (object)T.Deserialize(ref r)!);
+                writer: static (object m, ref MessageBufferWriter w) => SerializerCache<T>.Serialize((T)m, ref w),
+                reader: SerializerCache<T>.Deserialize is null
+                    ? null
+                    : static (ref MessageBufferReader r) => (object)SerializerCache<T>.Deserialize!(ref r)!);
         }
 
         /// <summary>
@@ -34,12 +42,12 @@ namespace MessageProtocol.Serialize
         public static void RegisterNonIdMessage<T>() where T : IMessageSerializable<T>
         {
             RegisterCore(typeof(T), 0u, hasId: false,
-                writer: static (object m, ref MessageBufferWriter w) => T.Serialize((T)m, ref w),
+                writer: static (object m, ref MessageBufferWriter w) => SerializerCache<T>.Serialize((T)m, ref w),
                 reader: null);
         }
 
         /// <summary>
-        /// 리플렉션 기반 기존 호환 API. 수동 구현 타입이나 동적으로 등록해야 하는 경우에만 사용하세요.
+        /// 리플렉션 기반 호환 API. 수동 구현 타입이나 동적으로 등록해야 하는 경우에만 사용하세요.
         /// </summary>
         public static void RegisterType(Type type)
         {

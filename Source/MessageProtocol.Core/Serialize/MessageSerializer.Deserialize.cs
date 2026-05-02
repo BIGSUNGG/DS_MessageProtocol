@@ -16,12 +16,15 @@ namespace MessageProtocol.Serialize
         static readonly ConcurrentDictionary<uint, BufferReaderFunc> _readerDispatch = new();
 
         /// <summary>
-        /// 제네릭 hot path. 버퍼 reader 에서 T 를 역직렬화합니다.
+        /// 제네릭 hot path. <see cref="SerializerCache{T}.Deserialize"/> 정적 필드 1회 읽기 + 델리게이트 1회 호출만으로
+        /// 역직렬화하므로 ConcurrentDictionary lookup 이 없고 박싱이 발생하지 않습니다.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static T Deserialize<T>(ref MessageBufferReader reader) where T : IMessageSerializable<T>
         {
-            return T.Deserialize(ref reader);
+            var deserialize = SerializerCache<T>.Deserialize;
+            if (deserialize is null) ThrowMissingDeserialize<T>();
+            return deserialize!(ref reader);
         }
 
         /// <summary>
@@ -31,8 +34,10 @@ namespace MessageProtocol.Serialize
         public static T Deserialize<T>(ReadOnlySpan<byte> data) where T : IMessageSerializable<T>
         {
             if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
+            var deserialize = SerializerCache<T>.Deserialize;
+            if (deserialize is null) ThrowMissingDeserialize<T>();
             var reader = new MessageBufferReader(data);
-            return T.Deserialize(ref reader);
+            return deserialize!(ref reader);
         }
 
         /// <summary>
@@ -52,7 +57,18 @@ namespace MessageProtocol.Serialize
         {
             if (data is null) throw new ArgumentNullException(nameof(data));
             if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
-            return T.Deserialize(data);
+            var deserializeBytes = SerializerCache<T>.DeserializeBytes;
+            if (deserializeBytes is null) ThrowMissingDeserialize<T>();
+            return deserializeBytes!(data);
+        }
+
+        static void ThrowMissingDeserialize<T>()
+        {
+            throw new InvalidOperationException(
+                $"Type '{typeof(T).FullName}' has no deserialize method. " +
+                $"Ensure the type is generated via MessageProtocol.CodeGenerator or defines " +
+                $"'public static {typeof(T).Name} Deserialize(ref MessageBufferReader)' and " +
+                $"'public static {typeof(T).Name} Deserialize(byte[])'.");
         }
 
         /// <summary>
