@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- 테스트·벤치마크·향후 Sandbox 등 기본은 패키지 생성 안 함. Source/ 에서만 재정의. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

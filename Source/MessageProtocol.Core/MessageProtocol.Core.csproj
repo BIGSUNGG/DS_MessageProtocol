@@ -1,21 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <PackageId>MessageProtocol.Core</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>BIGSUNGG</Authors>
+    <Description>MessageProtocol 런타임 직렬화 API 및 메시지 계약(TypeId, MessageSerializer 등).</Description>
+    <RepositoryUrl>https://github.com/BIGSUNGG/DS_MessageProtocol</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <WarningsAsErrors>$(WarningsAsErrors);NU1605</WarningsAsErrors>
-    <NoWarn>1701;1702,8605,8602,8601;CS9057</NoWarn>
+    <NoWarn>$(NoWarn);1701;1702;8605;8602;8601;CS9057</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <WarningsAsErrors>$(WarningsAsErrors);NU1605</WarningsAsErrors>
-    <NoWarn>1701;1702,8605,8602,8601;CS9057</NoWarn>
+    <NoWarn>$(NoWarn);1701;1702;8605;8602;8601;CS9057</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,19 +1,32 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>netstandard2.0</TargetFramework>
-		<LangVersion>latest</LangVersion>
-		<Nullable>enable</Nullable>
+		<PackageId>MessageProtocol.CodeGenerator</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>BIGSUNGG</Authors>
+		<Description>Roslyn 소스 생성기: MessageProtocol 메시지 타입용 Serialize/Deserialize 및 등록 코드 생성.</Description>
+		<RepositoryUrl>https://github.com/BIGSUNGG/DS_MessageProtocol</RepositoryUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<DefineConstants>$(DefineConstants);MESSAGE_PROTOCOL_CODE_GENERATOR</DefineConstants>
 
 		<IsRoslynAnalyzer>true</IsRoslynAnalyzer>
 		<IncludeBuildOutput>false</IncludeBuildOutput>
 		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+		<!-- 분석기 전용 패키지(lib 없음)로 인한 NU5128 -->
+		<NoWarn>$(NoWarn);NU5128</NoWarn>
+		<!-- IncludeBuildOutput=false 이지만 Pack 시 분석기 DLL을 analyzers/dotnet/cs 로 넣음 -->
+		<TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);AddAnalyzerAssemblyToPackage</TargetsForTfmSpecificContentInPackage>
 	</PropertyGroup>
-	
+
+	<Target Name="AddAnalyzerAssemblyToPackage">
+		<ItemGroup>
+			<TfmSpecificPackageFile Include="$(TargetPath)" PackagePath="analyzers/dotnet/cs" />
+		</ItemGroup>
+	</Target>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.8.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.8.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,14 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <PackageId>MessageProtocol</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>BIGSUNGG</Authors>
+    <Description>메시지 프로토콜 직렬화를 위한 메인 패키지. MessageProtocol.Core와 소스 생성 분석기를 포함합니다.</Description>
+    <RepositoryUrl>https://github.com/BIGSUNGG/DS_MessageProtocol</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- NuGet 단일 패키지에 Roslyn 분석기 DLL 포함(analyzers/dotnet/cs) -->
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);IncludeCodeGeneratorAnalyzerInPackage</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
 
+  <Target Name="IncludeCodeGeneratorAnalyzerInPackage">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)..\MessageProtocol.CodeGenerator\bin\$(Configuration)\$(TargetFramework)\MessageProtocol.CodeGenerator.dll" PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
-    <ProjectReference Include="..\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    <ProjectReference Include="..\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\MessageProtocol.Core\MessageProtocol.Core.csproj" />
   </ItemGroup>
 
