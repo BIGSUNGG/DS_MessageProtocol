@@ -55,11 +55,17 @@ ID 값 범위: `0 .. 2^24-1`.
 | `RegisterHasIdMessage<T>()` | ID 메시지 등록 |
 | `RegisterNonIdMessage<T>()` | NonId 등록 |
 | `RegisterType(Type)` | 리플렉션 기반 등록 |
-| `Serialize<T>` / `Serialize(object)` / `SerializePooled*` / `SerializeToWriter` | 직렬화 |
+| `Serialize<T>(T)` | 선언 타입 `T`의 제네릭 캐시 경로 (`byte[]`) |
+| `Serialize(object)` / `SerializeToWriter` | 런타임 타입 dispatch — **다형성**(베이스 변수 + 파생 인스턴스)에 사용 |
+| `SerializePooled*` | ArrayPool 기반 결과 (`PooledBuffer`) |
 | `Deserialize<T>(...)` | 제네릭 역직렬화 |
 | `Deserialize(byte[]\|Span\|Memory)` | MessageId 기반 object 역직렬화 (Standalone/Group만) |
 
-흐름: [[Data-Flow]].
+`Serialize<T>`는 런타임 타입을 보지 않는다. 파생 메시지로 직렬화하려면 `Serialize((object)msg)`를 쓴다.
+
+핫 경로 권장: `Serialize(T, ref MessageBufferWriter)` / `SerializePooled<T>` / `Deserialize<T>(Span)`.
+
+흐름: [[Data-Flow]]. 잔여 이슈: [[Known-Issues]].
 
 ## 관련
 

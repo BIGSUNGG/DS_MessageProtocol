@@ -480,6 +480,37 @@ namespace MessageProtocol.Tests.Serialize
 
             Assert.Throws<KeyNotFoundException>(() => MessageSerializer.Deserialize(bytes));
         }
+
+        [Fact]
+        public void PooledBuffer_Dispose_Should_BeIdempotent()
+        {
+            var message = new StandalonePayload { Flag = true };
+            var buffer = MessageSerializer.SerializePooled(message);
+            Assert.True(buffer.Length > 0);
+
+            buffer.Dispose();
+            buffer.Dispose();
+
+            Assert.Equal(0, buffer.Length);
+            Assert.True(buffer.Span.IsEmpty);
+        }
+
+        [Fact]
+        public void Serialize_Object_WithDerivedGroupElement_Should_RoundTripAsDerived()
+        {
+            RootMessage original = new ElementMessage
+            {
+                Id = 99,
+                Name = "polymorphic"
+            };
+
+            var bytes = MessageSerializer.Serialize((object)original);
+            var deserialized = MessageSerializer.Deserialize(bytes) as ElementMessage;
+
+            Assert.NotNull(deserialized);
+            Assert.Equal(99, deserialized.Id);
+            Assert.Equal("polymorphic", deserialized.Name);
+        }
     }
 
     [GroupRootMessage(1)]

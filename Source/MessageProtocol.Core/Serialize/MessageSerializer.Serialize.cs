@@ -44,22 +44,20 @@ namespace MessageProtocol.Serialize
         }
 
         /// <summary>
-        /// 제네릭 API: 호환용 byte[] 반환. T 가 ID 메시지이면 런타임 타입 기반 dispatch 로 라우팅하여
-        /// 다형성(파생 타입을 베이스 타입 매개변수로 전달하는 경우)을 보존합니다.
+        /// 제네릭 API: 호환용 byte[] 반환. 선언 타입 <typeparamref name="T"/> 의 생성 직렬화 경로를 사용합니다.
+        /// 런타임 타입이 <typeparamref name="T"/> 의 파생형인 다형성 직렬화가 필요하면
+        /// <see cref="Serialize(object)"/> 또는 <see cref="SerializeToWriter"/> 를 사용하세요.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] Serialize<T>(T message) where T : IMessageSerializable<T>
         {
             if (message is null) throw new ArgumentNullException(nameof(message));
-
-            if (message is IHasIdMessageSerializable<T>)
-                return Serialize((object)message);
-
             return SerializerCache<T>.SerializeBytes(message);
         }
 
         /// <summary>
-        /// object dispatch API: 호환용 byte[] 반환. 타입별 writer 델리게이트로 dispatch 합니다.
+        /// object dispatch API: 호환용 byte[] 반환. 런타임 타입별 writer 델리게이트로 dispatch 하므로
+        /// 베이스 타입 변수에 담긴 파생 메시지 직렬화(다형성)에 적합합니다.
         /// </summary>
         public static byte[] Serialize(object message)
         {

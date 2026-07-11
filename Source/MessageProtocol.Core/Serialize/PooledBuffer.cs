@@ -5,12 +5,13 @@ namespace MessageProtocol.Serialize
 {
     /// <summary>
     /// ArrayPool 에서 대여한 byte[] 를 소유하는 버퍼. 사용 후 Dispose 로 풀에 반환합니다.
+    /// 값 복사 후 원본과 복사본을 모두 Dispose 하면 이중 반환이 되므로, 복사본을 만들지 마세요.
     /// </summary>
-    public readonly struct PooledBuffer : IDisposable
+    public struct PooledBuffer : IDisposable
     {
-        readonly byte[]? _buffer;
-        readonly int _length;
-        readonly bool _fromPool;
+        byte[]? _buffer;
+        int _length;
+        bool _fromPool;
 
         PooledBuffer(byte[]? buffer, int length, bool fromPool)
         {
@@ -52,6 +53,9 @@ namespace MessageProtocol.Serialize
             if (_fromPool && _buffer != null)
             {
                 ArrayPool<byte>.Shared.Return(_buffer);
+                _buffer = null;
+                _fromPool = false;
+                _length = 0;
             }
         }
     }

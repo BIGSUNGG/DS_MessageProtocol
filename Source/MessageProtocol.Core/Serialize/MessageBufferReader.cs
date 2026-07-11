@@ -140,7 +140,7 @@ namespace MessageProtocol.Serialize
             if (length < 0) return null;
             if (length == 0) return string.Empty;
             var bytes = ReadBytes(length);
-            return Encoding.UTF8.GetString(bytes.ToArray());
+            return Encoding.UTF8.GetString(bytes);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

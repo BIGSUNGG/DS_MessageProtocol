@@ -27,22 +27,30 @@ namespace MessageProtocol.Serialize
 
         /// <summary>
         /// 메시지 한 번의 직렬화 동안 공유/순환 참조를 추적합니다.
-        /// 구조체로 구현되어 스택에 존재하며, Dictionary 는 필요 시점에만 지연 할당됩니다.
+        /// 구조체로 구현되어 스택에 존재하며, 첫 객체는 슬롯만 쓰고 Dictionary 는 두 번째 등록부터 할당됩니다.
         /// </summary>
         public struct SerializeContext
         {
+            object? _firstObject;
             Dictionary<object, int>? _objectIds;
             int _nextObjectId;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryGetObjectId(object value, out int objectId)
             {
-                if (_objectIds is null)
+                if (_objectIds is not null)
                 {
-                    objectId = 0;
-                    return false;
+                    return _objectIds.TryGetValue(value, out objectId);
                 }
-                return _objectIds.TryGetValue(value, out objectId);
+
+                if (_firstObject is not null && ReferenceEquals(_firstObject, value))
+                {
+                    objectId = 1;
+                    return true;
+                }
+
+                objectId = 0;
+                return false;
             }
 
             /// <summary>
@@ -50,22 +58,38 @@ namespace MessageProtocol.Serialize
             /// </summary>
             public int RegisterObject(object value)
             {
-                if (_objectIds is null)
+                if (_objectIds is not null)
                 {
-                    _objectIds = new Dictionary<object, int>(ReferenceComparer.Instance);
-                    _nextObjectId = 1;
+                    int id = _nextObjectId++;
+                    _objectIds[value] = id;
+                    return id;
                 }
-                int id = _nextObjectId++;
-                _objectIds[value] = id;
-                return id;
+
+                if (_firstObject is null)
+                {
+                    _firstObject = value;
+                    _nextObjectId = 2;
+                    return 1;
+                }
+
+                _objectIds = new Dictionary<object, int>(ReferenceComparer.Instance)
+                {
+                    [_firstObject] = 1
+                };
+                _firstObject = null;
+                int promotedId = _nextObjectId++;
+                _objectIds[value] = promotedId;
+                return promotedId;
             }
         }
 
         /// <summary>
         /// 메시지 한 번의 역직렬화 동안 id 에서 객체로 되돌리기 위한 테이블.
+        /// 첫 객체는 슬롯만 쓰고 Dictionary 는 두 번째 등록부터 할당됩니다.
         /// </summary>
         public struct DeserializeContext
         {
+            object? _firstObject;
             Dictionary<int, object>? _objects;
             int _nextObjectId;
 
@@ -74,24 +98,49 @@ namespace MessageProtocol.Serialize
             /// </summary>
             public int RegisterNewObject(object value)
             {
-                if (_objects is null)
+                if (_objects is not null)
                 {
-                    _objects = new Dictionary<int, object>();
-                    _nextObjectId = 1;
+                    int id = _nextObjectId++;
+                    _objects[id] = value;
+                    return id;
                 }
-                int id = _nextObjectId++;
-                _objects[id] = value;
-                return id;
+
+                if (_firstObject is null)
+                {
+                    _firstObject = value;
+                    _nextObjectId = 2;
+                    return 1;
+                }
+
+                _objects = new Dictionary<int, object>
+                {
+                    [1] = _firstObject
+                };
+                _firstObject = null;
+                int promotedId = _nextObjectId++;
+                _objects[promotedId] = value;
+                return promotedId;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public object GetObject(int objectId)
             {
-                if (_objects is null)
+                if (_objects is not null)
                 {
-                    ThrowMissingObject(objectId);
+                    if (!_objects.TryGetValue(objectId, out var value))
+                    {
+                        ThrowMissingObject(objectId);
+                    }
+                    return value!;
                 }
-                return _objects![objectId];
+
+                if (objectId == 1 && _firstObject is not null)
+                {
+                    return _firstObject;
+                }
+
+                ThrowMissingObject(objectId);
+                return null!;
             }
 
             static void ThrowMissingObject(int id)
