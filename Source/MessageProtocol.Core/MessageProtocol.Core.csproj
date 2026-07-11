@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>MessageProtocol.Core</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Authors>BIGSUNGG</Authors>
     <Description>MessageProtocol 런타임 직렬화 API 및 메시지 계약(TypeId, MessageSerializer 등).</Description>
     <RepositoryUrl>https://github.com/BIGSUNGG/DS_MessageProtocol</RepositoryUrl>

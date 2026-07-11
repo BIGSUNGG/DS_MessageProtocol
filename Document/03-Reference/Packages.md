@@ -49,7 +49,8 @@ flowchart LR
 
 ## 버전
 
-- 패키지 Version은 각 csproj (`1.0.0` 등)에서 관리.
+- 패키지 Version은 각 csproj에서 관리 (현재 `1.0.1`).
+- NuGet 배포: `v*` 태그 push → `.github/workflows/nuget-publish.yml` (`-p:Version`은 태그에서 추출).
 - Source 공통: `Source/Directory.Build.props` → `TargetFramework=netstandard2.1`, `IsPackable=true`.
 - 루트 `Directory.Build.props` → 기본 `IsPackable=false` (Test 등).
 

@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<PackageId>MessageProtocol.CodeGenerator</PackageId>
-		<Version>1.0.0</Version>
+		<Version>1.0.1</Version>
 		<Authors>BIGSUNGG</Authors>
 		<Description>Roslyn 소스 생성기: MessageProtocol 메시지 타입용 Serialize/Deserialize 및 등록 코드 생성.</Description>
 		<RepositoryUrl>https://github.com/BIGSUNGG/DS_MessageProtocol</RepositoryUrl>
