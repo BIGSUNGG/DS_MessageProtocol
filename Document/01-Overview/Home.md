@@ -47,6 +47,7 @@ updated: 2026-07-11
 ### Troubleshooting
 
 - [[FAQ]]
+- [[Known-Issues]] — 구조·성능·병목
 
 ### Meta
 

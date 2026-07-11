@@ -14,5 +14,6 @@ A: (추가 예정)
 
 ## 관련
 
+- [[Known-Issues]] — 구조·성능·병목 목록
 - [[How-To]]
 - [[Getting-Started]]

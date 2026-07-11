@@ -68,3 +68,4 @@ flowchart TB
 - [[Data-Flow]]
 - [[Packages]]
 - [[CONTEXT]]
+- [[Known-Issues]] — 구조·성능·병목
