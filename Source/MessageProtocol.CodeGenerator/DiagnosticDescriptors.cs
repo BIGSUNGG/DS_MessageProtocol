@@ -45,5 +45,13 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor UnsupportedMemberType = new(
+        id: "MSGPROT006",
+        title: "Unsupported member type",
+        messageFormat: "Member '{1}' has unsupported type '{0}' for MessageProtocol serialization",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }
 

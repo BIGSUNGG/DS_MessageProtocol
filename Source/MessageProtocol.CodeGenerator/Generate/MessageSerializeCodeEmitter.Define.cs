@@ -12,7 +12,7 @@ namespace MessageProtocol.CodeGenerator.Generate
         // Class: 클래스 선언 및 상속
         internal static class Define
         {
-            public static string Emit(TypeMetadata typeMeta, SerializationGraph serializationGraph, AttributeReferences attributeReferences)
+            public static string Emit(TypeMetadata typeMeta, SerializationGraph serializationGraph, AttributeReferences attributeReferences, EmitState state)
             {
                 StringBuilder sb = new StringBuilder();
                 string indent = GetTypeIndent(typeMeta);
@@ -40,7 +40,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($"{declarationIndent}");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitDeserialize(typeMeta, indent + "    ", serializationGraph)}");
                 sb.AppendLine($"{declarationIndent}");
-                sb.AppendLine($"{declarationIndent}    {Method.EmitHelperMethods(indent + "    ", serializationGraph)}");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitHelperMethods(indent + "    ", serializationGraph, state)}");
                 sb.AppendLine($"{declarationIndent}}}");
                 
                 // 괄호 닫기

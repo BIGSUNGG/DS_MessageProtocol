@@ -12,17 +12,24 @@ namespace MessageProtocol.CodeGenerator.Generate
             public static string EmitOnModuleInitialize(TypeMetadata typeMeta, string indent)
             {
                 string staticHidingModifier = GetStaticHidingModifier(typeMeta);
-                string registerMethod = (typeMeta.IsStandaloneMessage || typeMeta.IsGroupMessage)
-                    ? "RegisterHasIdMessage"
-                    : "RegisterNonIdMessage";
+                string typeName = typeMeta.Symbol.Name;
+                bool hasId = typeMeta.IsStandaloneMessage || typeMeta.IsGroupMessage;
 
                 var sb = new StringBuilder();
                 sb.AppendLine($@"
 {indent}[ModuleInitializer]
 {indent}internal {staticHidingModifier}static void Initialize()
-{indent}{{
-{indent}    MessageSerializer.{registerMethod}<{typeMeta.Symbol.Name}>();
-{indent}}}");
+{indent}{{");
+                if (hasId)
+                {
+                    // 델리게이트·MessageId 직접 전달 → SerializerCache 리플렉션 생략 (S4)
+                    sb.AppendLine($@"{indent}    MessageSerializer.RegisterHasIdMessage<{typeName}>({typeName}.Serialize, {typeName}.Deserialize, {typeName}.MessageId);");
+                }
+                else
+                {
+                    sb.AppendLine($@"{indent}    MessageSerializer.RegisterNonIdMessage<{typeName}>({typeName}.Serialize, {typeName}.Deserialize);");
+                }
+                sb.AppendLine($@"{indent}}}");
                 return sb.ToString();
             }
 
@@ -126,10 +133,10 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return sb.ToString();
             }
 
-            public static string EmitHelperMethods(string indent, SerializationGraph graph)
+            public static string EmitHelperMethods(string indent, SerializationGraph graph, EmitState state)
             {
                 var sb = new StringBuilder();
-                sb.Append(EmitTypeMethods(graph.RootType, indent, graph));
+                sb.Append(EmitTypeMethods(graph.RootType, indent, graph, state));
 
                 foreach (var typeModel in graph.ReachableTypes)
                 {
@@ -139,20 +146,20 @@ namespace MessageProtocol.CodeGenerator.Generate
                     }
 
                     sb.AppendLine();
-                    sb.Append(EmitTypeMethods(typeModel, indent, graph));
+                    sb.Append(EmitTypeMethods(typeModel, indent, graph, state));
                 }
 
                 return sb.ToString();
             }
 
-            static string EmitTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph)
+            static string EmitTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state)
             {
                 return typeModel.IsReferenceType
-                    ? EmitReferenceTypeMethods(typeModel, indent, graph)
-                    : EmitValueTypeMethods(typeModel, indent, graph);
+                    ? EmitReferenceTypeMethods(typeModel, indent, graph, state)
+                    : EmitValueTypeMethods(typeModel, indent, graph, state);
             }
 
-            static string EmitReferenceTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph)
+            static string EmitReferenceTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state)
             {
                 var sb = new StringBuilder();
 
@@ -166,10 +173,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 // WritePayload
                 sb.AppendLine($@"{indent}private static void {typeModel.WritePayloadMethodName}(ref MessageBufferWriter writer, {typeModel.TypeName} message, ref MessageSerializer.SerializeContext context)");
                 sb.AppendLine($@"{indent}{{");
-                foreach (var member in GetAllMembers(typeModel.Metadata))
-                {
-                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", graph));
-                }
+                AppendWritePayloadBody(sb, typeModel, indent + "    ", graph, state);
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
 
@@ -178,24 +182,21 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph));
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state));
                 }
                 sb.AppendLine($@"{indent}}}");
 
                 return sb.ToString();
             }
 
-            static string EmitValueTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph)
+            static string EmitValueTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state)
             {
                 var sb = new StringBuilder();
 
                 // WritePayload
                 sb.AppendLine($@"private static void {typeModel.WritePayloadMethodName}(ref MessageBufferWriter writer, {typeModel.TypeName} message, ref MessageSerializer.SerializeContext context)");
                 sb.AppendLine($@"{indent}{{");
-                foreach (var member in GetAllMembers(typeModel.Metadata))
-                {
-                    sb.Append(Member.EmitSerialize(member, "message", indent + "    ", graph));
-                }
+                AppendWritePayloadBody(sb, typeModel, indent + "    ", graph, state);
                 sb.AppendLine($@"{indent}}}");
                 sb.AppendLine();
 
@@ -205,12 +206,43 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    var result = default({typeModel.TypeName});");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph));
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state));
                 }
                 sb.AppendLine($@"{indent}    return result;");
                 sb.AppendLine($@"{indent}}}");
 
                 return sb.ToString();
+            }
+
+            /// <summary>
+            /// P1 MVP: 고정 크기 프리미티브 멤버 wire size 합산 후 EnsureCapacity 1회,
+            /// 이후 공개 Write* 호출(외부 호출자용 EnsureCapacity 유지). string/list 등은 자체 EnsureCapacity.
+            /// </summary>
+            static void AppendWritePayloadBody(
+                StringBuilder sb,
+                SerializableTypeModel typeModel,
+                string indent,
+                SerializationGraph graph,
+                EmitState state)
+            {
+                int fixedSize = 0;
+                foreach (var member in GetAllMembers(typeModel.Metadata))
+                {
+                    if (Member.TryGetFixedPrimitiveWireSize(member.Type, out int size))
+                    {
+                        fixedSize += size;
+                    }
+                }
+
+                if (fixedSize > 0)
+                {
+                    sb.AppendLine($@"{indent}writer.EnsureCapacity({fixedSize});");
+                }
+
+                foreach (var member in GetAllMembers(typeModel.Metadata))
+                {
+                    sb.Append(Member.EmitSerialize(member, "message", indent, graph, state));
+                }
             }
 
             static string GetStaticHidingModifier(TypeMetadata typeMeta)

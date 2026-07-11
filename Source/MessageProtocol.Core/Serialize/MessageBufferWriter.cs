@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace MessageProtocol.Serialize
@@ -53,6 +54,11 @@ namespace MessageProtocol.Serialize
             _position += count;
         }
 
+        /// <summary>
+        /// 버퍼에 <paramref name="additional"/> 바이트를 더 쓸 수 있도록 보장합니다.
+        /// 생성 WritePayload 는 고정 크기 프리미티브 합산 size 로 1회 호출한 뒤 Write* 를 이어 씁니다 (P1).
+        /// 공개 Write* 는 외부 호출자를 위해 각자 EnsureCapacity 를 유지합니다.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void EnsureCapacity(int additional)
         {
@@ -159,15 +165,19 @@ namespace MessageProtocol.Serialize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteChar(char value) => WriteUInt16(value);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteDecimal(decimal value)
         {
             EnsureCapacity(16);
-            var bits = decimal.GetBits(value);
+            // CLR decimal layout: flags, hi, lo, mid. Wire/GetBits order: lo, mid, hi, flags.
+            Span<decimal> temp = stackalloc decimal[1];
+            temp[0] = value;
+            ReadOnlySpan<int> raw = MemoryMarshal.Cast<decimal, int>(temp);
             var span = _buffer.AsSpan(_position);
-            BinaryPrimitives.WriteInt32LittleEndian(span, bits[0]);
-            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(4), bits[1]);
-            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(8), bits[2]);
-            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(12), bits[3]);
+            BinaryPrimitives.WriteInt32LittleEndian(span, raw[2]);
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(4), raw[3]);
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(8), raw[1]);
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(12), raw[0]);
             _position += 16;
         }
 

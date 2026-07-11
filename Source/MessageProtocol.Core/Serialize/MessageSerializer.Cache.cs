@@ -16,22 +16,47 @@ namespace MessageProtocol.Serialize
         public delegate T TypedDeserializeRefFunc<T>(ref MessageBufferReader reader);
 
         /// <summary>
+        /// <see cref="SerializerCache{T}"/> 정적 생성자보다 먼저 델리게이트를 심기 위한 홀더.
+        /// 다른 타입이므로 Prefill 시 <see cref="SerializerCache{T}"/> cctor 가 트리거되지 않습니다.
+        /// </summary>
+        static class SerializerCachePrefill<T>
+        {
+            public static TypedSerializeRefAction<T>? Serialize;
+            public static TypedDeserializeRefFunc<T>? Deserialize;
+            public static Func<T, byte[]>? SerializeBytes;
+            public static Func<byte[], T>? DeserializeBytes;
+            public static uint MessageId;
+            public static bool HasId;
+            public static bool IsSet;
+        }
+
+        /// <summary>
         /// 타입 인자 <typeparamref name="T"/> 전용 정적 캐시.
-        /// 등록 시 또는 첫 접근 시 1회 리플렉션으로 채워지며, 핫 경로에서는 정적 필드 1회 읽기 +
-        /// 델리게이트 1회 호출만으로 직렬화/역직렬화가 수행됩니다.
-        /// 닫힌 타입 단위로 JIT 가 specialization 하므로 딕셔너리 룩업이나 박싱이 발생하지 않습니다.
+        /// <see cref="RegisterHasIdMessage{T}(TypedSerializeRefAction{T}, TypedDeserializeRefFunc{T}, uint, Func{T, byte[]}?, Func{byte[], T}?)"/> 등으로
+        /// Prefill 되면 리플렉션 없이 채워지고, 그렇지 않으면 첫 접근 시 1회 리플렉션으로 채워집니다.
         /// </summary>
         internal static class SerializerCache<T>
         {
             public static readonly TypedSerializeRefAction<T> Serialize;
             public static readonly TypedDeserializeRefFunc<T>? Deserialize;
             public static readonly Func<T, byte[]> SerializeBytes;
-            public static readonly Func<byte[], T>? DeserializeBytes;
             public static readonly uint MessageId;
             public static readonly bool HasId;
+            public static readonly Func<byte[], T>? DeserializeBytes;
 
             static SerializerCache()
             {
+                if (SerializerCachePrefill<T>.IsSet)
+                {
+                    Serialize = SerializerCachePrefill<T>.Serialize!;
+                    Deserialize = SerializerCachePrefill<T>.Deserialize;
+                    SerializeBytes = SerializerCachePrefill<T>.SerializeBytes!;
+                    DeserializeBytes = SerializerCachePrefill<T>.DeserializeBytes;
+                    MessageId = SerializerCachePrefill<T>.MessageId;
+                    HasId = SerializerCachePrefill<T>.HasId;
+                    return;
+                }
+
                 Type type = typeof(T);
 
                 MethodInfo serializeRef = ResolveSerializeRefMethod(type);

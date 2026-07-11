@@ -3,12 +3,13 @@ using MessageProtocol.CodeGenerator.Metadata;
 using MessageProtocol.CodeGenerator.Generate;
 using MessageProtocol.CodeGenerator;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using System.Linq;
 using System;
-using Microsoft.CodeAnalysis.Text;
-using System.Text;
 using System.Collections.Generic;
-using System.IO;
+using System.Collections.Immutable;
+using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
@@ -17,25 +18,47 @@ namespace MessageProtocol.CodeGenerator.Generate
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            context.RegisterSourceOutput(
-                context.CompilationProvider,
-                static (spc, compilation) =>
+            var standalone = CreateAttributeProvider(context, MetadataNames.StandaloneMessageAttribute);
+            var groupRoot = CreateAttributeProvider(context, MetadataNames.GroupRootMessageAttribute);
+            var groupElement = CreateAttributeProvider(context, MetadataNames.GroupElementMessageAttribute);
+            var nonId = CreateAttributeProvider(context, MetadataNames.NonIdMessageAttribute);
+
+            var candidates = standalone.Collect()
+                .Combine(groupRoot.Collect())
+                .Combine(groupElement.Collect())
+                .Combine(nonId.Collect())
+                .Select(static (sources, _) =>
                 {
-                    GenerateFromCompilation(compilation, spc);
+                    var (((standaloneTypes, groupRootTypes), groupElementTypes), nonIdTypes) = sources;
+                    return standaloneTypes
+                        .Concat(groupRootTypes)
+                        .Concat(groupElementTypes)
+                        .Concat(nonIdTypes)
+                        .Distinct(NamedTypeSymbolComparer.Instance)
+                        .ToImmutableArray();
                 });
+
+            var compilationAndCandidates = context.CompilationProvider.Combine(candidates);
+
+            context.RegisterSourceOutput(compilationAndCandidates, static (spc, source) =>
+            {
+                var (compilation, types) = source;
+                var attributeReferences = new AttributeReferences(compilation);
+                foreach (var typeSymbol in types)
+                {
+                    Generate(typeSymbol, compilation, spc, attributeReferences);
+                }
+            });
         }
 
-        static void GenerateFromCompilation(Compilation compilation, SourceProductionContext context)
+        static IncrementalValuesProvider<INamedTypeSymbol> CreateAttributeProvider(
+            IncrementalGeneratorInitializationContext context,
+            string metadataName)
         {
-            var attributeReferences = new AttributeReferences(compilation);
-            var targetSymbols = EnumerateAllNamedTypes(compilation.Assembly.GlobalNamespace)
-                .Where(typeSymbol => HasMessageAttribute(typeSymbol, attributeReferences))
-                .Distinct(NamedTypeSymbolComparer.Instance);
-
-            foreach (var typeSymbol in targetSymbols)
-            {
-                Generate(typeSymbol, compilation, context, attributeReferences);
-            }
+            return context.SyntaxProvider.ForAttributeWithMetadataName(
+                metadataName,
+                predicate: static (node, _) => node is TypeDeclarationSyntax,
+                transform: static (ctx, _) => (INamedTypeSymbol)ctx.TargetSymbol);
         }
 
         internal static void Generate(INamedTypeSymbol typeSymbol, Compilation compilation, SourceProductionContext context, AttributeReferences? cachedReferences = null)
@@ -82,25 +105,22 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             // Step2 : Generate Code
-            string serializeCode = MessageSerializeCodeEmitter.Emit(typeMeta, attributeReferences);
-
-            // Step3 : Debug - Save generated code to file
-#pragma warning disable RS1035 // Do not use APIs banned for analyzers
-            try
+            bool hasCollectionsMarshal = compilation.GetTypeByMetadataName("System.Runtime.InteropServices.CollectionsMarshal") != null;
+            if (!MessageSerializeCodeEmitter.TryEmit(typeMeta, attributeReferences, hasCollectionsMarshal, out string? serializeCode, out var unsupportedMembers))
             {
-                var generatedFileName = GetGeneratedFileName(typeMeta.Symbol);
-                var debugFilePath = Path.Combine("C:\\Debug\\", $"{generatedFileName}.g.debug.cs");
-                if(Directory.Exists(@"C:\Debug"))
-                    File.WriteAllText(debugFilePath, serializeCode);
+                foreach (var unsupported in unsupportedMembers)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.UnsupportedMemberType,
+                        unsupported.Location,
+                        unsupported.TypeName,
+                        unsupported.MemberOrTypeName));
+                }
+                return;
             }
-            catch
-            {
-                // 디버그 파일 생성 실패는 무시
-            }
-#pragma warning restore RS1035
 
-            // Step4 : Output Code
-            context.AddSource($"{GetGeneratedFileName(typeMeta.Symbol)}.g.cs", SourceText.From(serializeCode, Encoding.UTF8));
+            // Step3 : Output Code
+            context.AddSource($"{GetGeneratedFileName(typeMeta.Symbol)}.g.cs", SourceText.From(serializeCode!, Encoding.UTF8));
         }
 
         public static bool TryGenerateMessageSource(
@@ -162,27 +182,21 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return false;
             }
 
-            serializeCode = MessageSerializeCodeEmitter.Emit(typeMeta, attributeReferences);
+            bool hasCollectionsMarshal = compilation.GetTypeByMetadataName("System.Runtime.InteropServices.CollectionsMarshal") != null;
+            if (!MessageSerializeCodeEmitter.TryEmit(typeMeta, attributeReferences, hasCollectionsMarshal, out serializeCode, out var unsupportedMembers))
+            {
+                var first = unsupportedMembers[0];
+                error = $"Unsupported member type '{first.TypeName}' on '{first.MemberOrTypeName}'.";
+                serializeCode = null;
+                return false;
+            }
+
             if (string.IsNullOrWhiteSpace(serializeCode))
             {
                 error = $"Generated source is empty for type '{typeSymbol.ToDisplayString()}'.";
                 return false;
             }
-            
-#pragma warning disable RS1035 // Do not use APIs banned for analyzers
-            try
-            {
-                var generatedFileName = GetGeneratedFileName(typeMeta.Symbol);
-                var debugFilePath = Path.Combine("C:\\Debug\\", $"{generatedFileName}.g.debug.cs");
-                if(Directory.Exists(@"C:\Debug"))
-                    File.WriteAllText(debugFilePath, serializeCode);
-            }
-            catch
-            {
-                // 디버그 파일 생성 실패는 무시
-            }
-#pragma warning restore RS1035
-            
+
             return true;
         }
 
@@ -194,44 +208,11 @@ namespace MessageProtocol.CodeGenerator.Generate
                 || typeSymbol.ContainAttribute(attributeReferences.GroupElementMessageAttributeType);
         }
 
-        static IEnumerable<INamedTypeSymbol> EnumerateAllNamedTypes(INamespaceSymbol namespaceSymbol)
-        {
-            foreach (var member in namespaceSymbol.GetMembers())
-            {
-                if (member is INamespaceSymbol childNamespace)
-                {
-                    foreach (var nestedType in EnumerateAllNamedTypes(childNamespace))
-                    {
-                        yield return nestedType;
-                    }
-                }
-                else if (member is INamedTypeSymbol namedType)
-                {
-                    foreach (var nestedType in EnumerateTypeAndNested(namedType))
-                    {
-                        yield return nestedType;
-                    }
-                }
-            }
-        }
-
-        static IEnumerable<INamedTypeSymbol> EnumerateTypeAndNested(INamedTypeSymbol typeSymbol)
-        {
-            yield return typeSymbol;
-            foreach (var nestedType in typeSymbol.GetTypeMembers())
-            {
-                foreach (var deepNested in EnumerateTypeAndNested(nestedType))
-                {
-                    yield return deepNested;
-                }
-            }
-        }
-
         static bool IsPartial(INamedTypeSymbol typeSymbol)
         {
             return typeSymbol.DeclaringSyntaxReferences
                 .Select(static reference => reference.GetSyntax())
-                .Any(static syntax => syntax is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax declarationSyntax
+                .Any(static syntax => syntax is TypeDeclarationSyntax declarationSyntax
                     && declarationSyntax.Modifiers.Any(static modifier => modifier.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)));
         }
 

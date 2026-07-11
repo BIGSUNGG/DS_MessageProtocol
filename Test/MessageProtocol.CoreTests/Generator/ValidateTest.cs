@@ -142,5 +142,51 @@ namespace MyCode
             Assert.Empty(runResult.GeneratedTrees);
             Assert.Single(outputCompilation.SyntaxTrees);
         }
+
+        [Fact]
+        public void UnsupportedDictionaryMember_Should_Report_MSGPROT006()
+        {
+            const string source = """
+using System.Collections.Generic;
+using MessageProtocol;
+
+namespace MyCode
+{
+    [StandaloneMessage(1)]
+    public partial class InvalidMessage
+    {
+        public Dictionary<string, int> Values { get; set; }
+    }
+}
+""";
+
+            var (_, _, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+
+            var diagnostic = Assert.Single(diagnostics);
+            Assert.Equal("MSGPROT006", diagnostic.Id);
+        }
+
+        [Fact]
+        public void UnsupportedHashSetMember_Should_Report_MSGPROT006()
+        {
+            const string source = """
+using System.Collections.Generic;
+using MessageProtocol;
+
+namespace MyCode
+{
+    [StandaloneMessage(2)]
+    public partial class InvalidMessage
+    {
+        public HashSet<int> Values { get; set; }
+    }
+}
+""";
+
+            var (_, _, diagnostics) = GeneratorTestHelper.RunGenerator(source);
+
+            var diagnostic = Assert.Single(diagnostics);
+            Assert.Equal("MSGPROT006", diagnostic.Id);
+        }
     }
 }

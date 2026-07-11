@@ -1,30 +1,42 @@
 ﻿using MessageProtocol.CodeGenerator.Metadata;
 using MessageProtocol.CodeGenerator.Reference;
 using MessageProtocol.CodeGenerator.Graph;
+using System.Collections.Immutable;
 using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
     internal static partial class MessageSerializeCodeEmitter
     {
-        public static string Emit(TypeMetadata typeMeta, AttributeReferences attributeReferences)
+        public static bool TryEmit(
+            TypeMetadata typeMeta,
+            AttributeReferences attributeReferences,
+            bool hasCollectionsMarshal,
+            out string? code,
+            out ImmutableArray<UnsupportedMemberInfo> unsupportedMembers)
         {
+            var state = new EmitState(hasCollectionsMarshal);
             var serializationGraph = SerializationGraph.Create(typeMeta, attributeReferences);
             StringBuilder sb = new StringBuilder();
-            
-            // Header: 네임스페이스와 using 추가
+
             sb.Append(Header.Emit(typeMeta, out bool hasNamespace));
-            
-            // Class: 클래스 선언 및 상속
-            sb.Append(Define.Emit(typeMeta, serializationGraph, attributeReferences));
-            
-            // 네임스페이스 닫기
+            sb.Append(Define.Emit(typeMeta, serializationGraph, attributeReferences, state));
+
             if (hasNamespace)
             {
                 sb.Append(Header.EmitCloseNamespace());
             }
 
-            return sb.ToString();
+            if (state.UnsupportedMembers.Count > 0)
+            {
+                code = null;
+                unsupportedMembers = state.UnsupportedMembers.ToImmutableArray();
+                return false;
+            }
+
+            code = sb.ToString();
+            unsupportedMembers = ImmutableArray<UnsupportedMemberInfo>.Empty;
+            return true;
         }
     }
 }

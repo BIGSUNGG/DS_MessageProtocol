@@ -9,7 +9,7 @@
     ///   <item>T Deserialize(byte[])</item>
     /// </list>
     /// 정적 추상 멤버를 사용하지 않으므로 .NET Standard 2.0 까지 호환됩니다.
-    /// 멤버는 등록 시점에 한 번 리플렉션으로 해석되어 <c>SerializerCache&lt;T&gt;</c> 에 캐싱됩니다.
+    /// 생성기는 델리게이트를 직접 넘겨 등록하며, 수동 구현 타입은 등록/첫 사용 시 리플렉션으로 캐싱됩니다.
     /// </summary>
     public interface IMessageSerializable<T>
     {

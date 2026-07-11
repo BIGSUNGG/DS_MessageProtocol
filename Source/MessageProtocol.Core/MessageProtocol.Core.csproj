@@ -8,6 +8,9 @@
     <RepositoryUrl>https://github.com/BIGSUNGG/DS_MessageProtocol</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- net6+ consumers must not see the ModuleInitializer polyfill (CS0433). -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>netstandard2.1;net6.0</TargetFrameworks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

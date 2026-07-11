@@ -18,12 +18,13 @@ updated: 2026-07-11
 - Roslyn CodeGenerator (생성 코드)
 - netstandard2.1 / Unity 호환
 - 벤치마크·코어 테스트 (`Test/`)
+- 최소 콘솔 예제 (`Examples/MinimalConsole`)
 
 ## Out of scope
 
 - 네트워크 전송 (→ DS_Communication)
 - RPC 디스패치·원격 호출 (→ DS_RPC)
-- Sandbox / Examples 샘플 프로젝트 (현재 저장소에 없음)
+- 대규모 Sandbox / 튜토리얼 앱 (MinimalConsole 수준만)
 
 ## 저장소 구조 (요약)
 
@@ -31,6 +32,7 @@ updated: 2026-07-11
 |------|------|
 | `Source/` | MessageProtocol, Core, CodeGenerator, Shared |
 | `Test/` | CoreTests, Benchmarks |
+| `Examples/` | MinimalConsole |
 | `Document/` | 이 vault |
 | `.cursor/` | skills (코드 작업용; Document와 별도) |
 

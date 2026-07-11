@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace MessageProtocol.Serialize
@@ -112,17 +113,24 @@ namespace MessageProtocol.Serialize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public char ReadChar() => (char)ReadUInt16();
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public decimal ReadDecimal()
         {
             EnsureRemaining(16);
             var span = _buffer.Slice(_position);
-            var bits = new int[4];
-            bits[0] = BinaryPrimitives.ReadInt32LittleEndian(span);
-            bits[1] = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(4));
-            bits[2] = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(8));
-            bits[3] = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(12));
+            int lo = BinaryPrimitives.ReadInt32LittleEndian(span);
+            int mid = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(4));
+            int hi = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(8));
+            int flags = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(12));
             _position += 16;
-            return new decimal(bits);
+            // Mirror WriteDecimal CLR layout (flags, hi, lo, mid) without net6+ Span ctor.
+            Span<decimal> temp = stackalloc decimal[1];
+            Span<int> raw = MemoryMarshal.Cast<decimal, int>(temp);
+            raw[0] = flags;
+            raw[1] = hi;
+            raw[2] = lo;
+            raw[3] = mid;
+            return temp[0];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

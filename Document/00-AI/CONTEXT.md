@@ -20,7 +20,8 @@ updated: 2026-07-11
 - 문서 vault 루트: `Document/` (이 폴더가 Obsidian Vault)
 - 솔루션: `MessageProtocol.sln`
 - 제품: `Source/` (Core · CodeGenerator · MessageProtocol · Shared)
-- 테스트: `Test/` (CoreTests · Benchmarks). Sandbox/Examples 없음.
+- 테스트: `Test/` (CoreTests `net8.0;net9.0` · Benchmarks)
+- 예제: `Examples/MinimalConsole` (Standalone round-trip)
 
 ## 읽을 순서
 
@@ -53,4 +54,5 @@ updated: 2026-07-11
 - 사람용 시작: [[Home]]
 - 범위: [[Scope]]
 - 구조: [[Overview]] · [[Components]] · [[Data-Flow]]
+- 구조·성능·병목: [[Known-Issues]]
 - 규칙: [[CONVENTIONS]]
