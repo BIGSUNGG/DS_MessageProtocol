@@ -17,12 +17,24 @@ updated: 2026-07-11
 - 메시지 계약 및 `MessageSerializer` 런타임
 - Roslyn CodeGenerator (생성 코드)
 - netstandard2.1 / Unity 호환
-- 벤치마크·코어 테스트
+- 벤치마크·코어 테스트 (`Test/`)
 
 ## Out of scope
 
 - 네트워크 전송 (→ DS_Communication)
 - RPC 디스패치·원격 호출 (→ DS_RPC)
+- Sandbox / Examples 샘플 프로젝트 (현재 저장소에 없음)
+
+## 저장소 구조 (요약)
+
+| 경로 | 포함 |
+|------|------|
+| `Source/` | MessageProtocol, Core, CodeGenerator, Shared |
+| `Test/` | CoreTests, Benchmarks |
+| `Document/` | 이 vault |
+| `.cursor/` | skills (코드 작업용; Document와 별도) |
+
+상세: [[Overview]].
 
 ## 의존·형제 프로젝트
 
@@ -44,3 +56,4 @@ flowchart LR
 - [[CONTEXT]]
 - [[Home]]
 - [[Packages]]
+- [[Overview]]

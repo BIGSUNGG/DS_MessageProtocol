@@ -1,7 +1,7 @@
 ---
 project: DS_MessageProtocol
 type: overview
-status: stub
+status: draft
 tags: [changelog]
 updated: 2026-07-11
 ---
@@ -12,4 +12,5 @@ updated: 2026-07-11
 
 ## 2026-07-11
 
+- 프로젝트·코드 구조 문서 초안: Overview, Components, Data-Flow, Packages, Public-API, Configuration, GLOSSARY/CONTEXT/Scope 보강
 - Document Obsidian Vault 공통 스켈레톤 초기화
