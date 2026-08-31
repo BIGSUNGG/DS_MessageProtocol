@@ -53,5 +53,13 @@ namespace MessageProtocol.CodeGenerator
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor DuplicateMessageAttributes = new(
+            id: "MSGPROT007",
+            title: "Message attributes are mutually exclusive",
+            messageFormat: "Message type '{0}' has multiple message attributes ({1}); they are mutually exclusive and code generation is skipped",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }

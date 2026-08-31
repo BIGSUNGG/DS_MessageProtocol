@@ -120,6 +120,33 @@ public class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void MSGPROT007_메시지_속성_중복이면_경고하고_생성을_건너뛴다()
+    {
+        var (diagnostics, generated) = RunGenerator(Header + """
+            [NonIdMessage]
+            [StandaloneMessage(1)]
+            public partial class Confused { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT007" && d.Severity == DiagnosticSeverity.Warning);
+        Assert.DoesNotContain("RegisterHasIdMessage<Confused>", generated);
+        Assert.DoesNotContain("RegisterNonIdMessage<Confused>", generated);
+    }
+
+    [Fact]
+    public void MSGPROT007_스탠드얼론과_그룹루트_중복도_경고한다()
+    {
+        var (diagnostics, generated) = RunGenerator(Header + """
+            [StandaloneMessage(1)]
+            [GroupRootMessage(2)]
+            public partial class DoubleId { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT007");
+        Assert.DoesNotContain("RegisterHasIdMessage<DoubleId>", generated);
+    }
+
+    [Fact]
     public void 정상_타입은_등록_코드를_생성한다()
     {
         var (diagnostics, generated) = RunGenerator(Header + """

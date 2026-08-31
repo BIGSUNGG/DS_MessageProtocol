@@ -73,6 +73,7 @@ updated: 2026-08-31
   - `MSGPROT004` 루트 메시지의 부모가 루트일 수 없음
   - `MSGPROT005` ID 값 범위 초과
   - `MSGPROT006` 미지원 멤버 타입
+  - `MSGPROT007` 메시지 속성 중복 (경고 — 상호 배타, 생성 건너뜀. Legacy에 없는 신규 진단)
 
 ## F6. 런타임 `MessageSerializer`
 
@@ -125,6 +126,7 @@ updated: 2026-08-31
 - 네트워크 전송 → DS_Communication
 - RPC 디스패치·원격 호출 → DS_RPC
 - Legacy에서 미지원이던 멤버 타입 추가 (`Dictionary`, nullable 값 타입 등) — 스펙 동결, 필요 시 별도 결정(05-ADR)으로 확장.
+- 제네릭 메시지 타입 — 추후 지원 예정 ([ADR-0002](../05-Decisions/ADR-0002-Generic-Message-Serialization.md)). 지원 전까지 제네릭 타입에 메시지 속성 부여 금지.
 
 ## Legacy 대비 재작성 변경점 (2026-08-31)
 
@@ -139,5 +141,5 @@ updated: 2026-08-31
 ## 관련
 
 - [[ADR-0001-Rewrite-Bootstrap]] — 구현 전 확정 결정 (네임스페이스·테스트·순서·버전)
-- [[CONTEXT]]
+- [CONTEXT](../00-AI/CONTEXT.md)
 - Legacy 문서: `Legacy/Document/01-Overview/Scope.md`, `Legacy/Document/03-Reference/Public-API.md`

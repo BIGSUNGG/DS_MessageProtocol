@@ -96,6 +96,11 @@ namespace MessageProtocol.CodeGenerator
 
             var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
 
+            if (TryReportDuplicateMessageAttributes(typeMeta, context, location))
+            {
+                return;
+            }
+
             if (!ValidateRootHierarchy(typeSymbol, typeMeta, attributeReferences, context, location))
             {
                 return;
@@ -184,6 +189,31 @@ namespace MessageProtocol.CodeGenerator
                 sb.Append(allowed ? c : '_');
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 한 타입에 메시지 속성이 2개 이상이면 MSGPROT007 경고 후 생성을 건너뛴다.
+        /// 중복 속성은 헤더 플래그를 OR 로 합쳐 런타임 등록·디스패치와 어긋나기 때문이다.
+        /// </summary>
+        static bool TryReportDuplicateMessageAttributes(TypeMetadata typeMeta, SourceProductionContext context, Location location)
+        {
+            var names = new List<string>(4);
+            if (typeMeta.IsNonIdMessage) names.Add("NonIdMessage");
+            if (typeMeta.IsStandaloneMessage) names.Add("StandaloneMessage");
+            if (typeMeta.IsGroupRootMessage) names.Add("GroupRootMessage");
+            if (typeMeta.IsGroupElementMessage) names.Add("GroupElementMessage");
+
+            if (names.Count < 2)
+            {
+                return false;
+            }
+
+            context.ReportDiagnostic(Diagnostic.Create(
+                DiagnosticDescriptors.DuplicateMessageAttributes,
+                location,
+                typeMeta.Symbol.Name,
+                string.Join(", ", names)));
+            return true;
         }
 
         static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences)
