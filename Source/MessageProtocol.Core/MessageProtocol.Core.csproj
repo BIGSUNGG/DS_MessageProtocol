@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>MessageProtocol.Core</PackageId>
+    <Description>MessageProtocol 런타임 직렬화 API 및 메시지 계약 (MessageSerializer, 메시지 속성·인터페이스).</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- net6+ 소비자는 ModuleInitializer polyfill을 보지 않아야 함 (CS0433 방지) -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>netstandard2.1;net6.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />
+    <Compile Include="..\Shared\MessageWireFormat.cs" Link="MessageWireFormat.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Buffers" Version="4.5.1" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+  </ItemGroup>
+
+</Project>

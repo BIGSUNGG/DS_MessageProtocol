@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>MessageProtocol</PackageId>
+    <Description>메시지 프로토콜 직렬화 메인 패키지. MessageProtocol.Core 런타임과 소스 생성 분석기를 함께 포함합니다.</Description>
+    <!-- NuGet 단일 패키지에 Roslyn 분석기 DLL 포함(analyzers/dotnet/cs) -->
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);IncludeCodeGeneratorAnalyzerInPackage</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="IncludeCodeGeneratorAnalyzerInPackage">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)..\MessageProtocol.CodeGenerator\bin\$(Configuration)\netstandard2.0\MessageProtocol.CodeGenerator.dll" PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\MessageProtocol.Core\MessageProtocol.Core.csproj" />
+  </ItemGroup>
+
+</Project>

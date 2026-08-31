@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>2.0.0</Version>
+    <Authors>BIGSUNGG</Authors>
+    <RepositoryUrl>https://github.com/BIGSUNGG/DS_MessageProtocol</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- 공개 API 미문서화 시 빌드 실패 방지 -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 저장소 루트 README를 패키지에 포함 -->
+    <None Include="$(MSBuildThisFileDirectory)..\README.md"
+          Pack="true"
+          PackagePath="\" />
+  </ItemGroup>
+</Project>

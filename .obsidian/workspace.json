@@ -189,5 +189,18 @@
     }
   },
   "active": "6c2f7e8f5a14c96e",
-  "lastOpenFiles": []
+  "lastOpenFiles": [
+    "artifacts/packages/MessageProtocol.2.0.0.nupkg",
+    "Source/MessageProtocol/obj/Release/MessageProtocol.2.0.0.nuspec",
+    "Source/MessageProtocol/obj/Release/netstandard2.1/MessageProtocol.csproj.FileListAbsolute.txt",
+    "Source/MessageProtocol/bin/Release/netstandard2.1/MessageProtocol.xml",
+    "Source/MessageProtocol/bin/Release/netstandard2.1/MessageProtocol.pdb",
+    "Source/MessageProtocol/bin/Release/netstandard2.1/MessageProtocol.dll",
+    "Source/MessageProtocol/bin/Release/netstandard2.1/MessageProtocol.deps.json",
+    "Source/MessageProtocol/obj/Release/netstandard2.1/MessageP.C450773D.Up2Date",
+    "Source/MessageProtocol/bin/Release/netstandard2.1/MessageProtocol.Core.xml",
+    "Source/MessageProtocol/bin/Release/netstandard2.1/MessageProtocol.Core.dll",
+    "Source/MessageProtocol/bin/Release/netstandard2.1/MessageProtocol.Core.pdb",
+    "Document/05-Decisions/ADR-0001-Rewrite-Bootstrap.md"
+  ]
 }

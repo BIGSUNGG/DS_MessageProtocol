@@ -1,7 +1,7 @@
 ---
 project: DS_MessageProtocol
 type: architecture
-status: draft
+status: approved
 tags: [feature-spec, rewrite, parity]
 updated: 2026-08-31
 ---
@@ -17,24 +17,24 @@ updated: 2026-08-31
 
 ## F1. 와이어 헤더
 
-| 항목        | 스펙                                                                |
+| 항목 | 스펙 |
 | --------- | ----------------------------------------------------------------- |
-| Byte 0    | flags(상위 니블) + category(하위 니블)                                    |
-| ID 메시지    | 헤더 4바이트. `MessageId = (headerByte << 24) \| (value & 0x00FFFFFF)` |
-| NonId 메시지 | 헤더 1바이트                                                           |
-| ID 값 범위   | `0 .. 2^24-1`                                                     |
+| Byte 0 | flags(상위 니블) + category(하위 니블) |
+| ID 메시지 | 헤더 4바이트. `MessageId = (headerByte << 24) \| (value & 0x00FFFFFF)` |
+| NonId 메시지 | 헤더 1바이트 |
+| ID 값 범위 | `0 .. 2^24-1` |
 
 헤더 규칙은 직렬화 런타임과 코드 생성기가 공유하는 단일 소스(Legacy: `Source/Shared` Link Compile)에서 온다.
 
 ## F2. 메시지 종류·카테고리
 
-| 속성                               | 역할                           |
+| 속성 | 역할 |
 | -------------------------------- | ---------------------------- |
-| `StandaloneMessage(uint id)`     | 독립 ID 메시지                    |
-| `GroupRootMessage(uint id)`      | 그룹 루트                        |
-| `GroupElementMessage(uint id)`   | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
-| `NonIdMessage`                   | ID 없는 메시지                    |
-| `MessageCategory(Category0..15)` | 카테고리 니블                      |
+| `StandaloneMessage(uint id)` | 독립 ID 메시지 |
+| `GroupRootMessage(uint id)` | 그룹 루트 |
+| `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
+| `NonIdMessage` | ID 없는 메시지 |
+| `MessageCategory(Category0..15)` | 카테고리 니블 |
 
 - 메시지 타입은 `partial` 선언이 필수.
 - 그룹 계층 규칙 위반은 컴파일 진단으로 거부 (F5).
@@ -126,7 +126,18 @@ updated: 2026-08-31
 - RPC 디스패치·원격 호출 → DS_RPC
 - Legacy에서 미지원이던 멤버 타입 추가 (`Dictionary`, nullable 값 타입 등) — 스펙 동결, 필요 시 별도 결정(05-ADR)으로 확장.
 
+## Legacy 대비 재작성 변경점 (2026-08-31)
+
+| 항목 | Legacy | 재작성 |
+| ------ | -------- | -------- |
+| 멤버 속성 동작 | `MessageIgnore`/`MessageInclude`가 전역 네임스페이스라 생성기가 못 찾아 **무효** | `MessageProtocol` 네임스페이스로 옮겨 실제 동작 |
+| `IList<T>` + CollectionsMarshal | AsSpan 방출로 컴파일 에러 가능 | 선언 타입이 `List<T>` 일 때만 고속 경로 |
+| 생성기 TFM | netstandard2.1 | netstandard2.0 (분석기 표준) |
+| 수동 메시지 헤더 | 문서 미비 | 와이어 순서(헤더 바이트 → ID 3바이트) 기록 규칙 명문화 |
+| 버전 | 1.0.1 | 2.0.0 (패키지 아이디 3종 유지) |
+
 ## 관련
 
+- [[ADR-0001-Rewrite-Bootstrap]] — 구현 전 확정 결정 (네임스페이스·테스트·순서·버전)
 - [[CONTEXT]]
 - Legacy 문서: `Legacy/Document/01-Overview/Scope.md`, `Legacy/Document/03-Reference/Public-API.md`
