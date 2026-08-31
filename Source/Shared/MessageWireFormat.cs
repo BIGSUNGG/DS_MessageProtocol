@@ -11,6 +11,8 @@ namespace MessageProtocol
     {
         public const int NonIdHeaderSize = 1;
         public const int IdHeaderSize = 4;
+        public const int NullSizedPayloadLength = -1;
+        public const int DefaultStreamCapacity = 256;
 
         public const byte NibbleMask = 0x0F;
         public const uint MessageIdValueMask = 0x00FF_FFFF;

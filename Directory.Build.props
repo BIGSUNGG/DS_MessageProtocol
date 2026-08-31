@@ -5,5 +5,8 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- EmitCompilerGeneratedFiles 덤프가 기본 글롭으로 컴파일되는 것을 방지
+         (Compile Remove 는 기본 글롭 평가 이전이라 무효 → DefaultItemExcludes 사용) -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/generated-out/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

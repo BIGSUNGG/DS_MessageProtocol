@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "id": "27603a05-f94f-4ea1-bbb4-1cdbd6b51944",
+  "title": "Repo: C:/Projects/DS/DS_MessageProtocol. This is REVIEW ROUND 2 of a v2 rewrite review loop. A fi...",
+  "goal": "Repo: C:/Projects/DS/DS_MessageProtocol. This is REVIEW ROUND 2 of a v2 rewrite review loop. A fix worker just applied fixes for round-1 findings (uncommitted working tree vs commit 9705af8). You are READ-ONLY: inspect files, run read-only commands (dotnet build/test/run allowed). Never edit files.\nThe fixes applied:\n 1. Generator hint-name uniqueness: Source/MessageProtocol.CodeGenerator/MessageCodeGenerator.cs GetGeneratedFileName now includes namespace+nesting+generic arity with sanitization; regression test added in Test/MessageProtocol.Tests/GeneratorDiagnosticTests.cs.\n 2. Benchmarks switched to InProcessEmitToolchain (Test/MessageProtocol.Benchmarks/Program.cs).\n 3. Restored NullSizedPayloadLength/DefaultStreamCapacity consts in Source/Shared/MessageWireFormat.cs.\n 4. Hygiene: deleted generated-out dirs, .gitignore entry, root Directory.Build.props Compile Remove guard, removed empty ItemGroup.\n 5. Vault docs: new notes under Document/00-AI, Document/01-Overview, Document/02-Architecture/Overview.md, Document/03-Reference, Changelog entry.\n 6. Re-packed 2.0.0 nupkgs into artifacts/packages.\nRun 'git diff' to see the actual changes. Report format: ranked findings [BLOCKER | FIX-NOW | OPTIONAL] with file:line evidence; explicitly say if a severity level has no findings. Do not re-open already-deferred items: header batch-write, WriteString over-reserve, element-loop hoisting, ReadBytes checked-length, test-parallelism comment, empty TargetFramework override, polyfill CS0433 parity.\n\nYour angle: REGRESSION RISK of the fix diff itself.\nInspect 'git diff' closely:\n- Does the new Compile Remove guard in Directory.Build.props have any chance of excluding legitimate source (e.g., a folder legitimately named generated-out in a consumer — irrelevant here, but within THIS repo: does it break Source/Test/Sandbox builds)? Confirm 'dotnet build MessageProtocol.sln' is still 0 errors and 'dotnet test Test/MessageProtocol.Tests' is green (55 tests both TFMs).\n- GetGeneratedFileName change: any path where a valid message type now produces an INVALID hint name (empty string after sanitization? all-invalid chars?) that AddSource would reject, or where two DIFFERENT types could still collide (e.g., namespace A.B with type C vs namespace A with type B.C — dots vs nesting separators)?\n- Benchmark InProcess config: any attribute misuse that would break the net9.0 build or change what gets measured?\n- Vault docs: broken wikilinks/paths that AGENTS.md consumers would trip on (check links point at files that exist).\n- Anything in the diff that changes wire format or public API beyond the two restored consts.",
+  "status": "completed",
+  "createdAt": "2026-08-31T11:41:58.219Z",
+  "updatedAt": "2026-08-31T11:50:08.676Z",
+  "runs": [
+    {
+      "runId": "b1f877f5",
+      "mode": "single",
+      "agent": "reviewer",
+      "status": "completed",
+      "startedAt": "2026-08-31T11:50:08.676Z",
+      "completedAt": "2026-08-31T11:50:08.676Z"
+    }
+  ],
+  "decisions": [],
+  "artifacts": [
+    {
+      "kind": "output",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\b1f877f5_reviewer_0_output.md"
+    },
+    {
+      "kind": "other",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\b1f877f5_reviewer_0_transcript.jsonl",
+      "description": "Child transcript"
+    }
+  ],
+  "receipts": [],
+  "cwd": "C:\\Projects\\DS\\DS_MessageProtocol",
+  "ownerSessionId": "C:\\Users\\DAESUNG\\.pi\\agent\\sessions\\--C--Projects-DS-DS_MessageProtocol--\\2026-08-31T08-36-46-235Z_01a056f6-be1b-75db-9393-14c2e7de5c89.jsonl",
+  "summary": "## Review — Round 2 fix diff (regression-risk angle)\n\nVerified against working tree vs `9705af8`. Build/test evidence first:\n\n- `dotnet build MessageProtocol.sln` → **0 errors, 0 warnings**\n- `dotnet test Test/MessageProtocol.Tests` → **55 passed / 55 on net8.0 and 55 passed / 55 on net9.0**\n- No wire-format or public-API change beyond the two restored consts (`Source/Shared/MessageWireFormat.cs:14-15`, values `-1`/`256` byte-identical to `Legacy/Source/Shared/MessageWireFormat.cs:13-14`; generator change is hint-name-only, generated *code* content untouched). CodeGenerator csproj diff is just the empty-ItemGroup removal.\n- Vault docs: every relative link in the new notes resolves (`Feature-Spec.md`, `Overview.md`, `Packages.md`, `Public-API.md`, `ADR-0001`, `Changelog.md` all exist); wikilinks `[[CONTEXT]]` / `[[ADR-0001-Rewrite-Bootstrap]]` resolve. No broken links.\n- Regression test `다른_네임스페이스의_동명_타입도_충돌없이_모두_생성된다` is sound and green.\n- Benchmark config is correct BDN usage (`[Config(typeof(InProcessConfig))]` + `Job.Default.WithToolchain(InProcessEmitToolchain.Instance)`); builds on net9.0, measures the same methods, only removes out-of-process launch. No attribute misuse.\n\n### BLOCKER\nNo findings.\n\n### FIX-NOW\n1. **`Directory.Build.props:10-13` — the `Compile Remove` guard is a no-op.** The SDK's default `Compile` glob is evaluated *after* `Directory.Build.props`, so the Remove matches nothing. Empirically proven in a scratch repro mirroring the exact structure: with the Remove in `Directory.Build.props`, an invalid `src/generated-out/Bad.cs` was still compiled (CS1040/CS1002); the identical Remove in `Directory.Build.targets` excluded it (0 errors). Latent today only because the dump dirs were deleted and no csproj sets `EmitCompilerGeneratedFiles` (grep confirmed) — the next dump session breaks the build again, which is precisely what fix #4 claims to prevent. Resolution: move the ItemGroup to a root `Directory.Build.targets`. Also answers the \"does it bre...",
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Ranked findings delivered with file:line evidence: 2 FIX-NOW (Directory.Build.props:10-13 no-op guard proven via scratch repro; MessageCodeGenerator.cs:168-171 dot-ambiguity collision reproduced with CS8785/ArgumentException), 3 OPTIONAL; BLOCKER explicitly empty. Build 0 errors; tests 55/55 green on net8.0+net9.0."
+        }
+      ],
+      "changedFiles": [
+        ".gitignore",
+        "Directory.Build.props",
+        "Document/_meta/Changelog.md",
+        "Source/MessageProtocol.CodeGenerator/MessageCodeGenerator.cs",
+        "Source/MessageProtocol.CodeGenerator/MessageProtocol.CodeGenerator.csproj",
+        "Source/Shared/MessageWireFormat.cs",
+        "Test/MessageProtocol.Benchmarks/Program.cs",
+        "Test/MessageProtocol.Tests/GeneratorDiagnosticTests.cs",
+        "Document/00-AI/CONTEXT.md",
+        "Document/00-AI/GLOSSARY.md",
+        "Document/00-AI/CONVENTIONS.md",
+        "Document/01-Overview/Home.md",
+        "Document/02-Architecture/Overview.md",
+        "Document/03-Reference/Packages.md",
+        "Document/03-Reference/Public-API.md"
+      ],
+      "testsAddedOrUpdated": [
+        "Test/MessageProtocol.Tests/GeneratorDiagnosticTests.cs"
+      ],
+      "commandsRun": [
+        {
+          "command": "git status / git diff / git diff --stat",
+          "result": "passed",
+          "summary": "Fix diff matches the 6 claimed items; nothing staged; no generated-out dirs remain; artifacts/packages has 3 x 2.0.0 nupkgs (gitignored)."
+        },
+        {
+          "command": "dotnet build MessageProtocol.sln",
+          "result": "passed",
+          "summary": "0 errors, 0 warnings."
+        },
+        {
+          "command": "dotnet test Test/MessageProtocol.Tests",
+          "result": "passed",
+          "summary": "55 passed on net9.0 and 55 passed on net8.0, 0 failed, 0 skipped."
+        },
+        {
+          "command": "scratch repro: SDK proj with Compile Remove in Directory.Build.props vs Directory.Build.targets",
+          "result": "failed",
+          "summary": "props variant: generated-out/Bad.cs still compiled (2 errors) — guard is a no-op; targets variant: excluded correctly (0 errors)."
+        },
+        {
+          "command": "scratch proj consuming repo generator: namespace A.B class C vs nested A/B/C",
+          "result": "failed",
+          "summary": "CS8785 ArgumentException hintName 'A.B.C.g.cs' must be unique — collision survives the fix via dot ambiguity."
+        }
+      ],
+      "validationOutput": [
+        "Build: 0 errors/0 warnings; Tests: 55/55 both TFMs",
+        "Guard no-op proof: props Remove -> CS1040/CS1002 from generated-out/Bad.cs; targets Remove -> 0 errors",
+        "Collision proof: CS8785 'hintName A.B.C.g.cs은(는) 생성기 내에서 고유해야 한다'",
+        "Vault links: all relative paths and wikilinks resolve to existing files"
+      ],
+      "residualRisks": [
+        "If EmitCompilerGeneratedFiles is ever re-enabled, dumped files under generated-out/ WILL be compiled because the props-level guard is inert (until moved to Directory.Build.targets).",
+        "Hint-name collision remains for type shapes where nesting mimics namespace segments (A.B/C vs A/B.C); catastrophic failure mode (all generated source lost) but low practical likelihood.",
+        "InProcessEmit benchmark results are not 1:1 comparable to any historical csproj-toolchain numbers (none exist for v2, so moot)."
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "Generator hint names now include namespace+nesting+generic arity with sanitization (+regression test); benchmarks switched to InProcessEmitToolchain; two MessageWireFormat consts restored; generated-out dirs deleted with .gitignore entry and a (no-op) Compile Remove guard; vault docs + changelog added; nupkgs repacked into artifacts/packages.",
+      "reviewFindings": [
+        "no blockers",
+        "fix-now: Directory.Build.props:12 - Compile Remove=\"**/generated-out/**\" is a no-op (default glob evaluates after props); move to Directory.Build.targets, proven via scratch repro",
+        "fix-now: Source/MessageProtocol.CodeGenerator/MessageCodeGenerator.cs:168-171 - namespace '.' vs nesting '.' ambiguity still collides (A.B.C); reproduced CS8785/ArgumentException; use '+' for nesting separator",
+        "optional: Test/MessageProtocol.Benchmarks/Program.cs:15-18 - comment rationale for toolchain switch is dubious, cosmetic",
+        "optional: restored consts have no v2 consumers yet (parity only)",
+        "optional: .obsidian/workspace.json and .pi-glla/* tracked tool-state noise in the diff"
+      ],
+      "manualNotes": "All verification was read-only; scratch repros lived under C:\\tmp (outside repo). The two FIX-NOW items are small: one ItemGroup relocation and one separator character plus a regression test. Everything else in the round-1 fix set verified correct and green."
+    }
+  }
+}

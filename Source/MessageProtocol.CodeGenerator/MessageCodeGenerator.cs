@@ -158,18 +158,32 @@ namespace MessageProtocol.CodeGenerator
 
         static string GetGeneratedFileName(INamedTypeSymbol typeSymbol)
         {
-            if (typeSymbol.ContainingType == null)
-            {
-                return typeSymbol.Name;
-            }
-
+            // 힌트 이름은 네임스페이스 + 중첩 + 제네릭 차수를 포함해 유일해야 한다.
+            // 단순 이름만 쓰면 다른 네임스페이스의 동명 타입이 충돌해 AddSource 가 예외를 던지고,
+            // 해당 컴파일의 전체 생성 소스가 유실된다.
             var typeNames = new Stack<string>();
             for (var current = typeSymbol; current != null; current = current.ContainingType)
             {
-                typeNames.Push(current.Name);
+                typeNames.Push(current.MetadataName);
             }
 
-            return string.Join("_", typeNames);
+            string typeName = string.Join("+", typeNames); // 중첩 구분자: 네임스페이스 점과 혼동 방지(메타데이터 관례 +)
+            string prefix = typeSymbol.ContainingNamespace == null || typeSymbol.ContainingNamespace.IsGlobalNamespace
+                ? string.Empty
+                : typeSymbol.ContainingNamespace.ToDisplayString() + ".";
+
+            return SanitizeHintName(prefix + typeName);
+        }
+
+        static string SanitizeHintName(string name)
+        {
+            var sb = new StringBuilder(name.Length);
+            foreach (char c in name)
+            {
+                bool allowed = char.IsLetterOrDigit(c) || c == '_' || c == '.' || c == '-' || c == '(' || c == ')' || c == '`';
+                sb.Append(allowed ? c : '_');
+            }
+            return sb.ToString();
         }
 
         static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences)

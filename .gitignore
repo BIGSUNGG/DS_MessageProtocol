@@ -408,3 +408,6 @@ Document/.obsidian/cache
 
 # Cursor hooks session state
 .cursor/hooks/.session-edits.json
+
+# Source generator emit dumps
+generated-out/

@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "id": "44896e23-447c-46d7-8762-82c4ac4e9dd3",
+  "title": "Repo: C:/Projects/DS/DS_MessageProtocol (commit 9705af8, v2 rewrite).",
+  "goal": "Repo: C:/Projects/DS/DS_MessageProtocol (commit 9705af8, v2 rewrite).\nYou are reviewing a FROM-SCRATCH rewrite of a C# message-serialization library.\n- New code: Source/ (MessageProtocol.Core, MessageProtocol.CodeGenerator, MessageProtocol meta), Test/ (MessageProtocol.Tests, MessageProtocol.Benchmarks), Sandbox/MessageProtocol.Sandbox.\n- Legacy reference implementation: Legacy/ (read-only reference; Legacy bugs are NOT automatically findings in the new code).\n- Feature spec: Document/02-Architecture/Feature-Spec.md ; decisions: Document/05-Decisions/ADR-0001-Rewrite-Bootstrap.md\nYou are READ-ONLY: inspect files, run read-only commands (dotnet build/test/run are allowed). Never edit files.\nReport format: a ranked list of findings. Each finding: severity [BLOCKER | FIX-NOW | OPTIONAL], file:line, concrete evidence, and a short suggested fix direction. If you find nothing at a severity level, say so explicitly. Do not pad; quality over quantity.\n\nYour angle: STRUCTURE & MAINTAINABILITY of the rewrite.\nHunt specifically for:\n- Solution/project layout problems: csproj correctness (TFMs, analyzer packaging, SetTargetFramework pins), duplicated or misplaced code, Shared link-compile hazards.\n- Public API surface issues: accidental surface, naming inconsistencies, doc-comment gaps that matter, anything that breaks the \"drop-in compatible with Legacy\" promise (compare Source public API against Legacy/Document/03-Reference/Public-API.md).\n- Test suite structure gaps (not missing coverage counts, but structural problems: fixtures, global registration state coupling tests, flaky-by-design tests).\n- Packaging metadata/versioning issues and vault/doc sync per AGENTS.md (Document/ structure rules).\nRun dotnet build and inspect packaging (artifacts/packages/*.nupkg exist; unzip -l is fine, read-only).",
+  "status": "completed",
+  "createdAt": "2026-08-31T10:50:01.118Z",
+  "updatedAt": "2026-08-31T11:03:44.857Z",
+  "runs": [
+    {
+      "runId": "8c483c64",
+      "mode": "single",
+      "agent": "reviewer",
+      "status": "completed",
+      "startedAt": "2026-08-31T11:03:44.857Z",
+      "completedAt": "2026-08-31T11:03:44.857Z"
+    }
+  ],
+  "decisions": [],
+  "artifacts": [
+    {
+      "kind": "output",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\8c483c64_reviewer_0_output.md"
+    },
+    {
+      "kind": "other",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\8c483c64_reviewer_0_transcript.jsonl",
+      "description": "Child transcript"
+    }
+  ],
+  "receipts": [],
+  "cwd": "C:\\Projects\\DS\\DS_MessageProtocol",
+  "ownerSessionId": "C:\\Users\\DAESUNG\\.pi\\agent\\sessions\\--C--Projects-DS-DS_MessageProtocol--\\2026-08-31T08-36-46-235Z_01a056f6-be1b-75db-9393-14c2e7de5c89.jsonl",
+  "summary": "All checks complete. Here is the review.\n\n## Review — Structure & Maintainability (DS_MessageProtocol v2 rewrite, 9705af8)\n\n**Verified green first:** `dotnet build` (Release) — 0 warnings/0 errors; `dotnet test` — 54×54 pass on net8.0+net9.0; Sandbox acceptance run — 27/27 PASS, exit 0; all three 2.0.0 nupkgs have correct layouts (`analyzers/dotnet/cs/MessageProtocol.CodeGenerator.dll` in both generator and meta packages, Core ships `lib/netstandard2.1` + `lib/net6.0`, meta declares `MessageProtocol.Core 2.0.0` dependency, README packed). Public surface (attributes, `MessageSerializer`, `MessageBufferReader/Writer`, `PooledBuffer`, interfaces) is parity with Legacy except where noted. Shared link-compile (`MessageFlag`/`MessageWireFormat` + `#if MESSAGE_PROTOCOL_CODE_GENERATOR` visibility trick) correctly preserved per Feature-Spec F1. TFMs match F8/F9. `IsPackable` scoping (root false → Source true) and `.gitignore` (artifacts/bin/obj) are correct. No flaky-by-design tests (no randomness/timers).\n\n### Ranked findings\n\n**BLOCKER — none found.** Build, tests, sandbox, and packaging are structurally sound.\n\n**FIX-NOW**\n\n1. **Document vault not synced with the rewrite — violates AGENTS.md.** `Document/` holds only 3 files (`_meta/Changelog.md`, `02-Architecture/Feature-Spec.md`, `05-Decisions/ADR-0001-Rewrite-Bootstrap.md`). Missing: `00-AI/CONTEXT.md` (AGENTS.md mandates reading/writing it), `00-AI/GLOSSARY.md`, `00-AI/CONVENTIONS.md`, `01-Overview/Home.md` (the declared human entry), and any `02-Architecture`/`03-Reference` notes. AGENTS.md rule 3 says package/folder/public-API changes belong in `02-Architecture/` + `03-Reference/` — this rewrite changed all three and produced zero such notes (Legacy vault has 17). `_meta/Changelog.md:6` even claims \"재작성 구현 완료\". *Fix:* port/adapt the Legacy vault skeleton (`Legacy/Document/00-AI…06-*`) to v2, at minimum CONTEXT/GLOSSARY/Home/Public-API/Packages, with refreshed `updated`/`status` frontmatter.\n\n**OPTIONAL**\n\n2. **Tw...",
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "1 FIX-NOW finding (Document vault sync vs AGENTS.md, with missing-file inventory) and 5 OPTIONAL findings, each with file paths/line numbers and evidence; BLOCKER level explicitly found empty."
+        }
+      ],
+      "changedFiles": [],
+      "testsAddedOrUpdated": [],
+      "commandsRun": [
+        {
+          "command": "dotnet build MessageProtocol.sln -c Release",
+          "result": "passed",
+          "summary": "0 warnings, 0 errors"
+        },
+        {
+          "command": "dotnet test MessageProtocol.sln -c Release --no-build",
+          "result": "passed",
+          "summary": "54 pass x 2 TFMs (net8.0, net9.0), 0 fail"
+        },
+        {
+          "command": "dotnet run --project Sandbox/MessageProtocol.Sandbox -c Release",
+          "result": "passed",
+          "summary": "27/27 acceptance checks PASS, exit 0"
+        },
+        {
+          "command": "unzip -l/-p artifacts/packages/*.nupkg",
+          "result": "passed",
+          "summary": "3 packages inspected: layouts + nuspecs correct; stale commit metadata found"
+        },
+        {
+          "command": "diff Legacy vs Source public API files; grep DS_RPC/DS_Communication for removed constants",
+          "result": "passed",
+          "summary": "surface parity except 2 removed consts and documented namespace move; no sibling source consumers of removed consts"
+        }
+      ],
+      "validationOutput": [
+        "build: 0 warnings/0 errors; tests: 54 pass (net8.0) + 54 pass (net9.0); sandbox: ALL SCENARIOS PASSED (27 checks)",
+        "packages: MessageProtocol/Core/CodeGenerator 2.0.0 nupkgs verified via unzip (analyzer path, lib TFMs, dependency groups)"
+      ],
+      "residualRisks": [
+        "Runtime/wire-format semantic correctness was not the review angle (structure only); a behavior-focused pass could still surface issues",
+        "Sibling repos DS_RPC/DS_Communication were only grepped, not built against 2.0.0 packages",
+        "Global registry mutation in RegistrationTests is safe today but can become nondeterministic as tests are added"
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "No changes made; read-only review at commit 9705af8",
+      "reviewFindings": [
+        "no blockers",
+        "fix-now: Document/ vault missing 00-AI/CONTEXT.md, GLOSSARY.md, CONVENTIONS.md, 01-Overview/Home.md and all 02-Architecture/03-Reference notes for the new packages/API (AGENTS.md rules 1-3 violated; only 3 md files exist vs 17 in Legacy vault)",
+        "optional: Source/Shared/MessageWireFormat.cs removes public consts NullSizedPayloadLength/DefaultStreamCapacity present in Legacy (ADR-0001 surface-preservation promise; no known sibling consumers)",
+        "optional: artifacts/packages/*.nupkg nuspec commit=db146c0 predates source commit 9705af8 (stale provenance)",
+        "optional: Test/MessageProtocol.Tests/DispatchTests.cs:102 mutates global MessageSerializer registry (parallel-test coupling risk)",
+        "optional: residue - empty Source/MessageProtocol/generated-out/ dir and empty ItemGroup in MessageProtocol.CodeGenerator.csproj:31-32",
+        "optional: empty <TargetFramework></TargetFramework> override trick in MessageProtocol.Core.csproj (fragile, inherited from Legacy)"
+      ],
+      "manualNotes": "MessageIgnore/MessageInclude namespace move (global -> MessageProtocol) is source-breaking for consumers without 'using MessageProtocol;', but is an explicitly documented intentional deviation in Feature-Spec 변경점, so it is recorded as accepted risk, not a finding."
+    }
+  }
+}

@@ -1,5 +1,8 @@
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
+using BenchmarkDotNet.Toolchains.InProcess.Emit;
 using Benchmarks;
 using MessageProtocol;
 using MessageProtocol.Serialize;
@@ -8,6 +11,18 @@ BenchmarkRunner.Run<SerializationBenchmarks>();
 
 namespace Benchmarks
 {
+    /// <summary>
+    /// 저장소에 동명 프로젝트가 두 개 있어(Legacy 포함) 기본 csproj 도구 체인이 실패하므로
+    /// in-process emit 도구 체인을 사용한다.
+    /// </summary>
+    public class InProcessConfig : ManualConfig
+    {
+        public InProcessConfig()
+        {
+            AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
+        }
+    }
+
     [StandaloneMessage(1)]
     public partial class BenchMessage
     {
@@ -19,6 +34,7 @@ namespace Benchmarks
     }
 
     [MemoryDiagnoser]
+    [Config(typeof(InProcessConfig))]
     public class SerializationBenchmarks
     {
         readonly BenchMessage _message = new()

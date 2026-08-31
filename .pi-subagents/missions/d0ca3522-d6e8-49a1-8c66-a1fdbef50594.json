@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "id": "d0ca3522-d6e8-49a1-8c66-a1fdbef50594",
+  "title": "Repo: C:/Projects/DS/DS_MessageProtocol (commit 9705af8, v2 rewrite).",
+  "goal": "Repo: C:/Projects/DS/DS_MessageProtocol (commit 9705af8, v2 rewrite).\nYou are reviewing a FROM-SCRATCH rewrite of a C# message-serialization library.\n- New code: Source/ (MessageProtocol.Core, MessageProtocol.CodeGenerator, MessageProtocol meta), Test/ (MessageProtocol.Tests, MessageProtocol.Benchmarks), Sandbox/MessageProtocol.Sandbox.\n- Legacy reference implementation: Legacy/ (read-only reference; Legacy bugs are NOT automatically findings in the new code).\n- Feature spec: Document/02-Architecture/Feature-Spec.md ; decisions: Document/05-Decisions/ADR-0001-Rewrite-Bootstrap.md\nYou are READ-ONLY: inspect files, run read-only commands (dotnet build/test/run are allowed). Never edit files.\nReport format: a ranked list of findings. Each finding: severity [BLOCKER | FIX-NOW | OPTIONAL], file:line, concrete evidence, and a short suggested fix direction. If you find nothing at a severity level, say so explicitly. Do not pad; quality over quantity.\n\nYour angle: PERFORMANCE of the new runtime + generated code.\nHunt specifically for:\n- Hot-path allocations: Serialize<T>/Deserialize<T> generic cache design, object-dispatch path, SerializeContext/DeserializeContext struct behavior, list/array emit paths (bulk copy vs element loops), string encode/decode path, decimal path.\n- Generated code quality: EnsureCapacity batching correctness/coverage, unnecessary local copies, boxing risks, inlining hints.\n- Writer/reader growth behavior (ArrayPool churn on Grow), PooledBuffer usage.\n- Anything that regresses the spec's performance contract in Document/02-Architecture/Feature-Spec.md (F7).\nYou may run the Benchmarks project (dotnet run -c Release, short run is fine but do not block on a full BenchmarkDotNet session; building it is enough) and dotnet test. Prioritize findings by expected real-world impact.",
+  "status": "completed",
+  "createdAt": "2026-08-31T10:50:00.260Z",
+  "updatedAt": "2026-08-31T11:08:40.711Z",
+  "runs": [
+    {
+      "runId": "16689019",
+      "mode": "single",
+      "agent": "reviewer",
+      "status": "completed",
+      "startedAt": "2026-08-31T11:08:40.711Z",
+      "completedAt": "2026-08-31T11:08:40.711Z"
+    }
+  ],
+  "decisions": [],
+  "artifacts": [
+    {
+      "kind": "output",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\16689019_reviewer_0_output.md"
+    },
+    {
+      "kind": "other",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\16689019_reviewer_0_transcript.jsonl",
+      "description": "Child transcript"
+    }
+  ],
+  "receipts": [],
+  "cwd": "C:\\Projects\\DS\\DS_MessageProtocol",
+  "ownerSessionId": "C:\\Users\\DAESUNG\\.pi\\agent\\sessions\\--C--Projects-DS-DS_MessageProtocol--\\2026-08-31T08-36-46-235Z_01a056f6-be1b-75db-9393-14c2e7de5c89.jsonl",
+  "summary": "All evidence gathered. Final report:\n\n## Review — Performance angle (v2 rewrite, commit 9705af8)\n\n### Correct (verified, with evidence)\n- **Generic cache (F7):** `SerializerCache<T>` static delegate fields (`MessageSerializer.Cache.cs`) — no dictionary lookup, no boxing. Empirical: `Serialize<FlatMsg>` = **40 B/call = result `byte[]` only**; ref-writer loop = **0 alloc / 1000 iterations**; `Deserialize<FlatMsg>` = **32 B/call** (the message object itself); object-dispatch deserialize = ~32 B/call.\n- **Contexts:** `SerializeContext`/`DeserializeContext` (`MessageSerializer.Contexts.cs`) use a first-object slot; `Dictionary` only allocated on the *second* tracked object → flat messages are dictionary-free, matching F7. Generated root `RegisterObject` is guarded by `IsReferenceType` → no struct boxing.\n- **Bulk paths:** arrays and `List<T>` use `MemoryMarshal.AsBytes` / `CollectionsMarshal.AsSpan` + `SetCount`+`CopyTo` (single copy, no per-element loop). Empirical: 1024×`int` list → 4128 B alloc ≈ result array only.\n- **Strings:** one-pass `Encoding.UTF8.GetBytes` into the writer buffer, `GetString(span)` on read — no intermediate `ToArray` (5000-char ASCII → alloc = result + 24 B). F7 ✓.\n- **Decimal:** stackalloc-based, no allocation; 200 000-element `decimal[]` round-trips with **no stack overflow** (localloc keeps `WriteDecimal` out of loop inlining, so no per-iteration stack accumulation). F7 ✓.\n- **Writer growth:** doubling aligned with ArrayPool power-of-two buckets; 150 KB message costs ~150 KB managed alloc total (pool churn is not heap traffic); `ToPooledBuffer` transfers ownership, `Dispose` idempotent. F7 ✓.\n- **EnsureCapacity batching:** verified in real generated output — `writer.EnsureCapacity(62)` once for AllPrimitives' fixed region, `EnsureCapacity(8)` for Circle (`MessageSerializeCodeEmitter.Method.cs:227-244`). F7 ✓.\n- `dotnet build` clean; `dotnet test` **54/54 passed** on net8.0 + net9.0.\n\n### Findings (ranked)\n\n**BLOCKER: none.** Runtime hot pa...",
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Ranked findings with file:line and severity: FIX-NOW-1 (Test/MessageProtocol.Benchmarks/Program.cs:9 — BenchmarkDotNet cannot run, duplicate Legacy project name), OPTIONAL-1..4 (Method.cs:56-63, MessageBufferWriter.cs:203, Member.cs:404/438/322/475); explicit no-BLOCKER conclusion backed by empirical allocation measurements."
+        }
+      ],
+      "changedFiles": [],
+      "testsAddedOrUpdated": [],
+      "commandsRun": [
+        {
+          "command": "dotnet build MessageProtocol.sln -c Release",
+          "result": "passed",
+          "summary": "0 errors, 6 RS2008 analyzer-release-tracking warnings"
+        },
+        {
+          "command": "dotnet test Test/MessageProtocol.Tests -c Release",
+          "result": "passed",
+          "summary": "54/54 passed on net8.0 and net9.0"
+        },
+        {
+          "command": "dotnet run --project Test/MessageProtocol.Benchmarks -c Release -- --job Dry",
+          "result": "failed",
+          "summary": "BDN CsProjGenerator: 'Found more than one matching project file for MessageProtocol.Benchmarks' (Legacy copy); executed benchmarks: 0"
+        },
+        {
+          "command": "temp-dir probe: dotnet run -c Release (allocation + decimal 200k + InProcess BDN)",
+          "result": "passed",
+          "summary": "Serialize flat=40B/op, Deserialize flat=32B/op, ref-writer path 0 alloc, string/bulk paths allocation-optimal, 200k decimal round-trip OK, InProcessEmitToolchain BDN run succeeds"
+        }
+      ],
+      "validationOutput": [
+        "F7 contract verified empirically: generic path no dict/boxing (40B/call = result array), flat messages no Dictionary, bulk copy paths, span strings, alloc-free decimal, batched EnsureCapacity(62) in generated AllPrimitives",
+        "Sole FIX-NOW: BenchmarkDotNet harness cannot execute in-repo due to duplicate benchmark project name vs Legacy/, breaking the spec's perf-regression verification path"
+      ],
+      "residualRisks": [
+        "No full in-repo BenchmarkDotNet numbers obtainable until the duplicate-project-name issue is fixed (InProcess toolchain verified as a working alternative)",
+        "netstandard2.1 consumer fallback (no CollectionsMarshal -> element loops) not measured; by-design degradation",
+        "Bulk-copy paths are LE-endian-dependent; fine on all current .NET platforms"
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "Read-only performance review; no repo edits. One untracked review artifact left: Sandbox/MessageProtocol.Sandbox/generated-out/ (from -p:EmitCompilerGeneratedFiles build; delete or gitignore).",
+      "reviewFindings": [
+        "no blockers",
+        "fix-now: Test/MessageProtocol.Benchmarks/Program.cs:9 - BenchmarkDotNet runner fails (duplicate MessageProtocol.Benchmarks.csproj in Legacy/Test breaks CsProj toolchain); use InProcessEmitToolchain config or uniquify Legacy project",
+        "optional: MessageSerializeCodeEmitter.Method.cs:56-63 - wire header emitted as 4x WriteByte with per-call EnsureCapacity(1); batch to one EnsureCapacity(4)",
+        "optional: MessageBufferWriter.cs:203 - WriteString reserves 3n+3 worst case, over-growing buffer for long ASCII strings",
+        "optional: MessageSerializeCodeEmitter.Member.cs:404,438 - IList/fallback element loops re-evaluate member expression per iteration; hoist to local",
+        "optional: MessageSerializeCodeEmitter.Member.cs:322,475 - ReadBytes(len*size) int overflow on corrupt input (robustness, OOM precedes in practice)"
+      ],
+      "manualNotes": "Probe artifacts live in C:/temp/perfprobe (outside repo). Sandbox/MessageProtocol.Sandbox/generated-out/ was created by my inspection build and is not gitignored - delete it or add to .gitignore."
+    }
+  }
+}

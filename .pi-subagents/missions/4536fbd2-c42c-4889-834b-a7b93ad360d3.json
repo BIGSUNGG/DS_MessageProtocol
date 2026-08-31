@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "4536fbd2-c42c-4889-834b-a7b93ad360d3",
+  "title": "Repo: C:/Projects/DS/DS_MessageProtocol. You are applying SYNTHESIZED REVIEW FIXES to a v2 rewrit...",
+  "goal": "Repo: C:/Projects/DS/DS_MessageProtocol. You are applying SYNTHESIZED REVIEW FIXES to a v2 rewrite of a C# message-serialization library (commit 9705af8). Keep the approved scope — do not refactor beyond these fixes. Report changed files, commands run with exit codes, validation evidence, surprises, and anything left undone.\n\nFIXES (all confirmed by reviewers; apply all):\n\n1. STABILITY — generator hint-name collision. `Source/MessageProtocol.CodeGenerator/MessageCodeGenerator.cs` `GetGeneratedFileName` builds the AddSource hint name from simple type names only (namespace ignored). Two message types with the same name in different namespaces collide → ArgumentException inside the source output callback → ALL generated sources for the compilation are dropped. Fix: make the hint name unique — include the full namespace plus nesting plus generic arity, e.g. build from `INamedTypeSymbol.ToDisplayString()` or namespace+MetadataName, and sanitize characters not allowed in hint names (spaces, ':', etc. — Roslyn allows letters/digits/underscores/dots/hyphens/parens/backticks; replace anything else). Add a regression test to `Test/MessageProtocol.Tests/GeneratorDiagnosticTests.cs`: two `[StandaloneMessage]` partial types named `Same` in namespaces `NsA` and `NsB` in one compilation → generator produces both files, no exception (assert generated text contains both RegisterHasIdMessage calls).\n\n2. BENCHMARKS — `Test/MessageProtocol.Benchmarks/Program.cs`: BenchmarkDotNet cannot run — its default csproj toolchain walks the repo and finds two projects named MessageProtocol.Benchmarks (Test/ and Legacy/Test/) → `System.NotSupportedException: Found more than one matching project file`. Reviewer verified `InProcessEmitToolchain` works. Fix: add a `[Config]` class with `AddJob(...)` or `WithOptions` using `BenchmarkDotNet.Toolchains.InProcess.Emit.InProcessEmitToolchain.Instance` (simplest: a manual config class applied via [Config(typeof(...))] on the benchmark class). Validation: `dotnet run --project Test/MessageProtocol.Benchmarks -c Release` must actually start and produce a BDN summary table (let it run to completion; it may take several minutes — that is expected and fine).\n\n3. PARITY — `Source/Shared/MessageWireFormat.cs`: restore two public constants that Legacy had and the rewrite silently dropped (ADR-0001 promised identical public surface): `public const int NullSizedPayloadLength = -1;` and `public const int DefaultStreamCapacity = 256;` (see `Legacy/Source/Shared/MessageWireFormat.cs`).\n\n4. HYGIENE — delete the four stray `generated-out/` dirs (`find . -name generated-out -not -path './Legacy/*'` → remove), add `generated-out/` to `.gitignore`, add a compile-exclusion guard in root `Directory.Build.props` so a future EmitCompilerGeneratedFiles dump can never be compiled by the default glob (`<Compile Remove=\"**/generated-out/**\" />` in an ItemGroup), and remove the empty `<ItemGroup></ItemGroup>` block in `Source/MessageProtocol.CodeGenerator/MessageProtocol.CodeGenerator.csproj` (around line 29-30).\n\n5. DOCS — the Document vault violates AGENTS.md (missing required notes). Create v2-adapted notes (Korean, same style/frontmatter conventions as `Legacy/Document/`; use today's date 2026-08-31 in `updated`):\n   - `Document/00-AI/CONTEXT.md` (entry point: repo layout now Source/Test/Sandbox/Legacy, packages 2.0.0, generator netstandard2.0, sibling projects DS_RPC/DS_Communication, reading order)\n   - `Document/00-AI/GLOSSARY.md` (adapt Legacy terms; add note that MessageIgnore/MessageInclude now live in MessageProtocol namespace)\n   - `Document/00-AI/CONVENTIONS.md` (copy/adapt Legacy vault conventions)\n   - `Document/01-Overview/Home.md` (human entry, links to Scope-ish content → Feature-Spec, Overview, Getting-Started not required)\n   - `Document/02-Architecture/Overview.md` (short: 3-layer architecture, Shared link compile, links to Feature-Spec)\n   - `Document/03-Reference/Public-API.md` (v2 public surface — reflect restored constants and member-attribute namespace)\n   - `Document/03-Reference/Packages.md` (3 packages, 2.0.0, TFMs, analyzer path)\n   - Append a `_meta/Changelog.md` entry for these fixes/docs (keep newest-on-top).\n   Base content on `Legacy/Document/` equivalents but updated to v2 reality (do not copy stale facts like version 1.0.1 or netstandard2.1 generator).\n\n6. REPACK — after code fixes: `dotnet pack MessageProtocol.sln -c Release -o artifacts/packages` (refreshes stale commit provenance in the nupkgs).\n\nVALIDATION (run and report exit codes):\n- `dotnet build MessageProtocol.sln` → 0 errors\n- `dotnet test Test/MessageProtocol.Tests/MessageProtocol.Tests.csproj` → all green both net8.0+net9.0 (includes your new regression test)\n- `dotnet run --project Sandbox/MessageProtocol.Sandbox` → ALL SCENARIOS PASSED, exit 0\n- benchmarks run produces a summary table\n- `dotnet pack ...` succeeds, artifacts/packages has three 2.0.0 nupkgs\n\nConstraints: do not touch Legacy/ content; do not change wire format bytes; do not expand scope (no nullable/Dictionary member support, no new APIs beyond restored constants). If you hit LSP file-lock errors on the generator DLL (CSharpLanguageServer holding bin files), kill the CSharpLanguageServer processes and retry the build.",
+  "status": "completed",
+  "createdAt": "2026-08-31T11:24:52.538Z",
+  "updatedAt": "2026-08-31T11:40:22.174Z",
+  "runs": [
+    {
+      "runId": "7be764e4-f807-4ca4-98db-820e464fcf87",
+      "mode": "single",
+      "asyncDir": "C:\\Users\\DAESUNG\\AppData\\Local\\Temp\\pi-subagents-user-DAESUNG\\async-subagent-runs\\7be764e4-f807-4ca4-98db-820e464fcf87",
+      "status": "complete",
+      "startedAt": "2026-08-31T11:24:52.572Z",
+      "completedAt": "2026-08-31T11:40:22.174Z"
+    }
+  ],
+  "decisions": [],
+  "artifacts": [
+    {
+      "kind": "status",
+      "path": "C:\\Users\\DAESUNG\\AppData\\Local\\Temp\\pi-subagents-user-DAESUNG\\async-subagent-runs\\7be764e4-f807-4ca4-98db-820e464fcf87\\status.json"
+    },
+    {
+      "kind": "other",
+      "path": "C:\\Users\\DAESUNG\\AppData\\Local\\Temp\\pi-subagents-user-DAESUNG\\async-subagent-runs\\7be764e4-f807-4ca4-98db-820e464fcf87\\events.jsonl",
+      "description": "Lifecycle events"
+    },
+    {
+      "kind": "output",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\7be764e4-f807-4ca4-98db-820e464fcf87_worker_output.md"
+    }
+  ],
+  "receipts": [],
+  "cwd": "C:\\Projects\\DS\\DS_MessageProtocol",
+  "ownerSessionId": "C:\\Users\\DAESUNG\\.pi\\agent\\sessions\\--C--Projects-DS-DS_MessageProtocol--\\2026-08-31T08-36-46-235Z_01a056f6-be1b-75db-9393-14c2e7de5c89.jsonl",
+  "summary": "worker:\n모든 검증이 통과했습니다. 수용 보고서를 작성합니다.\n\n**적용 내역 요약**\n1. ✅ **안정성**: `GetGeneratedFileName` → 네임스페이스+중첩+제네릭 차수 포함 유일 힌트네임 + 문자 sanitize; 회귀 테스트 추가 (서로 다른 네임스페이스 동명 `Same` 2개 → 2개 파일 생성 확인)\n2. ✅ **벤치마크**: `InProcessEmitToolchain` Config 적용 → 실제 실행 성공 (3개 벤치마크, 2분 28초, exit 0)\n3. ✅ **패리티**: `NullSizedPayloadLength`/`DefaultStreamCapacity` 상수 복원\n4. ✅ **위생**: `generated-out/` 4개 삭제 + `.gitignore` 추가 + 루트 props 컴파일 제외 가드 + 빈 ItemGroup 제거\n5. ✅ **문서**: vault 노트 7개 신규 + Changelog 갱신 (링크 모호성은 상대 경로 마크다운 링크로 해소)\n6. ✅ **재팩**: 3종 2.0.0 nupkg 재생성"
+}

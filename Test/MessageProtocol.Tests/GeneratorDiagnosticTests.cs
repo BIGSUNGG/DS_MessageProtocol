@@ -181,4 +181,68 @@ public class GeneratorDiagnosticTests
         Assert.Contains("BaseField", generated);
         Assert.Contains("ChildField", generated);
     }
+
+    [Fact]
+    public void 다른_네임스페이스의_동명_타입도_충돌없이_모두_생성된다()
+    {
+        // 힌트 이름이 단순 타입 이름만 쓰면 AddSource 가 ArgumentException 을 던져 전체 생성이 유실된다.
+        var (diagnostics, generated) = RunGenerator("""
+            using MessageProtocol;
+            namespace NsA
+            {
+                [StandaloneMessage(1)]
+                public partial class Same { public int X { get; set; } }
+            }
+            namespace NsB
+            {
+                [StandaloneMessage(2)]
+                public partial class Same { public int Y { get; set; } }
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains("namespace NsA", generated);
+        Assert.Contains("namespace NsB", generated);
+        Assert.Equal(2, CountOccurrences(generated, "RegisterHasIdMessage<Same>"));
+    }
+
+    [Fact]
+    public void 중첩_타입과_네임스페이스_점이_동일한_모양이어도_충돌하지_않는다()
+    {
+        // 네임스페이스 A.B의 클래스 C → 'A.B.C', 네임스페이스 A의 중첩 B.C → 'A.B+C'.
+        // 중첩 구분자가 '.' 이면 두 힌트 이름이 충돌해 전체 생성이 유실된다.
+        var (diagnostics, generated) = RunGenerator("""
+            using MessageProtocol;
+            namespace A.B
+            {
+                [StandaloneMessage(1)]
+                public partial class C { public int X { get; set; } }
+            }
+            namespace A
+            {
+                public partial class B
+                {
+                    [StandaloneMessage(2)]
+                    public partial class C { public int Y { get; set; } }
+                }
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains("namespace A.B", generated);
+        Assert.Contains("namespace A", generated);
+        Assert.Equal(2, CountOccurrences(generated, "RegisterHasIdMessage<C>"));
+    }
+
+    static int CountOccurrences(string text, string pattern)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = text.IndexOf(pattern, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += pattern.Length;
+        }
+        return count;
+    }
 }

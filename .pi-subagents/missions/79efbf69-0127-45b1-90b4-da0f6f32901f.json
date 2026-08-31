@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "id": "79efbf69-0127-45b1-90b4-da0f6f32901f",
+  "title": "Repo: C:/Projects/DS/DS_MessageProtocol. This is REVIEW ROUND 2 of a v2 rewrite review loop. A fi...",
+  "goal": "Repo: C:/Projects/DS/DS_MessageProtocol. This is REVIEW ROUND 2 of a v2 rewrite review loop. A fix worker just applied fixes for round-1 findings (uncommitted working tree vs commit 9705af8). You are READ-ONLY: inspect files, run read-only commands (dotnet build/test/run allowed). Never edit files.\nThe fixes applied:\n 1. Generator hint-name uniqueness: Source/MessageProtocol.CodeGenerator/MessageCodeGenerator.cs GetGeneratedFileName now includes namespace+nesting+generic arity with sanitization; regression test added in Test/MessageProtocol.Tests/GeneratorDiagnosticTests.cs.\n 2. Benchmarks switched to InProcessEmitToolchain (Test/MessageProtocol.Benchmarks/Program.cs).\n 3. Restored NullSizedPayloadLength/DefaultStreamCapacity consts in Source/Shared/MessageWireFormat.cs.\n 4. Hygiene: deleted generated-out dirs, .gitignore entry, root Directory.Build.props Compile Remove guard, removed empty ItemGroup.\n 5. Vault docs: new notes under Document/00-AI, Document/01-Overview, Document/02-Architecture/Overview.md, Document/03-Reference, Changelog entry.\n 6. Re-packed 2.0.0 nupkgs into artifacts/packages.\nRun 'git diff' to see the actual changes. Report format: ranked findings [BLOCKER | FIX-NOW | OPTIONAL] with file:line evidence; explicitly say if a severity level has no findings. Do not re-open already-deferred items: header batch-write, WriteString over-reserve, element-loop hoisting, ReadBytes checked-length, test-parallelism comment, empty TargetFramework override, polyfill CS0433 parity.\n\nYour angle: VERIFY each of the 6 fixes actually works and matches its intent.\n- Fix 1: read GetGeneratedFileName + sanitization. Try to break it mentally: generic types (Foo<T> → MetadataName 'Foo`1'), deeply nested types, types in the global namespace, names with invalid hint-name characters. Confirm the regression test genuinely covers the collision (two same-named types in different namespaces, asserts both outputs). You may run a quick GeneratorDriver probe via the existing test suite (dotnet test) — that is allowed.\n- Fix 2: check the BDN config is applied correctly; confirm 'dotnet run --project Test/MessageProtocol.Benchmarks -c Release' at least starts a real BDN run (you may kill it after it prints the job header/first benchmark start — do NOT wait for the full 2-3 minute session).\n- Fix 3: consts exist with correct values (-1, 256) and match Legacy/Source/Shared/MessageWireFormat.cs.\n- Fix 4: no generated-out dirs remain; .gitignore has generated-out/; root props guard does not exclude legitimate sources; empty ItemGroup gone.\n- Fix 5: each new vault note exists, has YAML frontmatter with updated: 2026-08-31, and contains NO stale facts (version 1.0.1, generator netstandard2.1, member attributes in global namespace, etc.). Cross-check Public-API note against actual Source/ public surface.\n- Fix 6: artifacts/packages has three 2.0.0 nupkgs; unzip -p one nuspec and check the commit metadata no longer says db146c0 (whatever it is now, it must not be the pre-fix commit db146c0).",
+  "status": "completed",
+  "createdAt": "2026-08-31T11:41:58.022Z",
+  "updatedAt": "2026-08-31T11:52:08.553Z",
+  "runs": [
+    {
+      "runId": "b776b20e",
+      "mode": "single",
+      "agent": "reviewer",
+      "status": "completed",
+      "startedAt": "2026-08-31T11:52:08.553Z",
+      "completedAt": "2026-08-31T11:52:08.553Z"
+    }
+  ],
+  "decisions": [],
+  "artifacts": [
+    {
+      "kind": "output",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\b776b20e_reviewer_0_output.md"
+    },
+    {
+      "kind": "other",
+      "path": "C:\\Projects\\DS\\DS_MessageProtocol\\.pi-subagents\\artifacts\\b776b20e_reviewer_0_transcript.jsonl",
+      "description": "Child transcript"
+    }
+  ],
+  "receipts": [],
+  "cwd": "C:\\Projects\\DS\\DS_MessageProtocol",
+  "ownerSessionId": "C:\\Users\\DAESUNG\\.pi\\agent\\sessions\\--C--Projects-DS-DS_MessageProtocol--\\2026-08-31T08-36-46-235Z_01a056f6-be1b-75db-9393-14c2e7de5c89.jsonl",
+  "summary": "All six fixes verified. Report follows.\n\n## Review\n\n### Fix 1 — Generator hint-name uniqueness: **WORKS**\n- `MessageCodeGenerator.cs:158-188`: `MetadataName` (carries generic arity `` Foo`1 ``), nesting joined with `.`, namespace prefix with explicit global-namespace handling, defensive sanitizer. Mentally probed: generics ✓ (backtick in allow-list), deep nesting ✓, global namespace ✓ (empty prefix), invalid chars ✓ (no valid C# identifier char falls outside `IsLetterOrDigit` ∪ allow-list, so sanitizer is a no-op for real names — purely defensive).\n- Regression test `GeneratorDiagnosticTests.cs:185-208` genuinely covers it: `RunGenerator` concatenates **all** generated sources (lines 31-32), so the pre-fix failure (duplicate `Same` hint → `AddSource` throws → all output lost) would fail both namespace asserts and the count==2 assert.\n- `dotnet test -c Release`: **55/55 pass on net8.0 and net9.0** (was 54; +1 new test).\n\n### Fix 2 — InProcess benchmarks: **WORKS**\n- `Test/MessageProtocol.Benchmarks/Program.cs:14-25,37`: `Job.Default.WithToolchain(InProcessEmitToolchain.Instance)` via `[Config]`.\n- Live run confirmed: BDN v0.15.8 found 3 benchmarks, job header printed `Toolchain=InProcessEmitToolchain`, workload iterations executing in-process; killed after first benchmark started as instructed.\n\n### Fix 3 — Wire-format consts: **WORKS**\n- `Source/Shared/MessageWireFormat.cs:14-15`: `NullSizedPayloadLength = -1`, `DefaultStreamCapacity = 256` — identical to `Legacy/Source/Shared/MessageWireFormat.cs:13-14`.\n\n### Fix 4 — Hygiene: **PARTIAL — one guard is inert**\n- No `generated-out/` dirs remain ✓; `.gitignore:413` entry ✓; empty `ItemGroup` removed from the generator csproj ✓; guard excludes no legitimate sources (full build + 55 tests green) ✓.\n- **But `Directory.Build.props:12` `<Compile Remove=\"**/generated-out/**\"/>` does nothing.** The SDK default `Compile Include=\"**/*.cs\"` glob is evaluated in the Sdk *targets*, which run after `Directory.Build.props`, so th...",
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "All 6 fixes verified with file:line evidence; 1 FIX-NOW (Directory.Build.props:12 inert Compile Remove guard, proven by probe build) and 1 OPTIONAL (hint-name '.' separator ambiguity, MessageCodeGenerator.cs:169-173)."
+        }
+      ],
+      "changedFiles": [],
+      "testsAddedOrUpdated": [],
+      "commandsRun": [
+        {
+          "command": "git diff HEAD / git status / git log",
+          "result": "passed",
+          "summary": "Diff matches the 6 claimed fixes; base commit 9705af8."
+        },
+        {
+          "command": "dotnet test Test/MessageProtocol.Tests -c Release",
+          "result": "passed",
+          "summary": "55/55 tests pass on net8.0 and net9.0, including the new hint-name collision regression test."
+        },
+        {
+          "command": "dotnet run --project Test/MessageProtocol.Benchmarks -c Release",
+          "result": "passed",
+          "summary": "BDN v0.15.8 started real run: 3 benchmarks, Job header shows Toolchain=InProcessEmitToolchain, workload iterations executing; killed after first benchmark start as instructed."
+        },
+        {
+          "command": "probe: dotnet build scratch project with same Directory.Build.props guard + invalid generated-out/Junk.cs",
+          "result": "passed",
+          "summary": "Build FAILED (dump file compiled) proving Compile Remove in props is inert; rebuild with DefaultItemExcludes property succeeded with 0 errors."
+        },
+        {
+          "command": "PowerShell ZipFile read of all three nupkg nuspecs",
+          "result": "passed",
+          "summary": "All three 2.0.0 packages show repository commit=9705af8e... (not db146c0)."
+        },
+        {
+          "command": "grep doc notes vs Source/ public surface (15 types + MessageSerializer methods, namespaces, TFMs)",
+          "result": "passed",
+          "summary": "Public-API.md and Packages.md match actual source; no stale 1.0.1/netstandard2.1/global-namespace facts in new notes."
+        }
+      ],
+      "validationOutput": [
+        "55/55 tests pass (net8.0 + net9.0)",
+        "Benchmark run confirmed InProcessEmitToolchain active",
+        "nupkg commit metadata = 9705af8 (fixed from db146c0)",
+        "Consts NullSizedPayloadLength=-1, DefaultStreamCapacity=256 match Legacy byte-for-byte",
+        "No generated-out dirs; .gitignore covers generated-out/ and artifacts/"
+      ],
+      "residualRisks": [
+        "Directory.Build.props:12 Compile Remove guard is a no-op against the SDK default glob; if EmitCompilerGeneratedFiles is ever re-enabled the round-1 compile breakage recurs. Fix: DefaultItemExcludes property or Directory.Build.targets (both verified in probe).",
+        "Theoretical hint-name collision: nested type Ns.Foo.Bar vs type Bar in namespace Ns.Foo both produce hint 'Ns.Foo.Bar' (both are legal C#); extremely rare, noted OPTIONAL.",
+        "Packages.md documents the guard as working; will become accurate once the props guard is fixed properly."
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "Working tree vs 9705af8: generator hint-name uniqueness fix + regression test, benchmark InProcessEmitToolchain config, 2 restored wire-format consts, generated-out hygiene (.gitignore + props guard + empty ItemGroup removal), new vault docs (00-AI/01-Overview/Overview/Public-API/Packages + Changelog), 3 re-packed 2.0.0 nupkgs (untracked, gitignored).",
+      "reviewFindings": [
+        "no blockers",
+        "FIX-NOW: Directory.Build.props:12 - Compile Remove '**/generated-out/**' is evaluated before the SDK's default **/*.cs glob (targets stage) and never excludes anything; proven by probe build. Use DefaultItemExcludes property or Directory.Build.targets instead.",
+        "OPTIONAL: Source/MessageProtocol.CodeGenerator/MessageCodeGenerator.cs:169-173 - '.' used for both namespace and nesting joins makes Ns.Foo+Bar (nested) collide with Ns.Foo.Bar (namespace); rare but re-introduces the AddSource exception for that corner case.",
+        "OPTIONAL: Document/03-Reference/Packages.md:39 - describes the props guard as an effective compile-exclusion; update alongside the props fix."
+      ],
+      "manualNotes": "Read-only review; no files edited. Probe projects were created under %TEMP% only. Benchmark run was intentionally killed after the first benchmark's WorkloadPilot phase per instructions; full 3-benchmark session not completed. Untracked .pi-subagents/, .obsidian/workspace.json and .pi-glla/* churn in git status are tooling noise, not part of the fixes."
+    }
+  }
+}
