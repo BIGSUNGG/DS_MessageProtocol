@@ -4,6 +4,7 @@
 
 ## 2026-08-31
 
+- `README.md` v2 동기화: 런타임 타깃에 net6.0 명시, 생성기 netstandard2.0 표기, 속성 네임스페이스 안내, 저장소 구조 표 추가.
 - 리뷰 라운드 2 수정: 생성기 힌트 이름 중첩 구분자를 `+`로 변경(네임스페이스 점과 충돌 제거 + 회귀 테스트), `generated-out` 컴파일 제외 가드를 `DefaultItemExcludes`로 교체(`Compile Remove`는 기본 글롭 이전 평가라 무효).
 - 리뷰 라운드 1 수정: 생성기 힌트 이름 충돌 수정(네임스페이스 포함 유일 힌트 + 회귀 테스트), 벤치마크 InProcess 도구 체인 전환(실행 가능), `MessageWireFormat` 상수 2개 복원(`NullSizedPayloadLength`·`DefaultStreamCapacity`), `generated-out` 정리·컴파일 제외 가드, vault 문서 동기화(`00-AI/CONTEXT·GLOSSARY·CONVENTIONS`, `01-Overview/Home`, `02-Architecture/Overview`, `03-Reference/Public-API·Packages`).
 - 재작성 구현 완료: `Source/` (Core·CodeGenerator·메타), `Test/` (Tests 54·Benchmarks), `Sandbox/` 인수 조건(전체 통과), 패키지 3종 2.0.0 pack 검증.
