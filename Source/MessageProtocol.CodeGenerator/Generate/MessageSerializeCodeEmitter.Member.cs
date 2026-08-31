@@ -364,6 +364,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
+{indent}        if ((long)__len{uid} * {size} > reader.Remaining) throw new System.IO.EndOfStreamException(""Collection length prefix exceeds the remaining buffer."");
 {indent}        var __arr{uid} = new {elementTypeName}[__len{uid}];
 {indent}        if (__len{uid} > 0)
 {indent}        {{
@@ -384,6 +385,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
+{indent}        if (__len{uid} > reader.Remaining) throw new System.IO.EndOfStreamException(""Collection length prefix exceeds the remaining buffer."");
 {indent}        var __arr{uid} = new {elementTypeName}[__len{uid}];
 {indent}        for (int __i{uid} = 0; __i{uid} < __len{uid}; __i{uid}++)
 {indent}        {{
@@ -516,6 +518,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
+{indent}        if ((long)__c{uid} * {size} > reader.Remaining) throw new System.IO.EndOfStreamException(""Collection length prefix exceeds the remaining buffer."");
 {indent}        var __list{uid} = new System.Collections.Generic.List<{elementTypeName}>(__c{uid});
 {indent}        if (__c{uid} > 0)
 {indent}        {{
@@ -537,6 +540,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
+{indent}        if (__c{uid} > reader.Remaining) throw new System.IO.EndOfStreamException(""Collection length prefix exceeds the remaining buffer."");
 {indent}        var __list{uid} = new System.Collections.Generic.List<{elementTypeName}>(__c{uid});
 {indent}        for (int __i{uid} = 0; __i{uid} < __c{uid}; __i{uid}++)
 {indent}        {{
@@ -558,6 +562,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
+{indent}        if (__c{uid} > reader.Remaining) throw new System.IO.EndOfStreamException(""Collection length prefix exceeds the remaining buffer."");
 {indent}        var __list{uid} = new System.Collections.Generic.List<{elementTypeName}>(__c{uid});
 {indent}        for (int __i{uid} = 0; __i{uid} < __c{uid}; __i{uid}++)
 {indent}        {{

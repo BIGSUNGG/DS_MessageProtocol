@@ -3,12 +3,12 @@ project: DS_MessageProtocol
 type: troubleshoot
 status: draft
 tags: [known-issues, generator, runtime]
-updated: 2026-08-31
+updated: 2026-09-01
 ---
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13은 2026-09-01 프로덕션 적합성 검토 중 추가·같은 날 해결. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -39,6 +39,16 @@ v2 코드 리뷰(2026-08-31)에서 확인된 문제점. 빌드·테스트 56개�
 - 결과: `Deserialize(object)` 호출 시 `KeyNotFoundException`. 제네릭 경로만 동작.
 
 조치 방향: ~~네 메시지 속성 상호 배타 진단 추가~~ → 완료. 남은 꼬리: `RegisterCore`가 NonId 비트 가진 HasId 등록을 조용히 건너뛰는 동작은 수동 등록 경로에 남아 있음 (필요 시 별도 가드).
+
+### KI-13. 컬렉션 길이 접두사 선할당 → 불신 피어 OOM DoS (해결)
+
+**상태: 해결 (2026-09-01).** 생성기가 배열·리스트 역직렬화 전 변형에 할당 전 남은 버퍼 가드를 출력한다 — 고정 크기 요소 `길이×요소크기 ≤ Remaining` 정확 검증, 가변 크기 요소 `개수 ≤ Remaining`(요소 최소 와이어 1바이트) 상한 검증, 초과 시 `EndOfStreamException`. `MessageSerializeCodeEmitter.Member`의 `EmitArrayRead`·`EmitListRead` 5 변형, 회귀 테스트 4개(`CollectionGuardTests`).
+
+원본 발견 내용:
+
+생성 `Deserialize`가 길이·개수 접두사를 남은 바이트 검증 **전에** `new T[len]`·`new List<T>(len)` 할당에 써서, 불신 피어가 악성 길이(`int.MaxValue`)를 보내면 데이터 검증이 돌기도 전에 거대 할당→`OutOfMemoryException`으로 프로세스가 죽는다. bulk 경로의 `len * elemSize` 곱셈은 int 오버플로 가능. 문자열(`ReadString`)은 `ReadBytes` 경계 검증이 먼저라 영향 없음.
+
+조치 방향: 할당 전 상한 가드 생성 코드 출력 → 완료. 정책 옵션 없이 통일 상한(설정 없음)으로 결정.
 
 ## 잠재 결함 (코드 리뷰)
 

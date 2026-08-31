@@ -2,6 +2,11 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-01
+
+- KI-13 해결 — 컬렉션 길이·개수 접두사 할당 전 남은 버퍼 가드: `MessageSerializeCodeEmitter.Member`의 `EmitArrayRead`·`EmitListRead` 5 변형 전부(고정 크기 `길이×요소크기 ≤ Remaining` 정확 검증, 가변 크기 `개수 ≤ Remaining` 상한, 초과 시 `EndOfStreamException`, 정책 옵션 없음). 회귀 테스트 4개 신규(악성 길이 3 + 정상 왕복 1). 테스트 76→80. `Feature-Spec` F3 컬렉션 가드 명문화, `Known-Issues` KI-13 해결 처리.
+- `Known-Issues` KI-13 추가 — 프로덕션 적합성 검토: 생성 역직렬화의 길이 접두사가 남은 바이트 검증 전 컬렉션 할당 → 불신 피어 OOM DoS 가능성, 채용 전 상한 가드 권고.
+
 ## 2026-08-31
 
 - 제네릭 구성 선언 속성 통합 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md), ADR-0004 선언 모델 대체): `[GenericMessage(typeof(닫힌 구성), ClassId)]` 단일 속성(선언부·캐리어 무관), `GenericConstructionAttribute` 제거, 제네릭+스탠드얼론=항상 제네릭 와이어(구성 선언 필수, 미선언 직렬화 예외+안내), 동일 컴파일 내 구성 중복 선언 컴파일 진단 승격, 미바운드 제네릭 거부, `MSGPROT009` 삭제. 테스트 74→76, 픽스처·Sandbox 통합 문법 이전. `Feature-Spec` F2·F5, `GLOSSARY` 동기화.
