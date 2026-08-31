@@ -123,6 +123,12 @@ namespace MessageProtocol.Serialize
             int mid = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(4));
             int hi = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(8));
             int flags = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(12));
+            // flags 규약: 비트 31 부호, 비트 16–23 스케일(0–28), 나머지는 예약(0). 위반 거부 — 잘못된 스케일은 DecCalc 가감산에서 스택 버퍼 오버플로(프로세스 크래시)를 일으킨다.
+            uint f = (uint)flags;
+            if ((f & 0x7F00FFFFu) != 0 || ((f >> 16) & 0xFFu) > 28u)
+            {
+                throw new InvalidDataException("Invalid decimal wire bits.");
+            }
             _position += 16;
 
             Span<decimal> temp = stackalloc decimal[1];

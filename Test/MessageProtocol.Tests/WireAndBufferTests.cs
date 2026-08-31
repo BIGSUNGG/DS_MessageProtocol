@@ -173,4 +173,38 @@ public class BufferIOTests
         Assert.Equal(0, pooled.Length);
         pooled.Dispose(); // 멱등
     }
+
+    [Fact]
+    public void decimal_스케일이_28을_넘으면_읽기에서_거부된다()
+    {
+        byte[] bytes = WriteDecimalBytes(12.34m);
+        bytes[14] = 78; // 스케일 바이트(비트 16–23)를 78로 — DecCalc 크래시 구간
+        Assert.Throws<InvalidDataException>(() => new MessageBufferReader(bytes).ReadDecimal());
+    }
+
+    [Fact]
+    public void decimal_flags에_예약_비트가_있으면_읽기에서_거부된다()
+    {
+        byte[] bytes = WriteDecimalBytes(12.34m);
+        bytes[12] |= 0x01; // flags 비트 0(예약) 설정
+        Assert.Throws<InvalidDataException>(() => new MessageBufferReader(bytes).ReadDecimal());
+    }
+
+    [Fact]
+    public void decimal_경계_스케일28은_허용된다()
+    {
+        var writer = MessageBufferWriter.Create();
+        writer.WriteDecimal(0.0000000000000000000000000001m); // 스케일 28(허용 최대)
+        Assert.Equal(0.0000000000000000000000000001m, new MessageBufferReader(writer.WrittenReadOnlySpan).ReadDecimal());
+        writer.Dispose();
+    }
+
+    static byte[] WriteDecimalBytes(decimal value)
+    {
+        var writer = MessageBufferWriter.Create();
+        writer.WriteDecimal(value);
+        byte[] bytes = writer.ToArray();
+        writer.Dispose();
+        return bytes;
+    }
 }

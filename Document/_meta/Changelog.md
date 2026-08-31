@@ -4,6 +4,9 @@
 
 ## 2026-09-01
 
+- KI-15 해결 — `MessageBufferReader.ReadDecimal` flags 검증(스케일 >28·예약 비트 → `InvalidDataException`), 무효 스케일 `decimal`이 덧셈·뺄셈에서 일으키던 원격 프로세스 크래시 경로 차단. 회귀 테스트 3개(`BufferIOTests`). 테스트 80→83. `Known-Issues` KI-15 해결 섹션 승격, `Feature-Spec` F3 decimal 검증 명문화.
+- `Known-Issues` KI-14·KI-15 추가 — 온라인 게임 공격 표면 검토: 중첩 객체 재귀 판독 깊이 미제한(스택 오버플로 가능성), `ReadDecimal` 무검증 비트 재해석. 엔진 단 권고(프레임 크기 상한·레이트 제한·핸들러 인가)는 패키지 범위 밖.
+- KI-15 심각도 격상(실험 검증) — 공격자 제어 `decimal` 플래그(스케일 ≥78)가 덧셈·뺄셈에서 `DecCalc` 스택 버퍼 오버플로 유발, **SIGSEGV 프로세스 종료(try/catch 불가)**. 스케일 ≤77은 안전, 곱·비교는 생존. 원격 킬 스위치 수준의 DoS.
 - KI-13 해결 — 컬렉션 길이·개수 접두사 할당 전 남은 버퍼 가드: `MessageSerializeCodeEmitter.Member`의 `EmitArrayRead`·`EmitListRead` 5 변형 전부(고정 크기 `길이×요소크기 ≤ Remaining` 정확 검증, 가변 크기 `개수 ≤ Remaining` 상한, 초과 시 `EndOfStreamException`, 정책 옵션 없음). 회귀 테스트 4개 신규(악성 길이 3 + 정상 왕복 1). 테스트 76→80. `Feature-Spec` F3 컬렉션 가드 명문화, `Known-Issues` KI-13 해결 처리.
 - `Known-Issues` KI-13 추가 — 프로덕션 적합성 검토: 생성 역직렬화의 길이 접두사가 남은 바이트 검증 전 컬렉션 할당 → 불신 피어 OOM DoS 가능성, 채용 전 상한 가드 권고.
 
