@@ -411,3 +411,8 @@ Document/.obsidian/cache
 
 # Source generator emit dumps
 generated-out/
+
+# Tool/agent session state (코드·문서와 무관)
+.pi-glla/
+.pi-subagents/
+.obsidian/workspace.json
