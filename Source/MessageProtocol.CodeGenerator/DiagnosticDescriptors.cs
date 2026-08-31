@@ -61,5 +61,21 @@ namespace MessageProtocol.CodeGenerator
             category: Category,
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor InvalidGenericMessageDeclaration = new(
+            id: "MSGPROT008",
+            title: "Invalid GenericMessage declaration",
+            messageFormat: "Type '{0}' has an invalid GenericMessage declaration: {1}",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor GenericMessageRequiresStandalone = new(
+            id: "MSGPROT009",
+            title: "Generic message requires StandaloneMessage",
+            messageFormat: "Generic message type '{0}' requires '[StandaloneMessage(id)]' as its MessageId source",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

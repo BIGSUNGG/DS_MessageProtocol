@@ -79,6 +79,55 @@ namespace MessageProtocol.Serialize
                 reader: null);
         }
 
+        /// <summary>
+        /// 닫힌 제네릭 구성 등록. (MessageId, ClassId) 키로 writer·reader 를 디스패치에 올려
+        /// 송수신 양쪽 모두에서 object dispatch 가 동작하게 한다.
+        /// </summary>
+        public static void RegisterGenericConstruction<T>(uint classId) where T : IHasIdMessageSerializable<T>
+        {
+            if (classId == 0 || classId > MessageWireFormat.MessageIdValueMask)
+            {
+                throw new ArgumentOutOfRangeException(nameof(classId),
+                    $"ClassId must be between 1 and {MessageWireFormat.MessageIdValueMask} (2^24 - 1).");
+            }
+
+            if (!SerializerCache<T>.HasId)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{typeof(T).FullName}' is registered as a generic construction but exposes no 'public static uint MessageId' property.");
+            }
+
+            var deserialize = SerializerCache<T>.Deserialize
+                ?? throw new InvalidOperationException(
+                    $"Type '{typeof(T).FullName}' has no 'public static {typeof(T).Name} Deserialize(ref MessageBufferReader)' method; generic constructions require it.");
+
+            uint messageId = SerializerCache<T>.MessageId;
+
+            if (!_registeredTypes.TryAdd(typeof(T), 0))
+            {
+                throw new InvalidOperationException($"Message type '{typeof(T).FullName}' is already registered.");
+            }
+
+            bool writerRegistered = false;
+            bool readerRegistered = false;
+            try
+            {
+                RegisterWriterInvoker(typeof(T), static (object m, ref MessageBufferWriter w) => SerializerCache<T>.Serialize((T)m, ref w));
+                writerRegistered = true;
+
+                RegisterGenericReaderInvoker(messageId, classId, typeof(T),
+                    (ref MessageBufferReader r) => (object)deserialize(ref r)!);
+                readerRegistered = true;
+            }
+            catch
+            {
+                _registeredTypes.TryRemove(typeof(T), out _);
+                if (writerRegistered) TryRemoveWriterInvoker(typeof(T));
+                if (readerRegistered) TryRemoveGenericReaderInvoker(messageId, classId);
+                throw;
+            }
+        }
+
         /// <summary>NonId 메시지 등록 리플렉션 경로.</summary>
         public static void RegisterNonIdMessage<T>() where T : IMessageSerializable<T>
         {
@@ -197,6 +246,12 @@ namespace MessageProtocol.Serialize
                 if (hasId)
                 {
                     byte headerByte = (byte)(messageId >> 24);
+                    if (MessageWireFormat.IsGenericMessage(headerByte))
+                    {
+                        throw new InvalidOperationException(
+                            $"Message type '{type.FullName}' uses the generic header flag; register generic constructions with '{nameof(RegisterGenericConstruction)}' instead.");
+                    }
+
                     if (MessageWireFormat.HasEmbeddedMessageId(headerByte))
                     {
                         var existing = _registeredMessageIds.GetOrAdd(messageId, type);

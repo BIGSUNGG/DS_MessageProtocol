@@ -12,5 +12,6 @@ namespace MessageProtocol.CodeGenerator.Reference
 
         public const string MessageSerializableInterface = "MessageProtocol.Serialize.IMessageSerializable`1";
         public const string HasIdMessageSerializableInterface = "MessageProtocol.Serialize.IHasIdMessageSerializable`1";
+        public const string GenericMessageAttribute = "MessageProtocol.GenericMessageAttribute";
     }
 }

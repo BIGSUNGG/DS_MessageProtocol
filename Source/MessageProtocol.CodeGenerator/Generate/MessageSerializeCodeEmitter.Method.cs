@@ -47,7 +47,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 var sb = new StringBuilder();
 
                 // Hot path: writer 기반
-                sb.AppendLine($@"public static void Serialize({typeMeta.Symbol.Name} message, ref MessageBufferWriter writer)");
+                sb.AppendLine($@"public static void Serialize({typeMeta.DeclarationName} message, ref MessageBufferWriter writer)");
                 sb.AppendLine($@"{indent}{{");
                 if (rootModel.IsReferenceType)
                 {
@@ -60,6 +60,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                     sb.AppendLine($@"{indent}    writer.WriteByte(0x{idB2:X2});");
                     sb.AppendLine($@"{indent}    writer.WriteByte(0x{idB3:X2});");
                 }
+                if (typeMeta.IsGenericMessageDeclaration)
+                {
+                    // 헤더 뒤 구성 클래스 ID 3바이트 (미등록 구성은 직렬화 불가).
+                    sb.AppendLine($@"{indent}    if (__GenericClassId == 0) throw new InvalidOperationException(""This generic construction is not registered for serialization; declare it with [GenericMessage(..., ClassId = n)]."");");
+                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)(__GenericClassId >> 16));");
+                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)(__GenericClassId >> 8));");
+                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)__GenericClassId);");
+                }
                 sb.AppendLine($@"{indent}    var __context = default(MessageSerializer.SerializeContext);");
                 if (rootModel.IsReferenceType)
                 {
@@ -70,7 +78,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine();
 
                 // Compat: byte[] 반환
-                sb.AppendLine($@"{indent}public static byte[] Serialize({typeMeta.Symbol.Name} message)");
+                sb.AppendLine($@"{indent}public static byte[] Serialize({typeMeta.DeclarationName} message)");
                 sb.AppendLine($@"{indent}{{");
                 if (rootModel.IsReferenceType)
                 {
@@ -99,7 +107,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 var sb = new StringBuilder();
 
                 // Hot path: reader 기반
-                sb.AppendLine($@"public {staticHidingModifier}static {typeMeta.Symbol.Name} Deserialize(ref MessageBufferReader reader)");
+                sb.AppendLine($@"public {staticHidingModifier}static {typeMeta.DeclarationName} Deserialize(ref MessageBufferReader reader)");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    byte __headerByte = reader.ReadByte();");
                 sb.AppendLine($@"{indent}    if ((__headerByte & {((byte)MessageFlag.NonIdMessage) << 4}) == 0)");
@@ -108,6 +116,13 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}        reader.ReadByte();");
                 sb.AppendLine($@"{indent}        reader.ReadByte();");
                 sb.AppendLine($@"{indent}    }}");
+                if (typeMeta.IsGenericMessageDeclaration)
+                {
+                    // 구성 클래스 ID 3바이트 소비 (라우팅이 이미 사용).
+                    sb.AppendLine($@"{indent}    reader.ReadByte();");
+                    sb.AppendLine($@"{indent}    reader.ReadByte();");
+                    sb.AppendLine($@"{indent}    reader.ReadByte();");
+                }
                 sb.AppendLine($@"{indent}    var __context = default(MessageSerializer.DeserializeContext);");
                 if (rootModel.IsReferenceType)
                 {
@@ -124,7 +139,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine();
 
                 // Compat: byte[] 입력
-                sb.AppendLine($@"{indent}public {staticHidingModifier}static {typeMeta.Symbol.Name} Deserialize(byte[] data)");
+                sb.AppendLine($@"{indent}public {staticHidingModifier}static {typeMeta.DeclarationName} Deserialize(byte[] data)");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    if (data is null) throw new ArgumentNullException(nameof(data));");
                 sb.AppendLine($@"{indent}    var __reader = new MessageBufferReader(data);");

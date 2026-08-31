@@ -12,6 +12,17 @@ namespace MessageProtocol.Serialize
 
         static readonly ConcurrentDictionary<uint, BufferReaderFunc> _readerDispatch = new();
 
+        /// <summary>제네릭 구성 디스패치: (MessageId, ClassId) → reader. 키는 두 값을 24비트씩 합성한 ulong.</summary>
+        static readonly ConcurrentDictionary<ulong, BufferReaderFunc> _genericReaderDispatch = new();
+
+        /// <summary>(MessageId, ClassId) 등록 소유 타입. 구성 간 충돌 검출용.</summary>
+        static readonly ConcurrentDictionary<ulong, Type> _registeredGenericIds = new();
+
+        internal static ulong GenericDispatchKey(uint messageId, uint classId)
+        {
+            return ((ulong)messageId << 24) | (classId & MessageWireFormat.MessageIdValueMask);
+        }
+
         /// <summary>제네릭 hot path 역직렬화 (딕셔너리 조회·박싱 없음).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static T Deserialize<T>(ref MessageBufferReader reader) where T : IMessageSerializable<T>
@@ -69,19 +80,38 @@ namespace MessageProtocol.Serialize
         /// <summary>object dispatch 역직렬화: ReadOnlyMemory 입력.</summary>
         public static object Deserialize(ReadOnlyMemory<byte> data) => Deserialize(data.Span);
 
-        /// <summary>object dispatch 역직렬화: ReadOnlySpan 입력.</summary>
+        /// <summary>object dispatch 역직렬화: ReadOnlySpan 입력. 제네릭 메시지는 (MessageId, ClassId) 로 구성에 라우팅한다.</summary>
         public static object Deserialize(ReadOnlySpan<byte> data)
         {
             if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
 
             byte header = data[0];
             var flags = MessageWireFormat.GetFlags(header);
-            if ((flags & MessageFlag.StandaloneOrGroup) == 0)
+            bool generic = MessageWireFormat.IsGenericMessage(header);
+            if (!generic && (flags & MessageFlag.StandaloneOrGroup) == 0)
             {
                 throw new InvalidCastException("Message is not a standalone or group message.");
             }
 
             uint messageId = ReadMessageIdFromHeader(data);
+
+            if (generic)
+            {
+                if (data.Length < MessageWireFormat.GenericIdHeaderSize)
+                {
+                    throw new ArgumentException($"Message data is too short to read the {MessageWireFormat.GenericIdHeaderSize}-byte generic header.");
+                }
+
+                uint classId = (uint)data[4] << 16 | (uint)data[5] << 8 | data[6];
+                if (!_genericReaderDispatch.TryGetValue(GenericDispatchKey(messageId, classId), out var genericInvoker))
+                {
+                    throw new KeyNotFoundException($"Generic message type with ID {messageId} and ClassId {classId} is not registered.");
+                }
+
+                var genericReader = new MessageBufferReader(data);
+                return genericInvoker(ref genericReader);
+            }
+
             if (!_readerDispatch.TryGetValue(messageId, out var invoker))
             {
                 throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
@@ -91,13 +121,29 @@ namespace MessageProtocol.Serialize
             return invoker(ref reader);
         }
 
-        /// <summary>중첩 object dispatch: 현재 reader 위치의 헤더로 등록된 타입에 라우팅한다.</summary>
+        /// <summary>중첩 object dispatch: 현재 reader 위치의 헤더로 등록된 타입에 라우팅한다. 제네릭 헤더는 (MessageId, ClassId) 라우팅.</summary>
         public static object DeserializeFromReader(ref MessageBufferReader reader)
         {
             var unread = reader.UnreadSpan;
             if (unread.Length == 0) throw new ArgumentException("Reader has no data to deserialize.");
 
             uint messageId = ReadMessageIdFromHeader(unread);
+
+            if (MessageWireFormat.IsGenericMessage(unread[0]))
+            {
+                if (unread.Length < MessageWireFormat.GenericIdHeaderSize)
+                {
+                    throw new ArgumentException($"Reader data is too short to read the {MessageWireFormat.GenericIdHeaderSize}-byte generic header.");
+                }
+
+                uint classId = (uint)unread[4] << 16 | (uint)unread[5] << 8 | unread[6];
+                if (!_genericReaderDispatch.TryGetValue(GenericDispatchKey(messageId, classId), out var genericInvoker))
+                {
+                    throw new KeyNotFoundException($"Generic message type with ID {messageId} and ClassId {classId} is not registered.");
+                }
+                return genericInvoker(ref reader);
+            }
+
             if (!_readerDispatch.TryGetValue(messageId, out var invoker))
             {
                 throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
@@ -134,6 +180,31 @@ namespace MessageProtocol.Serialize
         internal static bool TryRemoveReaderInvoker(uint messageId)
         {
             return _readerDispatch.TryRemove(messageId, out _);
+        }
+
+        internal static void RegisterGenericReaderInvoker(uint messageId, uint classId, Type type, BufferReaderFunc invoker)
+        {
+            ulong key = GenericDispatchKey(messageId, classId);
+            var existing = _registeredGenericIds.GetOrAdd(key, type);
+            if (!ReferenceEquals(existing, type))
+            {
+                throw new InvalidOperationException(
+                    $"Generic construction with MessageId {messageId} and ClassId {classId} is already registered by '{existing.FullName}'.");
+            }
+
+            if (!_genericReaderDispatch.TryAdd(key, invoker))
+            {
+                _registeredGenericIds.TryRemove(key, out _);
+                throw new InvalidOperationException(
+                    $"Generic construction with MessageId {messageId} and ClassId {classId} is already registered for deserialization.");
+            }
+        }
+
+        internal static bool TryRemoveGenericReaderInvoker(uint messageId, uint classId)
+        {
+            ulong key = GenericDispatchKey(messageId, classId);
+            _registeredGenericIds.TryRemove(key, out _);
+            return _genericReaderDispatch.TryRemove(key, out _);
         }
     }
 }

@@ -27,28 +27,62 @@ namespace MessageProtocol.CodeGenerator.Generate
                     declarationIndent += "    ";
                 }
 
-                string baseAndInterfaces = GetBaseAndInterfaces(typeMeta, attributeReferences);
-                string staticHidingModifier = GetStaticHidingModifier(typeMeta);
-                sb.AppendLine($"{declarationIndent}public partial {typeMeta.DeclarationKeyword} {typeMeta.Symbol.Name}{baseAndInterfaces}");
-                sb.AppendLine($"{declarationIndent}{{");
-                sb.AppendLine($"{declarationIndent}    public {staticHidingModifier}static uint MessageId => {typeMeta.GetMessageId()};");
+            string baseAndInterfaces = GetBaseAndInterfaces(typeMeta, attributeReferences);
+            string staticHidingModifier = GetStaticHidingModifier(typeMeta);
+            sb.AppendLine($"{declarationIndent}public partial {typeMeta.DeclarationKeyword} {typeMeta.DeclarationName}{baseAndInterfaces}");
+            sb.AppendLine($"{declarationIndent}{{");
+            sb.AppendLine($"{declarationIndent}    public {staticHidingModifier}static uint MessageId => {typeMeta.GetMessageId()};");
+            if (typeMeta.IsGenericMessageDeclaration)
+            {
+                sb.AppendLine($"{declarationIndent}    internal {staticHidingModifier}static uint __GenericClassId;");
+            }
+            if (typeMeta.CanUseModuleInitializer)
+            {
                 sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}");
                 sb.AppendLine($"{declarationIndent}");
-                sb.AppendLine($"{declarationIndent}    {Method.EmitSerialize(typeMeta, indent + "    ", serializationGraph)}");
+            }
+            sb.AppendLine($"{declarationIndent}    {Method.EmitSerialize(typeMeta, indent + "    ", serializationGraph)}");
                 sb.AppendLine($"{declarationIndent}");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitDeserialize(typeMeta, indent + "    ", serializationGraph)}");
                 sb.AppendLine($"{declarationIndent}");
                 sb.AppendLine($"{declarationIndent}    {Method.EmitHelperMethods(indent + "    ", serializationGraph, state)}");
                 sb.AppendLine($"{declarationIndent}}}");
 
-                for (int i = typeMeta.ContainingTypes.Length - 1; i >= 0; i--)
-                {
-                    declarationIndent = declarationIndent.Substring(0, declarationIndent.Length - 4);
-                    sb.AppendLine($"{declarationIndent}}}");
-                }
-
-                return sb.ToString();
+            for (int i = typeMeta.ContainingTypes.Length - 1; i >= 0; i--)
+            {
+                declarationIndent = declarationIndent.Substring(0, declarationIndent.Length - 4);
+                sb.AppendLine($"{declarationIndent}}}");
             }
+
+            if (typeMeta.IsGenericMessageDeclaration)
+            {
+                sb.Append(EmitGenericRegistrationClass(typeMeta, serializationGraph, declarationIndent));
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>선언된 닫힌 제네릭 구성을 모듈 로드 시 (MessageId, ClassId) 키로 자동 등록한다.</summary>
+        static string EmitGenericRegistrationClass(TypeMetadata typeMeta, SerializationGraph serializationGraph, string indent)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine($"{indent}internal static class __GenericRegistration_{serializationGraph.RootType.HelperSuffix}");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    [ModuleInitializer]");
+            sb.AppendLine($"{indent}    internal static void Initialize()");
+            sb.AppendLine($"{indent}    {{");
+            foreach (var construction in typeMeta.GenericConstructions)
+            {
+                string constructionName = typeMeta.Symbol.Construct(construction.TypeArguments)
+                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                sb.AppendLine($"{indent}        {constructionName}.__GenericClassId = {construction.ClassId};");
+                sb.AppendLine($"{indent}        MessageSerializer.RegisterGenericConstruction<{constructionName}>({construction.ClassId});");
+            }
+            sb.AppendLine($"{indent}    }}");
+            sb.AppendLine($"{indent}}}");
+            return sb.ToString();
+        }
 
             static string GetNamespaceIndent(TypeMetadata typeMeta)
             {
@@ -80,8 +114,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 // Group / Standalone 은 MessageId 를 프로토콜 식별자로 쓰므로 IHasIdMessageSerializable.
                 bool hasIdInProtocol = typeMeta.IsGroupMessage || typeMeta.IsStandaloneMessage;
                 parts.Add(hasIdInProtocol
-                    ? $"IHasIdMessageSerializable<{typeMeta.Symbol.Name}>"
-                    : $"IMessageSerializable<{typeMeta.Symbol.Name}>");
+                    ? $"IHasIdMessageSerializable<{typeMeta.DeclarationName}>"
+                    : $"IMessageSerializable<{typeMeta.DeclarationName}>");
 
                 // 원본 선언의 인터페이스는 생성하는 직렬화 인터페이스와 중복만 제거하고 유지.
                 foreach (var interfaceType in typeMeta.Symbol.Interfaces)

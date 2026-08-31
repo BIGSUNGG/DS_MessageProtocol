@@ -53,6 +53,12 @@ namespace MessageProtocol.CodeGenerator.Generate
                     return primitiveWrite;
                 }
 
+                // 1.5) 타입 매개변수: 런타임 메시지 디스패치 (T 에는 등록된 메시지 타입만 올 수 있다).
+                if (typeSymbol is ITypeParameterSymbol)
+                {
+                    return EmitTypeParameterWrite(valueExpression, indent);
+                }
+
                 // 2) 배열 (1차원만 지원)
                 if (typeSymbol is IArrayTypeSymbol arrayType)
                 {
@@ -99,6 +105,11 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (TryEmitPrimitiveRead(typeSymbol, targetExpression, indent, out string primitiveRead))
                 {
                     return primitiveRead;
+                }
+
+                if (typeSymbol is ITypeParameterSymbol)
+                {
+                    return EmitTypeParameterRead(typeSymbol, targetExpression, indent);
                 }
 
                 if (typeSymbol is IArrayTypeSymbol arrayType)
@@ -242,6 +253,43 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
 
                 return $"{indent}{targetExpression} = {typeName}.Deserialize(ref reader);\n";
+            }
+
+            // ------- 타입 매개변수 (런타임 메시지 디스패치) -------
+
+            /// <summary>
+            /// T 멤버 직렬화: 전체 메시지(헤더 포함)를 런타임 타입 디스패치로 쓴다.
+            /// 그래프 밖 위임과 같은 형태이며 백레퍼런스 추적은 하지 않는다.
+            /// </summary>
+            static string EmitTypeParameterWrite(string valueExpression, string indent)
+            {
+                return $@"{indent}if ({valueExpression} is null)
+{indent}{{
+{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.Null);
+{indent}}}
+{indent}else
+{indent}{{
+{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
+{indent}    MessageSerializer.SerializeToWriter({valueExpression}, ref writer);
+{indent}}}
+";
+            }
+
+            static string EmitTypeParameterRead(ITypeSymbol typeSymbol, string targetExpression, string indent)
+            {
+                int uid = NextUniqueId();
+                return $@"{indent}{{
+{indent}    byte __pk{uid} = reader.ReadByte();
+{indent}    if (__pk{uid} == (byte)MessageSerializer.ReferenceKind.Null)
+{indent}    {{
+{indent}        {targetExpression} = default;
+{indent}    }}
+{indent}    else
+{indent}    {{
+{indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})MessageSerializer.DeserializeFromReader(ref reader);
+{indent}    }}
+{indent}}}
+";
             }
 
             // ------- 배열 -------

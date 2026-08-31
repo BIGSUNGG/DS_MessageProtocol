@@ -11,6 +11,8 @@ namespace MessageProtocol
     {
         public const int NonIdHeaderSize = 1;
         public const int IdHeaderSize = 4;
+        /// <summary>제네릭 메시지 헤더: 헤더 1바이트 + MessageId 3바이트 + 구성 타입 ID 3바이트.</summary>
+        public const int GenericIdHeaderSize = 7;
         public const int NullSizedPayloadLength = -1;
         public const int DefaultStreamCapacity = 256;
 
@@ -43,6 +45,12 @@ namespace MessageProtocol
         public static bool HasEmbeddedMessageId(byte headerByte)
         {
             return (GetFlags(headerByte) & MessageFlag.NonIdMessage) == 0;
+        }
+
+        /// <summary>제네릭 메시지 헤더인지 여부 (플래그 니블 0 예약). 헤더 뒤 구성 타입 ID 3바이트가 따라온다.</summary>
+        public static bool IsGenericMessage(byte headerByte)
+        {
+            return GetFlags(headerByte) == MessageFlag.Generic;
         }
     }
 }

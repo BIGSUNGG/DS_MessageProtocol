@@ -22,6 +22,7 @@ updated: 2026-08-31
 | Byte 0 | flags(상위 니블) + category(하위 니블) |
 | ID 메시지 | 헤더 4바이트. `MessageId = (headerByte << 24) \| (value & 0x00FFFFFF)` |
 | NonId 메시지 | 헤더 1바이트 |
+| 제네릭 메시지 | 헤더 7바이트: 플래그 Generic(0) + MessageId 24비트 + 구성 클래스 ID 24비트 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)) |
 | ID 값 범위 | `0 .. 2^24-1` |
 
 헤더 규칙은 직렬화 런타임과 코드 생성기가 공유하는 단일 소스(Legacy: `Source/Shared` Link Compile)에서 온다.
@@ -35,6 +36,7 @@ updated: 2026-08-31
 | `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
 | `NonIdMessage` | ID 없는 메시지 |
 | `MessageCategory(Category0..15)` | 카테고리 니블 |
+| `GenericMessage(typeof(...), ClassId)` | 제네릭 메시지 구성 선언 (구성마다 반복 부착, `AllowMultiple`). 제네릭 선언에는 `StandaloneMessage` 필수 |
 
 - 메시지 타입은 `partial` 선언이 필수.
 - 그룹 계층 규칙 위반은 컴파일 진단으로 거부 (F5).
@@ -65,6 +67,7 @@ updated: 2026-08-31
 - 속성 붙은 `partial` 메시지 타입에서 `Serialize` / `Deserialize` / (ID면) `MessageId` 생성.
 - `[ModuleInitializer]` 등록 코드 생성 → 모듈 로드 시 런타임에 자동 등록 (수동 등록 불필요).
 - Incremental generator.
+- 제네릭 메시지 타입 지원: `[GenericMessage(typeof(...), ClassId = n)]` 구성 선언 — 헤더 플래그 Generic(0) + MessageId 뒤에 구성 클래스 ID 24비트 와이어, 선언 구성은 모듈 로드 시 자동 등록(송수신 무설정), 다중 타입 매개변수 지원 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)).
 - 수동 구현 지원: 생성기 없이 동일한 계약 형태(`IMessageSerializable<T>` 등)를 직접 구현·등록 가능. 수동 구현 시 헤더는 사용자가 직접 쓴다.
 - 진단 (Legacy 기준, 동등한 검출 필요):
   - `MSGPROT001` 메시지 타입은 partial 필수
@@ -74,6 +77,8 @@ updated: 2026-08-31
   - `MSGPROT005` ID 값 범위 초과
   - `MSGPROT006` 미지원 멤버 타입
   - `MSGPROT007` 메시지 속성 중복 (경고 — 상호 배타, 생성 건너뜀. Legacy에 없는 신규 진단)
+  - `MSGPROT008` 잘못된 GenericMessage 선언 (비제네릭 부착·인수 개수 불일치·ClassId 누락/중복)
+  - `MSGPROT009` 제네릭 메시지에 `StandaloneMessage` 누락
 
 ## F6. 런타임 `MessageSerializer`
 
@@ -126,7 +131,7 @@ updated: 2026-08-31
 - 네트워크 전송 → DS_Communication
 - RPC 디스패치·원격 호출 → DS_RPC
 - Legacy에서 미지원이던 멤버 타입 추가 (`Dictionary`, nullable 값 타입 등) — 스펙 동결, 필요 시 별도 결정(05-ADR)으로 확장.
-- 제네릭 메시지 타입 — 추후 지원 예정 ([ADR-0002](../05-Decisions/ADR-0002-Generic-Message-Serialization.md)). 지원 전까지 제네릭 타입에 메시지 속성 부여 금지.
+- 제네릭 메시지 `T` 의 비메시지(원시) 타입 인스턴스화, `T` 경계 넘는 공유·순환 참조 복원 — [ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md) 제약 참고.
 
 ## Legacy 대비 재작성 변경점 (2026-08-31)
 

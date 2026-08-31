@@ -17,7 +17,7 @@ updated: 2026-08-31
 | Message contract | 직렬화 대상 메시지 타입·계약 (`IMessageSerializable<T>` 등) |
 | Analyzer path | NuGet `analyzers/dotnet/cs` 에 포함되는 생성기 어셈블리 경로 |
 | MessageId | 헤더 byte0 + 24비트 값으로 조립된 `uint` 식별자 |
-| MessageFlag | 헤더 상위 니블: NonId / Standalone / GroupRoot / GroupElement |
+| MessageFlag | 헤더 상위 니블: NonId / Standalone / GroupRoot / GroupElement / Generic(0, 제네릭 전용) |
 | MessageCategory | 헤더 하위 니블 0..15 (`MessageCategoryAttribute`) |
 | NonId | ID 없는 메시지. 헤더 1바이트. object `Deserialize` 불가 |
 | Standalone / GroupRoot / GroupElement | ID를 가진 메시지 종류. object deserialize 대상 |
@@ -26,6 +26,8 @@ updated: 2026-08-31
 | Shared Link | `Source/Shared`를 Core·Generator에 Compile Link로 공유 (와이어 규칙 단일 소스) |
 | ReferenceKind | 중첩 객체 참조 태그: Null=0, NewObject=1, BackReference=2 (와이어 규격) |
 | 수동 구현 | 생성기 없이 계약 인터페이스 + 정적 메서드를 직접 구현·등록 (헤더는 작성자가 직접 기록) |
+| GenericMessage | 제네릭 메시지 구성 선언 속성. `(타입 인수..., ClassId)` 반복 부착 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)) |
+| 구성 클래스 ID (ClassId) | 제네릭 헤더의 24비트 구성 식별자(1 .. 2^24-1). (MessageId, ClassId) 키로 닫힌 구성 디스패치 |
 
 ## 공통 (DS 스택)
 

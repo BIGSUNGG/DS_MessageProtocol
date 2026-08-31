@@ -1,16 +1,18 @@
 ---
 project: DS_MessageProtocol
 type: adr
-status: accepted
+status: superseded
 tags: [adr, generator, generics, roadmap]
 updated: 2026-08-31
 ---
 
-# ADR 0002: 제네릭 메시지 직렬화는 추후 지원으로 연기
+# ADR 0002: 제네릭 메시지 직렬화는 추후 지원으로 연기 (대체됨)
+
+> **Superseded by [ADR-0003](./ADR-0003-Generic-Message-Serialization.md) (2026-08-31)** — 연기하지 않고 바로 지원 구현.
 
 ## Status
 
-Accepted (2026-08-31)
+Superseded (2026-08-31) — 원래: Accepted (2026-08-31)
 
 ## Context
 

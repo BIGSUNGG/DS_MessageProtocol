@@ -43,7 +43,8 @@ namespace MessageProtocol.CodeGenerator.Graph
             string ns = symbol.ContainingNamespace == null || symbol.ContainingNamespace.IsGlobalNamespace
                 ? string.Empty
                 : symbol.ContainingNamespace.ToDisplayString().Replace('.', '_') + "_";
-            return ns + symbol.MetadataName;
+            // MetadataName 의 제네릭 차수 표기(`)는 유효한 식별자가 아니므로 변환한다.
+            return (ns + symbol.MetadataName).Replace('`', '_');
         }
 
         public bool IsMessageType(ITypeSymbol typeSymbol)

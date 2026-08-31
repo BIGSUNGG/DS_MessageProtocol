@@ -94,3 +94,16 @@ public partial class MemberControl
     public void SetHidden(int value) => _hidden = value;
     public int GetHidden() => _hidden;
 }
+
+// ---------- S10: 제네릭 메시지 ----------
+// GenericMessage 구성 선언: 직렬화 지원 구성과 클래스 ID 명시.
+// 선언된 구성은 송수신 양쪽에서 모듈 로드 시 자동 등록된다.
+[StandaloneMessage(40)]
+[GenericMessage(typeof(AllPrimitives), ClassId = 1)]
+[GenericMessage(typeof(Circle), ClassId = 2)]
+public partial class Envelope<T>
+{
+    public T? Value { get; set; }
+    public string? Note { get; set; }
+    public List<T?>? Items { get; set; }
+}

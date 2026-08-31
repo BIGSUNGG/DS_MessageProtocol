@@ -14,6 +14,7 @@ namespace MessageProtocol.CodeGenerator.Reference
         public INamedTypeSymbol? MessageCategoryAttributeType { get; }
         public INamedTypeSymbol? MessageSerializableInterfaceType { get; }
         public INamedTypeSymbol? HasIdMessageSerializableInterfaceType { get; }
+        public INamedTypeSymbol? GenericMessageAttributeType { get; }
 
         public AttributeReferences(Compilation compilation)
         {
@@ -26,6 +27,7 @@ namespace MessageProtocol.CodeGenerator.Reference
             MessageCategoryAttributeType = compilation.GetTypeByMetadataName(MetadataNames.MessageCategoryAttribute);
             MessageSerializableInterfaceType = compilation.GetTypeByMetadataName(MetadataNames.MessageSerializableInterface);
             HasIdMessageSerializableInterfaceType = compilation.GetTypeByMetadataName(MetadataNames.HasIdMessageSerializableInterface);
+            GenericMessageAttributeType = compilation.GetTypeByMetadataName(MetadataNames.GenericMessageAttribute);
         }
     }
 }

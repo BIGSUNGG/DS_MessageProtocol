@@ -175,4 +175,92 @@ public class RoundTripTests
         using var pooled = MessageSerializer.SerializePooled(msg);
         Assert.Equal(MessageSerializer.Serialize(msg), pooled.ToArray());
     }
+
+    // ---------- 제네릭 메시지 ----------
+
+    [Fact]
+    public void 제네릭_메시지가_왕복한다()
+    {
+        var msg = new GenericEnvelope<FlatMessage>
+        {
+            Note = "gen",
+            Value = new FlatMessage { Value = 7 },
+            Items = new List<FlatMessage?> { new() { Value = 1 }, null, new() { Value = 2 } },
+        };
+
+        var rt = MessageSerializer.Deserialize<GenericEnvelope<FlatMessage>>(MessageSerializer.Serialize(msg));
+
+        Assert.Equal("gen", rt.Note);
+        Assert.Equal(7, rt.Value!.Value);
+        Assert.NotNull(rt.Items);
+        Assert.Equal(3, rt.Items!.Count);
+        Assert.Equal(1, rt.Items[0]!.Value);
+        Assert.Null(rt.Items[1]);
+        Assert.Equal(2, rt.Items[2]!.Value);
+    }
+
+    [Fact]
+    public void 제네릭_NonId_메시지가_왕복한다()
+    {
+        var msg = new GenericPair<FlatMessage> { First = new FlatMessage { Value = 3 }, Tag = 9 };
+        var rt = MessageSerializer.Deserialize<GenericPair<FlatMessage>>(MessageSerializer.Serialize(msg));
+        Assert.Equal(3, rt.First!.Value);
+        Assert.Equal(9, rt.Tag);
+    }
+
+    [Fact]
+    public void 제네릭_구성도_object_dispatch로_왕복한다()
+    {
+        var msg = new GenericEnvelope<FlatMessage> { Value = new FlatMessage { Value = 11 } };
+        object? decoded = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)msg));
+        var rt = Assert.IsType<GenericEnvelope<FlatMessage>>(decoded);
+        Assert.Equal(11, rt.Value!.Value);
+    }
+
+    [Fact]
+    public void 제네릭_헤더는_플래그0_MessageId_클래스ID_순서다()
+    {
+        var bytes = MessageSerializer.Serialize(new GenericEnvelope<FlatMessage> { Value = new FlatMessage { Value = 1 } });
+
+        Assert.Equal(MessageWireFormat.ComposeHeaderByte(MessageFlag.Generic, 0), bytes[0]);
+        Assert.Equal(0, bytes[1]);
+        Assert.Equal(0, bytes[2]);
+        Assert.Equal(120, bytes[3]); // MessageId 24비트 (스탠드얼론 ID)
+        Assert.Equal(0, bytes[4]);
+        Assert.Equal(0, bytes[5]);
+        Assert.Equal(1, bytes[6]); // 구성 ClassId 24비트 (FlatMessage 구성 = 1)
+    }
+
+    [Fact]
+    public void 같은_선언의_여러_구성이_함께_디스패치된다()
+    {
+        var a = new GenericEnvelope<FlatMessage> { Value = new FlatMessage { Value = 1 } };
+        var b = new GenericEnvelope<SettingsRecord> { Value = new SettingsRecord { Theme = "dark", Volume = 3 } };
+
+        var da = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)a));
+        var db = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)b));
+
+        var ra = Assert.IsType<GenericEnvelope<FlatMessage>>(da);
+        var rb = Assert.IsType<GenericEnvelope<SettingsRecord>>(db);
+        Assert.Equal(1, ra.Value!.Value);
+        Assert.Equal("dark", rb.Value!.Theme);
+    }
+
+    [Fact]
+    public void 다중_타입_매개변수_제네릭이_왕복한다()
+    {
+        var msg = new GenericDuo<FlatMessage, SettingsRecord>
+        {
+            First = new FlatMessage { Value = 5 },
+            Second = new SettingsRecord { Theme = "t", Volume = 2 },
+        };
+
+        var rt = MessageSerializer.Deserialize<GenericDuo<FlatMessage, SettingsRecord>>(MessageSerializer.Serialize(msg));
+        Assert.Equal(5, rt.First!.Value);
+        Assert.Equal("t", rt.Second!.Theme);
+
+        var decoded = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)msg));
+        var rd = Assert.IsType<GenericDuo<FlatMessage, SettingsRecord>>(decoded);
+        Assert.Equal(2, rd.Second!.Volume);
+    }
 }

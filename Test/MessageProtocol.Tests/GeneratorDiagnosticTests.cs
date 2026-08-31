@@ -11,6 +11,12 @@ public class GeneratorDiagnosticTests
 {
     static (ImmutableArray<Diagnostic> Diagnostics, string GeneratedText) RunGenerator(string source)
     {
+        var (diagnostics, generated, _) = RunGeneratorWithCompilation(source);
+        return (diagnostics, generated);
+    }
+
+    static (ImmutableArray<Diagnostic> Diagnostics, string GeneratedText, ImmutableArray<Diagnostic> CompileErrors) RunGeneratorWithCompilation(string source)
+    {
         var syntaxTree = CSharpSyntaxTree.ParseText(source);
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(System.IO.Path.PathSeparator)
@@ -25,12 +31,15 @@ public class GeneratorDiagnosticTests
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var driver = CSharpGeneratorDriver.Create(new MessageCodeGenerator().AsSourceGenerator());
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
         var runResult = driver.GetRunResult();
 
         var generated = string.Concat(
             runResult.Results.SelectMany(r => r.GeneratedSources).Select(s => s.SourceText.ToString()));
-        return (diagnostics, generated);
+        var compileErrors = updated.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .ToImmutableArray();
+        return (diagnostics, generated, compileErrors);
     }
 
     const string Header = """
@@ -144,6 +153,90 @@ public class GeneratorDiagnosticTests
 
         Assert.Contains(diagnostics, d => d.Id == "MSGPROT007");
         Assert.DoesNotContain("RegisterHasIdMessage<DoubleId>", generated);
+    }
+
+    [Fact]
+    public void 제네릭_메시지_타입은_매개변수를_유지한_채_컴파일_가능한_코드를_생성한다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(1)]
+            public partial class Msg<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        Assert.Contains("public partial class Msg<T>", generated);
+        Assert.Contains("IHasIdMessageSerializable<Msg<T>>", generated);
+        Assert.Contains("Serialize(Msg<T> message", generated);
+    }
+
+    [Fact]
+    public void 제네릭_메시지_타입은_자동_등록_코드를_생성하지_않는다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [NonIdMessage]
+            public partial class Pair<T> { public T? First { get; set; } public int Tag { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        Assert.DoesNotContain("RegisterNonIdMessage", generated);
+        Assert.DoesNotContain("[ModuleInitializer]", generated);
+    }
+
+    [Fact]
+    public void GenericMessage_구성_선언은_자동_등록_클래스를_생성한다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(1)]
+            public partial class Target { public int X { get; set; } }
+
+            [StandaloneMessage(2)]
+            [GenericMessage(typeof(Target), ClassId = 7)]
+            public partial class Box<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        Assert.Contains("internal static uint __GenericClassId", generated);
+        Assert.Contains("RegisterGenericConstruction<global::TestNs.Box<global::TestNs.Target>>(7)", generated);
+        // 제네릭 헤더 플래그 0: MessageId 구성에 제네릭 플래그가 쓰인다.
+        Assert.Contains("MessageId => 2;", generated);
+    }
+
+    [Fact]
+    public void MSGPROT008_제네릭이_아닌_타입에_GenericMessage를_붙이면_에러()
+    {
+        var (diagnostics, _) = RunGenerator(Header + """
+            [StandaloneMessage(1)]
+            [GenericMessage(typeof(int), ClassId = 1)]
+            public partial class NotGeneric { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
+    }
+
+    [Fact]
+    public void MSGPROT008_타입_인수_개수가_다르면_에러()
+    {
+        var (diagnostics, _) = RunGenerator(Header + """
+            [StandaloneMessage(1)]
+            [GenericMessage(typeof(int), typeof(string), ClassId = 1)]
+            public partial class OneArg<T> { public T? V { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
+    }
+
+    [Fact]
+    public void MSGPROT009_GenericMessage_선언에는_StandaloneMessage가_필수()
+    {
+        var (diagnostics, _) = RunGenerator(Header + """
+            [GenericMessage(typeof(int), ClassId = 1)]
+            public partial class NoId<T> { public T? V { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT009");
     }
 
     [Fact]

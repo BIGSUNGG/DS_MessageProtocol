@@ -160,3 +160,30 @@ public class NotAMessage
 {
     public int Value { get; set; }
 }
+
+// ---------- 제네릭 ----------
+
+[StandaloneMessage(120)]
+[GenericMessage(typeof(FlatMessage), ClassId = 1)]
+[GenericMessage(typeof(SettingsRecord), ClassId = 2)]
+public partial class GenericEnvelope<T>
+{
+    public T? Value { get; set; }
+    public string? Note { get; set; }
+    public List<T?>? Items { get; set; }
+}
+
+[StandaloneMessage(121)]
+[GenericMessage(typeof(FlatMessage), typeof(SettingsRecord), ClassId = 1)]
+public partial class GenericDuo<TFirst, TSecond>
+{
+    public TFirst? First { get; set; }
+    public TSecond? Second { get; set; }
+}
+
+[NonIdMessage]
+public partial class GenericPair<T>
+{
+    public T? First { get; set; }
+    public int Tag { get; set; }
+}

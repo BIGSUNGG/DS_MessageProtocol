@@ -165,6 +165,41 @@ void Check(string name, bool condition)
     Check("S9 수동 메시지 object dispatch", decoded is ManualMessage m && m.Value == 1234);
 }
 
+// ---------- S10: 제네릭 메시지 ----------
+{
+    // T 에는 object dispatch 가능한 ID 메시지(여기선 AllPrimitives)를 담는다.
+    // NonId 메시지는 규격상 디스패치 대상이 아니라 T 구성으로 라우팅할 수 없다.
+    var msg = new Envelope<AllPrimitives>
+    {
+        Note = "gen",
+        Value = new AllPrimitives { Int32 = 7, Text = "t" },
+        Items = new List<AllPrimitives?> { new() { Int32 = 1 }, null, new() { Int32 = 2 } },
+    };
+
+    var rt = MessageSerializer.Deserialize<Envelope<AllPrimitives>>(MessageSerializer.Serialize(msg));
+    Check("S10 제네릭 round-trip", rt.Note == "gen" && rt.Value != null && rt.Value.Int32 == 7 && rt.Value.Text == "t");
+    Check("S10 T 컬렉션 round-trip", rt.Items != null && rt.Items.Count == 3 && rt.Items[0]!.Int32 == 1 && rt.Items[1] == null && rt.Items[2]!.Int32 == 2);
+
+    // 닫힌 구성은 선언 기반 자동 등록으로 object dispatch 가능 (수동 등록 없음)
+    object? decodedGeneric = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)msg));
+    Check("S10 제네릭 object dispatch", decodedGeneric is Envelope<AllPrimitives> env && env.Value!.Int32 == 7);
+}
+
+// ---------- S11: 제네릭 구성 공존·와이어 헤더 ----------
+{
+    var a = new Envelope<AllPrimitives> { Value = new AllPrimitives { Int32 = 1 } };
+    var b = new Envelope<Circle> { Value = new Circle { Name = "c", Radius = 2.0 } };
+
+    byte[] bytesA = MessageSerializer.Serialize(a);
+    Check("S11 제네릭 헤더 플래그 0", MessageWireFormat.GetFlags(bytesA[0]) == MessageFlag.Generic);
+    Check("S11 클래스 ID 기록", bytesA[4] == 0 && bytesA[5] == 0 && bytesA[6] == 1);
+
+    object? da = MessageSerializer.Deserialize(bytesA);
+    object? db = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)b));
+    Check("S11 구성 공존 A", da is Envelope<AllPrimitives> ea && ea.Value!.Int32 == 1);
+    Check("S11 구성 공존 B", db is Envelope<Circle> ec && ec.Value!.Radius == 2.0);
+}
+
 Console.WriteLine();
 Console.WriteLine(failures == 0 ? "ALL SCENARIOS PASSED" : $"{failures} SCENARIO CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;

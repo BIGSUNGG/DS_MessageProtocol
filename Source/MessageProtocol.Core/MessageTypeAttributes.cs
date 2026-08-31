@@ -64,6 +64,43 @@ namespace MessageProtocol
     {
     }
 
+    /// <summary>
+    /// 제네릭 메시지의 직렬화 지원 구성(닫힌 제네릭) 선언. 제네릭 메시지 선언에 구성마다 반복 부착한다.
+    /// 예: <c>[GenericMessage(typeof(Ping), ClassId = 1)] partial class Envelope&lt;T&gt;</c>.
+    /// 선언된 구성은 생성 코드가 (MessageId, ClassId) 키로 자동 등록해 송수신 양쪽에서 object dispatch 가 동작한다.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true, Inherited = false)]
+    public class GenericMessageAttribute : Attribute
+    {
+        public Type[] TypeArguments { get; }
+
+        uint _classId;
+
+        /// <summary>구성 클래스 식별자. 헤더의 MessageId 뒤에 3바이트로 기록된다. 1 .. 2^24-1.</summary>
+        public uint ClassId
+        {
+            get => _classId;
+            set
+            {
+                if (value == 0)
+                {
+                    throw new InvalidOperationException("ClassId cannot be 0");
+                }
+                MessageAttributeRange.Validate(value, nameof(value));
+                _classId = value;
+            }
+        }
+
+        public GenericMessageAttribute(params Type[] typeArguments)
+        {
+            if (typeArguments is null || typeArguments.Length == 0)
+            {
+                throw new ArgumentException("GenericMessageAttribute requires at least one type argument.", nameof(typeArguments));
+            }
+            TypeArguments = typeArguments;
+        }
+    }
+
     /// <summary>헤더 category 니블(0~15) 지정.</summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
     public class MessageCategoryAttribute : Attribute

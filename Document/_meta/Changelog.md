@@ -4,6 +4,9 @@
 
 ## 2026-08-31
 
+- 제네릭 와이어 재설계 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md), ADR-0003 대체): `[GenericMessage(typeof(...), ClassId)]` 구성 선언 속성, 헤더 플래그 Generic(0) + MessageId 뒤 구성 클래스 ID 24비트 와이어(`GenericIdHeaderSize = 7`), (MessageId, ClassId) 디스패치·모듈 로드 자동 등록(송수신 무설정), 구성 공존·다중 타입 매개변수, `MSGPROT008`·`MSGPROT009` 진단. 테스트 63→70, Sandbox S11 추가. `Feature-Spec` F1·F2·F5·범위 밖, `GLOSSARY`, `Known-Issues` 동기화.
+- 제네릭 직렬화 수신 측 제약 명문화: 지연 등록은 `Serialize(object)` 경로 한정 — 역직렬화만 하는 수신 프로세스는 닫힌 구성 명시적 등록 필요 (`ADR-0003`·`Feature-Spec` 갱신).
+- 제네릭 메시지 직렬화 구현 ([ADR-0003](../05-Decisions/ADR-0003-Generic-Message-Serialization.md), Known-Issues KI-1 해결): 타입 매개변수 유지 생성(partial arity·헬퍼 이름 백틱 변환), `T` 멤버 런타임 메시지 디스패치, 제네릭 타입 자동 등록 미생성(닫힌 구성 지연/수동 등록). 회귀 테스트 5개 추가(테스트 58→63), Sandbox S10 시나리오(제네릭 round-trip·T 컬렉션·object dispatch) 추가. `ADR-0002` superseded 처리, `Feature-Spec` F5·범위 밖 동기화.
 - `MSGPROT007` 메시지 속성 중복 경고 진단 추가 (`Source/MessageProtocol.CodeGenerator`) — 한 타입에 메시지 속성 2개 이상이면 경고·생성 건너뜀, 회귀 테스트 2개 (테스트 56→58). `Feature-Spec` F5 진단 목록 갱신.
 - `05-Decisions/ADR-0002-Generic-Message-Serialization.md` 신규 — 제네릭 메시지 직렬화 추후 지원 연기 결정. `Feature-Spec` 범위 밖·`Known-Issues` KI-1 유예·KI-2 해결 동기화.
 - `06-Troubleshooting/Known-Issues.md` 신규 — 코드 리뷰 발견 문제점: 확인 버그 2건(제네릭 메시지 무진단 깨진 생성, 속성 충돌 무진단·런타임 실패) + 잠재 결함 10건.

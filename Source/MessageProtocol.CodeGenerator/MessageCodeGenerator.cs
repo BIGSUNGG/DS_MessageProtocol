@@ -22,18 +22,21 @@ namespace MessageProtocol.CodeGenerator
             var groupRoot = CreateAttributeProvider(context, MetadataNames.GroupRootMessageAttribute);
             var groupElement = CreateAttributeProvider(context, MetadataNames.GroupElementMessageAttribute);
             var nonId = CreateAttributeProvider(context, MetadataNames.NonIdMessageAttribute);
+            var generic = CreateAttributeProvider(context, MetadataNames.GenericMessageAttribute);
 
             var candidates = standalone.Collect()
                 .Combine(groupRoot.Collect())
                 .Combine(groupElement.Collect())
                 .Combine(nonId.Collect())
+                .Combine(generic.Collect())
                 .Select(static (sources, _) =>
                 {
-                    var (((standaloneTypes, groupRootTypes), groupElementTypes), nonIdTypes) = sources;
+                    var ((((standaloneTypes, groupRootTypes), groupElementTypes), nonIdTypes), genericTypes) = sources;
                     return standaloneTypes
                         .Concat(groupRootTypes)
                         .Concat(groupElementTypes)
                         .Concat(nonIdTypes)
+                        .Concat(genericTypes)
                         .Distinct(NamedTypeSymbolComparer.Instance)
                         .ToImmutableArray();
                 });
@@ -95,6 +98,11 @@ namespace MessageProtocol.CodeGenerator
             }
 
             var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
+
+            if (!TryValidateGenericConstructions(typeMeta, context, location))
+            {
+                return;
+            }
 
             if (TryReportDuplicateMessageAttributes(typeMeta, context, location))
             {
@@ -213,6 +221,72 @@ namespace MessageProtocol.CodeGenerator
                 location,
                 typeMeta.Symbol.Name,
                 string.Join(", ", names)));
+            return true;
+        }
+
+        /// <summary>
+        /// GenericMessage 구성 선언 검증 (MSGPROT008/009).
+        /// </summary>
+        static bool TryValidateGenericConstructions(TypeMetadata typeMeta, SourceProductionContext context, Location location)
+        {
+            if (typeMeta.GenericConstructions.Length == 0)
+            {
+                return true;
+            }
+
+            if (!typeMeta.Symbol.IsGenericType)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.InvalidGenericMessageDeclaration,
+                    location,
+                    typeMeta.Symbol.Name,
+                    "the type is not generic"));
+                return false;
+            }
+
+            if (!typeMeta.IsStandaloneMessage)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.GenericMessageRequiresStandalone,
+                    location,
+                    typeMeta.Symbol.Name));
+                return false;
+            }
+
+            var seenClassIds = new HashSet<uint>();
+            foreach (var construction in typeMeta.GenericConstructions)
+            {
+                if (construction.ClassId == 0)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.InvalidGenericMessageDeclaration,
+                        location,
+                        typeMeta.Symbol.Name,
+                        "a construction is missing 'ClassId' (must be 1 .. 16777215)"));
+                    return false;
+                }
+
+                if (!seenClassIds.Add(construction.ClassId))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.InvalidGenericMessageDeclaration,
+                        location,
+                        typeMeta.Symbol.Name,
+                        $"ClassId {construction.ClassId} is declared more than once"));
+                    return false;
+                }
+
+                if (construction.TypeArguments.Length != typeMeta.Symbol.TypeParameters.Length)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.InvalidGenericMessageDeclaration,
+                        location,
+                        typeMeta.Symbol.Name,
+                        $"construction declares {construction.TypeArguments.Length} type argument(s) but the type has {typeMeta.Symbol.TypeParameters.Length} type parameter(s)"));
+                    return false;
+                }
+            }
+
             return true;
         }
 

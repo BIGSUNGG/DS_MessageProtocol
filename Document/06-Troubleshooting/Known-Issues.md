@@ -12,9 +12,9 @@ v2 코드 리뷰(2026-08-31)에서 확인된 문제점. 빌드·테스트 56개�
 
 ## 확인된 버그 (실험 검증)
 
-### KI-1. 제네릭 메시지 타입 → 진단 없이 깨진 코드 생성 (유예)
+### KI-1. 제네릭 메시지 타입 → 진단 없이 깨진 코드 생성 (해결)
 
-**상태: [ADR-0002](../05-Decisions/ADR-0002-Generic-Message-Serialization.md)로 추후 지원 결정 (2026-08-31).** 제네릭 타입에 메시지 속성을 붙이지 않는다.
+**상태: 해결 (2026-08-31).** [ADR-0002](../05-Decisions/ADR-0002-Generic-Message-Serialization.md)로 연기 결정 후 같은 날 [ADR-0003](../05-Decisions/ADR-0003-Generic-Message-Serialization.md)으로 지원 구현, 이어 [ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)로 전용 속성 + 구성 클래스 ID 와이어 재설계(구성 공존·수신 측 무설정). 회귀 테스트·Sandbox S10/S11 포함.
 
 원본 발견 내용:
 
@@ -24,7 +24,7 @@ v2 코드 리뷰(2026-08-31)에서 확인된 문제점. 빌드·테스트 56개�
 - `Define.Emit`은 `Symbol.Name`만 써서 partial 선언이 타입 매개변수를 잃는다 (`partial class Msg` vs `Msg<T>`).
 - 사용자 프로젝트에 수십 개의 무관한 CS 구문 에러가 뜨고 MSGPROT 진단은 없다.
 
-조치 방향: ~~제네릭 메시지 타입 거부 진단 추가~~ → ADR-0002로 지원 로드맵에 편입.
+조치 방향: ~~제네릭 메시지 타입 거부 진단 추가~~ → ADR-0002로 연기 → **ADR-0003으로 지원 구현 완료**.
 
 ### KI-2. 메시지 속성 충돌 → 무진단, 런타임 object 역직렬화 실패 (해결)
 
