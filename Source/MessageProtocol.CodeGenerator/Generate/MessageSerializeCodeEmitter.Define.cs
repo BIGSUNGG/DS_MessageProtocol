@@ -32,10 +32,6 @@ namespace MessageProtocol.CodeGenerator.Generate
             sb.AppendLine($"{declarationIndent}public partial {typeMeta.DeclarationKeyword} {typeMeta.DeclarationName}{baseAndInterfaces}");
             sb.AppendLine($"{declarationIndent}{{");
             sb.AppendLine($"{declarationIndent}    public {staticHidingModifier}static uint MessageId => {typeMeta.GetMessageId()};");
-            if (typeMeta.IsGenericMessageDeclaration)
-            {
-                sb.AppendLine($"{declarationIndent}    internal {staticHidingModifier}static uint __GenericClassId;");
-            }
             if (typeMeta.CanUseModuleInitializer)
             {
                 sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}");
@@ -54,33 +50,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($"{declarationIndent}}}");
             }
 
-            if (typeMeta.IsGenericMessageDeclaration)
-            {
-                sb.Append(EmitGenericRegistrationClass(typeMeta, serializationGraph, declarationIndent));
-            }
-
-            return sb.ToString();
-        }
-
-        /// <summary>선언된 닫힌 제네릭 구성을 모듈 로드 시 (MessageId, ClassId) 키로 자동 등록한다.</summary>
-        static string EmitGenericRegistrationClass(TypeMetadata typeMeta, SerializationGraph serializationGraph, string indent)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine();
-            sb.AppendLine($"{indent}internal static class __GenericRegistration_{serializationGraph.RootType.HelperSuffix}");
-            sb.AppendLine($"{indent}{{");
-            sb.AppendLine($"{indent}    [ModuleInitializer]");
-            sb.AppendLine($"{indent}    internal static void Initialize()");
-            sb.AppendLine($"{indent}    {{");
-            foreach (var construction in typeMeta.GenericConstructions)
-            {
-                string constructionName = typeMeta.Symbol.Construct(construction.TypeArguments)
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                sb.AppendLine($"{indent}        {constructionName}.__GenericClassId = {construction.ClassId};");
-                sb.AppendLine($"{indent}        MessageSerializer.RegisterGenericConstruction<{constructionName}>({construction.ClassId});");
-            }
-            sb.AppendLine($"{indent}    }}");
-            sb.AppendLine($"{indent}}}");
             return sb.ToString();
         }
 

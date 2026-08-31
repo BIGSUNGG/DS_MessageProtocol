@@ -4,6 +4,8 @@
 
 ## 2026-08-31
 
+- 제네릭 구성 선언 속성 통합 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md), ADR-0004 선언 모델 대체): `[GenericMessage(typeof(닫힌 구성), ClassId)]` 단일 속성(선언부·캐리어 무관), `GenericConstructionAttribute` 제거, 제네릭+스탠드얼론=항상 제네릭 와이어(구성 선언 필수, 미선언 직렬화 예외+안내), 동일 컴파일 내 구성 중복 선언 컴파일 진단 승격, 미바운드 제네릭 거부, `MSGPROT009` 삭제. 테스트 74→76, 픽스처·Sandbox 통합 문법 이전. `Feature-Spec` F2·F5, `GLOSSARY` 동기화.
+- 제네릭 구성 분산 선언 추가 (ADR-0004 보완): `[GenericConstruction(typeof(구성), ClassId)]` 캐리어 속성 — 선언부 수정 없이 타 파일/프로젝트에서 구성 추가, 생성기가 등록 클래스 출력. ClassId 보관을 내부 필드에서 런타임 레지스트리(`GetGenericClassId<T>`)로 이전(타 어셈블리 캐리어 지원), 테스트 프로젝트에 `EmitCompilerGeneratedFiles` 활성화(생성 코드 감사). 테스트 70→74, Sandbox S12 추가. `Feature-Spec` F2·F5, `GLOSSARY` 동기화.
 - 제네릭 와이어 재설계 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md), ADR-0003 대체): `[GenericMessage(typeof(...), ClassId)]` 구성 선언 속성, 헤더 플래그 Generic(0) + MessageId 뒤 구성 클래스 ID 24비트 와이어(`GenericIdHeaderSize = 7`), (MessageId, ClassId) 디스패치·모듈 로드 자동 등록(송수신 무설정), 구성 공존·다중 타입 매개변수, `MSGPROT008`·`MSGPROT009` 진단. 테스트 63→70, Sandbox S11 추가. `Feature-Spec` F1·F2·F5·범위 밖, `GLOSSARY`, `Known-Issues` 동기화.
 - 제네릭 직렬화 수신 측 제약 명문화: 지연 등록은 `Serialize(object)` 경로 한정 — 역직렬화만 하는 수신 프로세스는 닫힌 구성 명시적 등록 필요 (`ADR-0003`·`Feature-Spec` 갱신).
 - 제네릭 메시지 직렬화 구현 ([ADR-0003](../05-Decisions/ADR-0003-Generic-Message-Serialization.md), Known-Issues KI-1 해결): 타입 매개변수 유지 생성(partial arity·헬퍼 이름 백틱 변환), `T` 멤버 런타임 메시지 디스패치, 제네릭 타입 자동 등록 미생성(닫힌 구성 지연/수동 등록). 회귀 테스트 5개 추가(테스트 58→63), Sandbox S10 시나리오(제네릭 round-trip·T 컬렉션·object dispatch) 추가. `ADR-0002` superseded 처리, `Feature-Spec` F5·범위 밖 동기화.

@@ -65,14 +65,15 @@ namespace MessageProtocol
     }
 
     /// <summary>
-    /// 제네릭 메시지의 직렬화 지원 구성(닫힌 제네릭) 선언. 제네릭 메시지 선언에 구성마다 반복 부착한다.
-    /// 예: <c>[GenericMessage(typeof(Ping), ClassId = 1)] partial class Envelope&lt;T&gt;</c>.
-    /// 선언된 구성은 생성 코드가 (MessageId, ClassId) 키로 자동 등록해 송수신 양쪽에서 object dispatch 가 동작한다.
+    /// 제네릭 메시지의 직렬화 지원 구성(닫힌 제네릭) 선언. 선언부·캐리어 등 임의의 타입 선언에
+    /// 구성마다 반복 부착한다: <c>[GenericMessage(typeof(Envelope&lt;Ping&gt;), ClassId = 1)]</c>.
+    /// 선언된 구성은 생성 코드가 (MessageId, ClassId) 키로 모듈 로드 시 자동 등록해 송수신 양쪽에서
+    /// object dispatch 가 동작한다. 구성 미선언 제네릭 메시지의 직렬화는 예외.
     /// </summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true, Inherited = false)]
     public class GenericMessageAttribute : Attribute
     {
-        public Type[] TypeArguments { get; }
+        public Type Construction { get; }
 
         uint _classId;
 
@@ -91,13 +92,9 @@ namespace MessageProtocol
             }
         }
 
-        public GenericMessageAttribute(params Type[] typeArguments)
+        public GenericMessageAttribute(Type construction)
         {
-            if (typeArguments is null || typeArguments.Length == 0)
-            {
-                throw new ArgumentException("GenericMessageAttribute requires at least one type argument.", nameof(typeArguments));
-            }
-            TypeArguments = typeArguments;
+            Construction = construction ?? throw new ArgumentNullException(nameof(construction));
         }
     }
 

@@ -26,7 +26,7 @@ updated: 2026-08-31
 | Shared Link | `Source/Shared`를 Core·Generator에 Compile Link로 공유 (와이어 규칙 단일 소스) |
 | ReferenceKind | 중첩 객체 참조 태그: Null=0, NewObject=1, BackReference=2 (와이어 규격) |
 | 수동 구현 | 생성기 없이 계약 인터페이스 + 정적 메서드를 직접 구현·등록 (헤더는 작성자가 직접 기록) |
-| GenericMessage | 제네릭 메시지 구성 선언 속성. `(타입 인수..., ClassId)` 반복 부착 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)) |
+| GenericMessage | 제네릭 구성 선언 속성. `(닫힌 구성, ClassId)` 반복 부착 — 선언부·캐리어 무관 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
 | 구성 클래스 ID (ClassId) | 제네릭 헤더의 24비트 구성 식별자(1 .. 2^24-1). (MessageId, ClassId) 키로 닫힌 구성 디스패치 |
 
 ## 공통 (DS 스택)

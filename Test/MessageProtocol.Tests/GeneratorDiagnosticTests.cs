@@ -192,14 +192,16 @@ public class GeneratorDiagnosticTests
             public partial class Target { public int X { get; set; } }
 
             [StandaloneMessage(2)]
-            [GenericMessage(typeof(Target), ClassId = 7)]
+            [GenericMessage(typeof(Box<Target>), ClassId = 7)]
             public partial class Box<T> { public T? Value { get; set; } }
             """ + Footer);
 
         Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
         Assert.Empty(compileErrors);
-        Assert.Contains("internal static uint __GenericClassId", generated);
         Assert.Contains("RegisterGenericConstruction<global::TestNs.Box<global::TestNs.Target>>(7)", generated);
+        // 클래스 ID는 런타임 레지스트리 조회 (내부 필드 미사용).
+        Assert.Contains("MessageSerializer.GetGenericClassId<Box<T>>()", generated);
+        Assert.DoesNotContain("__GenericClassId", generated);
         // 제네릭 헤더 플래그 0: MessageId 구성에 제네릭 플래그가 쓰인다.
         Assert.Contains("MessageId => 2;", generated);
     }
@@ -217,26 +219,99 @@ public class GeneratorDiagnosticTests
     }
 
     [Fact]
-    public void MSGPROT008_타입_인수_개수가_다르면_에러()
+    public void MSGPROT008_미바운드_제네릭_구성_선언은_에러()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [StandaloneMessage(1)]
-            [GenericMessage(typeof(int), typeof(string), ClassId = 1)]
-            public partial class OneArg<T> { public T? V { get; set; } }
+            [StandaloneMessage(2)]
+            public partial class Box<T> { public T? Value { get; set; } }
+
+            [GenericMessage(typeof(Box<>), ClassId = 1)]
+            static class Carrier { }
             """ + Footer);
 
         Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
     }
 
     [Fact]
-    public void MSGPROT009_GenericMessage_선언에는_StandaloneMessage가_필수()
+    public void MSGPROT008_제네릭_선언에_StandaloneMessage가_없으면_에러()
+    {
+        var (diagnostics, _) = RunGenerator(Header + """
+            [NonIdMessage]
+            public partial class NoId<T> { public T? V { get; set; } }
+
+            [GenericMessage(typeof(NoId<int>), ClassId = 1)]
+            static class Carrier { }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
+    }
+
+    [Fact]
+    public void 분산_선언_캐리어는_구성_등록_코드를_생성한다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(1)]
+            public partial class Target { public int X { get; set; } }
+
+            [StandaloneMessage(2)]
+            public partial class Box<T> { public T? Value { get; set; } }
+
+            [GenericMessage(typeof(Box<Target>), ClassId = 5)]
+            static class Carrier { }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        Assert.Contains("RegisterGenericConstruction<global::TestNs.Box<global::TestNs.Target>>(5)", generated);
+    }
+
+    [Fact]
+    public void MSGPROT008_한_컴파일에서_같은_구성을_두_번_선언하면_에러()
+    {
+        var (diagnostics, generated) = RunGenerator(Header + """
+            [StandaloneMessage(1)]
+            public partial class Target { public int X { get; set; } }
+
+            [StandaloneMessage(2)]
+            public partial class Box<T> { public T? Value { get; set; } }
+
+            [GenericMessage(typeof(Box<Target>), ClassId = 1)]
+            static class CarrierA { }
+
+            [GenericMessage(typeof(Box<Target>), ClassId = 1)]
+            static class CarrierB { }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
+        Assert.DoesNotContain("RegisterGenericConstruction<global::TestNs.Box<global::TestNs.Target>>(1)", generated);
+    }
+
+    [Fact]
+    public void MSGPROT008_분산_선언_구성이_제네릭_메시지가_아니면_에러()
     {
         var (diagnostics, _) = RunGenerator(Header + """
             [GenericMessage(typeof(int), ClassId = 1)]
-            public partial class NoId<T> { public T? V { get; set; } }
+            static class Carrier { }
             """ + Footer);
 
-        Assert.Contains(diagnostics, d => d.Id == "MSGPROT009");
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
+    }
+
+    [Fact]
+    public void MSGPROT008_분산_선언에_ClassId가_없으면_에러()
+    {
+        var (diagnostics, _) = RunGenerator(Header + """
+            [StandaloneMessage(1)]
+            public partial class Target { public int X { get; set; } }
+
+            [StandaloneMessage(2)]
+            public partial class Box<T> { public T? Value { get; set; } }
+
+            [GenericMessage(typeof(Box<Target>))]
+            static class Carrier { }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
     }
 
     [Fact]

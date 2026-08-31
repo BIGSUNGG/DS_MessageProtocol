@@ -200,6 +200,14 @@ void Check(string name, bool condition)
     Check("S11 구성 공존 B", db is Envelope<Circle> ec && ec.Value!.Radius == 2.0);
 }
 
+// ---------- S12: 분산 선언 구성 ----------
+{
+    // Envelope<T> 선언부가 아닌 별도 캐리어(Constructions.cs)로 선언한 구성.
+    var msg = new Envelope<TreeNode> { Value = new TreeNode { Label = "dist" } };
+    object? decoded = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)msg));
+    Check("S12 분산 선언 구성 dispatch", decoded is Envelope<TreeNode> env && env.Value!.Label == "dist");
+}
+
 Console.WriteLine();
 Console.WriteLine(failures == 0 ? "ALL SCENARIOS PASSED" : $"{failures} SCENARIO CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;

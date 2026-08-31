@@ -60,13 +60,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                     sb.AppendLine($@"{indent}    writer.WriteByte(0x{idB2:X2});");
                     sb.AppendLine($@"{indent}    writer.WriteByte(0x{idB3:X2});");
                 }
-                if (typeMeta.IsGenericMessageDeclaration)
+                if (typeMeta.IsGenericWireMessage)
                 {
-                    // 헤더 뒤 구성 클래스 ID 3바이트 (미등록 구성은 직렬화 불가).
-                    sb.AppendLine($@"{indent}    if (__GenericClassId == 0) throw new InvalidOperationException(""This generic construction is not registered for serialization; declare it with [GenericMessage(..., ClassId = n)]."");");
-                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)(__GenericClassId >> 16));");
-                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)(__GenericClassId >> 8));");
-                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)__GenericClassId);");
+                    // 헤더 뒤 구성 클래스 ID 3바이트 — 클래스 ID는 런타임 레지스트리에서 조회 (구성 미선언 시 예외).
+                    sb.AppendLine($@"{indent}    uint __classId = MessageSerializer.GetGenericClassId<{typeMeta.DeclarationName}>();");
+                    sb.AppendLine($@"{indent}    if (__classId == 0) throw new InvalidOperationException(""This generic construction is not registered for serialization; declare it with [GenericMessage(typeof({typeMeta.DeclarationName}), ClassId = n)] on the declaration or any carrier type, or call MessageSerializer.RegisterGenericConstruction at startup."");");
+                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)(__classId >> 16));");
+                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)(__classId >> 8));");
+                    sb.AppendLine($@"{indent}    writer.WriteByte((byte)__classId);");
                 }
                 sb.AppendLine($@"{indent}    var __context = default(MessageSerializer.SerializeContext);");
                 if (rootModel.IsReferenceType)
@@ -116,7 +117,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}        reader.ReadByte();");
                 sb.AppendLine($@"{indent}        reader.ReadByte();");
                 sb.AppendLine($@"{indent}    }}");
-                if (typeMeta.IsGenericMessageDeclaration)
+                if (typeMeta.IsGenericWireMessage)
                 {
                     // 구성 클래스 ID 3바이트 소비 (라우팅이 이미 사용).
                     sb.AppendLine($@"{indent}    reader.ReadByte();");

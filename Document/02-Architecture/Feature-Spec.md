@@ -36,7 +36,7 @@ updated: 2026-08-31
 | `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
 | `NonIdMessage` | ID 없는 메시지 |
 | `MessageCategory(Category0..15)` | 카테고리 니블 |
-| `GenericMessage(typeof(...), ClassId)` | 제네릭 메시지 구성 선언 (구성마다 반복 부착, `AllowMultiple`). 제네릭 선언에는 `StandaloneMessage` 필수 |
+| `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). 제네릭 선언에는 `StandaloneMessage` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
 
 - 메시지 타입은 `partial` 선언이 필수.
 - 그룹 계층 규칙 위반은 컴파일 진단으로 거부 (F5).
@@ -67,7 +67,7 @@ updated: 2026-08-31
 - 속성 붙은 `partial` 메시지 타입에서 `Serialize` / `Deserialize` / (ID면) `MessageId` 생성.
 - `[ModuleInitializer]` 등록 코드 생성 → 모듈 로드 시 런타임에 자동 등록 (수동 등록 불필요).
 - Incremental generator.
-- 제네릭 메시지 타입 지원: `[GenericMessage(typeof(...), ClassId = n)]` 구성 선언 — 헤더 플래그 Generic(0) + MessageId 뒤에 구성 클래스 ID 24비트 와이어, 선언 구성은 모듈 로드 시 자동 등록(송수신 무설정), 다중 타입 매개변수 지원 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)).
+- 제네릭 메시지 타입 지원: `[GenericMessage(typeof(닫힌 구성), ClassId = n)]` 단일 속성으로 구성 선언(선언부·캐리어 무관) — 헤더 플래그 Generic(0) + MessageId 뒤에 구성 클래스 ID 24비트 와이어, 선언 구성은 모듈 로드 시 자동 등록(송수신 무설정), 다중 타입 매개변수 지원. 제네릭 + 스탠드얼론 선언은 항상 제네릭 와이어이며 **구성 선언 필수**(미선언 직렬화는 예외) ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)).
 - 수동 구현 지원: 생성기 없이 동일한 계약 형태(`IMessageSerializable<T>` 등)를 직접 구현·등록 가능. 수동 구현 시 헤더는 사용자가 직접 쓴다.
 - 진단 (Legacy 기준, 동등한 검출 필요):
   - `MSGPROT001` 메시지 타입은 partial 필수
@@ -77,8 +77,8 @@ updated: 2026-08-31
   - `MSGPROT005` ID 값 범위 초과
   - `MSGPROT006` 미지원 멤버 타입
   - `MSGPROT007` 메시지 속성 중복 (경고 — 상호 배타, 생성 건너뜀. Legacy에 없는 신규 진단)
-  - `MSGPROT008` 잘못된 GenericMessage 선언 (비제네릭 부착·인수 개수 불일치·ClassId 누락/중복)
-  - `MSGPROT009` 제네릭 메시지에 `StandaloneMessage` 누락
+  - `MSGPROT008` 잘못된 GenericMessage 선언 (비메시지 구성 대상·미바운드 제네릭·ClassId 누락/중복·컴파일 내 중복 선언)
+  - `MSGPROT009` (삭제됨 — `MSGPROT008` 로 흡수)
 
 ## F6. 런타임 `MessageSerializer`
 

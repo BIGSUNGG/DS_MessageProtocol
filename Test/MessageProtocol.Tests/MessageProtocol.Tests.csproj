@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
     <NoWarn>$(NoWarn);CS9057</NoWarn>
+    <!-- 생성 코드 감사용 디스크 출력 (obj/**/generated) -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
   <ItemGroup>

@@ -99,8 +99,8 @@ public partial class MemberControl
 // GenericMessage 구성 선언: 직렬화 지원 구성과 클래스 ID 명시.
 // 선언된 구성은 송수신 양쪽에서 모듈 로드 시 자동 등록된다.
 [StandaloneMessage(40)]
-[GenericMessage(typeof(AllPrimitives), ClassId = 1)]
-[GenericMessage(typeof(Circle), ClassId = 2)]
+[GenericMessage(typeof(Envelope<AllPrimitives>), ClassId = 1)]
+[GenericMessage(typeof(Envelope<Circle>), ClassId = 2)]
 public partial class Envelope<T>
 {
     public T? Value { get; set; }

@@ -263,4 +263,31 @@ public class RoundTripTests
         var rd = Assert.IsType<GenericDuo<FlatMessage, SettingsRecord>>(decoded);
         Assert.Equal(2, rd.Second!.Volume);
     }
+
+    [Fact]
+    public void 분산_선언_구성이_선언부_구성과_공존하며_왕복한다()
+    {
+        // 캐리어 타입으로 선언한 구성 (ClassId 3)
+        var msg = new GenericEnvelope<PointMessage> { Value = new PointMessage { X = 3, Y = 4 } };
+
+        var rt = MessageSerializer.Deserialize<GenericEnvelope<PointMessage>>(MessageSerializer.Serialize(msg));
+        Assert.Equal(3, rt.Value!.X);
+
+        object? decoded = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)msg));
+        var rd = Assert.IsType<GenericEnvelope<PointMessage>>(decoded);
+        Assert.Equal(4, rd.Value!.Y);
+
+        // 선언부 [GenericMessage] 구성 (ClassId 1) 도 그대로 동작
+        var decl = new GenericEnvelope<FlatMessage> { Value = new FlatMessage { Value = 9 } };
+        var dd = Assert.IsType<GenericEnvelope<FlatMessage>>(MessageSerializer.Deserialize(MessageSerializer.Serialize((object)decl)));
+        Assert.Equal(9, dd.Value!.Value);
+    }
+
+    [Fact]
+    public void 구성_선언_없는_제네릭_메시지는_직렬화_시_예외()
+    {
+        var msg = new UnregisteredGeneric<FlatMessage> { X = 1 };
+        var ex = Assert.Throws<InvalidOperationException>(() => MessageSerializer.Serialize(msg));
+        Assert.Contains("GenericMessage", ex.Message); // 선언 방법 안내 포함
+    }
 }

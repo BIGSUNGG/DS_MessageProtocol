@@ -40,13 +40,12 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public TypeMetadata? BaseTypeMetadata { get; }
         public ContainingTypeMetadata[] ContainingTypes { get; }
         public MemberMetadata[] Members { get; }
-        public GenericConstructionMetadata[] GenericConstructions { get; }
 
         /// <summary>
-        /// GenericMessage 구성이 선언된 제네릭 메시지인지 여부.
-        /// true 면 헤더 플래그는 Generic(0), 와이어에 구성 클래스 ID 3바이트가 따라온다.
+        /// 제네릭 와이어 메시지 여부: 제네릭 + Standalone 선언은 구성 선언과 무관하게
+        /// 항상 헤더 플래그 Generic(0) + 구성 클래스 ID 슬롯을 쓴다.
         /// </summary>
-        public bool IsGenericMessageDeclaration => Symbol.IsGenericType && GenericConstructions.Length > 0;
+        public bool IsGenericWireMessage => Symbol.IsGenericType && IsStandaloneMessage;
 
         public TypeMetadata(INamedTypeSymbol typeSymbol, AttributeReferences references)
         {
@@ -70,8 +69,6 @@ namespace MessageProtocol.CodeGenerator.Metadata
             GroupElementMessageId = ReadMessageIdOrDefault(groupElementMessageAttribute);
 
             Category = ReadMessageCategoryOrDefault(typeSymbol.FindAttribute(references.MessageCategoryAttributeType));
-
-            GenericConstructions = GetGenericConstructions(typeSymbol, references);
 
             var baseTypeSymbol = typeSymbol.BaseType;
             if (baseTypeSymbol != null &&
@@ -101,7 +98,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public uint GetMessageId()
         {
             MessageFlag flags;
-            if (IsGenericMessageDeclaration)
+            if (IsGenericWireMessage)
             {
                 // 제네릭 메시지는 전용 헤더 플래그(0) — 구성 클래스 ID가 헤더 뒤에 따라온다.
                 flags = MessageFlag.Generic;
@@ -199,65 +196,5 @@ namespace MessageProtocol.CodeGenerator.Metadata
 
             return containingTypes.ToArray();
         }
-
-        static GenericConstructionMetadata[] GetGenericConstructions(INamedTypeSymbol typeSymbol, AttributeReferences references)
-        {
-            if (references.GenericMessageAttributeType == null)
-            {
-                return Array.Empty<GenericConstructionMetadata>();
-            }
-
-            var list = new List<GenericConstructionMetadata>();
-            foreach (var attribute in typeSymbol.GetAttributes())
-            {
-                if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, references.GenericMessageAttributeType))
-                {
-                    continue;
-                }
-
-                ITypeSymbol[] typeArguments;
-                if (attribute.ConstructorArguments.Length == 0 || attribute.ConstructorArguments[0].Kind != TypedConstantKind.Array)
-                {
-                    typeArguments = Array.Empty<ITypeSymbol>();
-                }
-                else
-                {
-                    typeArguments = attribute.ConstructorArguments[0].Values
-                        .Where(static v => v.Kind == TypedConstantKind.Type && v.Value is ITypeSymbol)
-                        .Select(static v => (ITypeSymbol)v.Value!)
-                        .ToArray();
-                }
-
-                uint classId = 0;
-                foreach (var named in attribute.NamedArguments)
-                {
-                    if (named.Key == nameof(GenericConstructionMetadata.ClassId)
-                        && named.Value.Kind == TypedConstantKind.Primitive
-                        && named.Value.Value is uint parsed)
-                    {
-                        classId = parsed;
-                    }
-                }
-
-                list.Add(new GenericConstructionMetadata(typeArguments, classId));
-            }
-
-            return list.ToArray();
-        }
-    }
-
-    /// <summary>GenericMessage 속성으로 선언된 닫힌 제네릭 구성 하나의 메타데이터.</summary>
-    internal sealed class GenericConstructionMetadata
-    {
-        public GenericConstructionMetadata(ITypeSymbol[] typeArguments, uint classId)
-        {
-            TypeArguments = typeArguments;
-            ClassId = classId;
-        }
-
-        public ITypeSymbol[] TypeArguments { get; }
-
-        /// <summary>헤더에 기록되는 구성 식별자 (1 .. 2^24-1). 0 은 미설정·잘못된 선언.</summary>
-        public uint ClassId { get; }
     }
 }

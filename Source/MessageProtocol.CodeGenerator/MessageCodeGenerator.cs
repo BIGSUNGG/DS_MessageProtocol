@@ -47,9 +47,11 @@ namespace MessageProtocol.CodeGenerator
             {
                 var (compilation, types) = source;
                 var attributeReferences = new AttributeReferences(compilation);
+                // 컴파일 전체 구성 선언을 먼저 훑어 중복(모듈 로드 크래시 원인)을 컴파일 진단으로 승격한다.
+                var conflicts = CollectConstructionConflicts(types, attributeReferences);
                 foreach (var typeSymbol in types)
                 {
-                    Generate(typeSymbol, compilation, spc, attributeReferences);
+                    Generate(typeSymbol, compilation, spc, conflicts, attributeReferences);
                 }
             });
         }
@@ -69,10 +71,27 @@ namespace MessageProtocol.CodeGenerator
             INamedTypeSymbol typeSymbol,
             Compilation compilation,
             SourceProductionContext context,
+            ConstructionConflicts conflicts,
             AttributeReferences? cachedReferences = null)
         {
             var location = typeSymbol.Locations.FirstOrDefault() ?? Location.None;
             var attributeReferences = cachedReferences ?? new AttributeReferences(compilation);
+
+            // 구성 선언 처리: [GenericMessage(typeof(구성), ClassId)] 가 붙은 타입은 선언부·캐리어 구분 없이 등록 클래스를 출력한다.
+            var constructionEntries = ParseConstructionEntries(typeSymbol, attributeReferences);
+            if (constructionEntries.Count > 0)
+            {
+                if (ValidateConstructionEntries(typeSymbol, constructionEntries, attributeReferences, conflicts, context, location))
+                {
+                    EmitConstructionRegistration(typeSymbol, constructionEntries, context);
+                }
+            }
+
+            // 메시지 속성이 없는 순수 캐리어는 여기서 끝.
+            if (!HasMessageAttribute(typeSymbol, attributeReferences))
+            {
+                return;
+            }
 
             if (!IsPartial(typeSymbol))
             {
@@ -98,11 +117,6 @@ namespace MessageProtocol.CodeGenerator
             }
 
             var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
-
-            if (!TryValidateGenericConstructions(typeMeta, context, location))
-            {
-                return;
-            }
 
             if (TryReportDuplicateMessageAttributes(typeMeta, context, location))
             {
@@ -225,69 +239,233 @@ namespace MessageProtocol.CodeGenerator
         }
 
         /// <summary>
-        /// GenericMessage 구성 선언 검증 (MSGPROT008/009).
+        /// 타입에 붙은 [GenericMessage(typeof(구성), ClassId)] 선언을 파싱한다. 잘못된 속성 인수는 Construction 이 null.
         /// </summary>
-        static bool TryValidateGenericConstructions(TypeMetadata typeMeta, SourceProductionContext context, Location location)
+        static List<(INamedTypeSymbol? Construction, uint ClassId)> ParseConstructionEntries(
+            INamedTypeSymbol typeSymbol,
+            AttributeReferences attributeReferences)
         {
-            if (typeMeta.GenericConstructions.Length == 0)
+            var entries = new List<(INamedTypeSymbol?, uint)>();
+            if (attributeReferences.GenericMessageAttributeType == null)
             {
-                return true;
+                return entries;
             }
 
-            if (!typeMeta.Symbol.IsGenericType)
+            foreach (var attribute in typeSymbol.GetAttributes())
             {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    DiagnosticDescriptors.InvalidGenericMessageDeclaration,
-                    location,
-                    typeMeta.Symbol.Name,
-                    "the type is not generic"));
-                return false;
+                if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeReferences.GenericMessageAttributeType))
+                {
+                    continue;
+                }
+
+                INamedTypeSymbol? construction = attribute.ConstructorArguments.Length > 0
+                    && attribute.ConstructorArguments[0].Kind == TypedConstantKind.Type
+                    && attribute.ConstructorArguments[0].Value is INamedTypeSymbol named
+                        ? named
+                        : null;
+
+                uint classId = 0;
+                foreach (var namedArgument in attribute.NamedArguments)
+                {
+                    if (namedArgument.Key == "ClassId"
+                        && namedArgument.Value.Kind == TypedConstantKind.Primitive
+                        && namedArgument.Value.Value is uint parsed)
+                    {
+                        classId = parsed;
+                    }
+                }
+
+                entries.Add((construction, classId));
             }
 
-            if (!typeMeta.IsStandaloneMessage)
+            return entries;
+        }
+
+        /// <summary>
+        /// 컴파일 전체에서 같은 구성 중복 선언·(선언, ClassId) 충돌을 찾아낸다.
+        /// 방치하면 모듈 로드 시 등록 충돌로 크래시하므로 컴파일 진단으로 승격한다.
+        /// </summary>
+        static ConstructionConflicts CollectConstructionConflicts(
+            ImmutableArray<INamedTypeSymbol> types,
+            AttributeReferences attributeReferences)
+        {
+            var constructionCounts = new Dictionary<INamedTypeSymbol, int>(SymbolEqualityComparer.Default);
+            var idCounts = new Dictionary<(INamedTypeSymbol Declaration, uint ClassId), int>(DeclarationClassIdComparer.Instance);
+
+            foreach (var type in types)
             {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    DiagnosticDescriptors.GenericMessageRequiresStandalone,
-                    location,
-                    typeMeta.Symbol.Name));
-                return false;
+                foreach (var (construction, classId) in ParseConstructionEntries(type, attributeReferences))
+                {
+                    if (construction == null)
+                    {
+                        continue;
+                    }
+
+                    constructionCounts[construction] = constructionCounts.TryGetValue(construction, out int c) ? c + 1 : 1;
+                    var idKey = (construction.OriginalDefinition, classId);
+                    idCounts[idKey] = idCounts.TryGetValue(idKey, out int n) ? n + 1 : 1;
+                }
             }
 
+            var conflicts = new ConstructionConflicts();
+            foreach (var pair in constructionCounts)
+            {
+                if (pair.Value > 1)
+                {
+                    conflicts.DuplicateConstructions.Add(pair.Key);
+                }
+            }
+            foreach (var pair in idCounts)
+            {
+                if (pair.Value > 1)
+                {
+                    conflicts.CollidedIds.Add(pair.Key);
+                }
+            }
+            return conflicts;
+        }
+
+        static bool ValidateConstructionEntries(
+            INamedTypeSymbol host,
+            List<(INamedTypeSymbol? Construction, uint ClassId)> entries,
+            AttributeReferences attributeReferences,
+            ConstructionConflicts conflicts,
+            SourceProductionContext context,
+            Location location)
+        {
             var seenClassIds = new HashSet<uint>();
-            foreach (var construction in typeMeta.GenericConstructions)
+            var seenConstructions = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+
+            foreach (var (construction, classId) in entries)
             {
-                if (construction.ClassId == 0)
+                if (construction == null)
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        DiagnosticDescriptors.InvalidGenericMessageDeclaration,
-                        location,
-                        typeMeta.Symbol.Name,
-                        "a construction is missing 'ClassId' (must be 1 .. 16777215)"));
+                    ReportInvalidConstruction(context, location, host, "GenericMessage requires a closed generic construction type");
                     return false;
                 }
 
-                if (!seenClassIds.Add(construction.ClassId))
+                if (classId == 0)
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        DiagnosticDescriptors.InvalidGenericMessageDeclaration,
-                        location,
-                        typeMeta.Symbol.Name,
-                        $"ClassId {construction.ClassId} is declared more than once"));
+                    ReportInvalidConstruction(context, location, host, $"construction '{construction.ToDisplayString()}' is missing 'ClassId' (must be 1 .. 16777215)");
                     return false;
                 }
 
-                if (construction.TypeArguments.Length != typeMeta.Symbol.TypeParameters.Length)
+                if (!seenClassIds.Add(classId))
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        DiagnosticDescriptors.InvalidGenericMessageDeclaration,
-                        location,
-                        typeMeta.Symbol.Name,
-                        $"construction declares {construction.TypeArguments.Length} type argument(s) but the type has {typeMeta.Symbol.TypeParameters.Length} type parameter(s)"));
+                    ReportInvalidConstruction(context, location, host, $"ClassId {classId} is declared more than once");
+                    return false;
+                }
+
+                if (!seenConstructions.Add(construction))
+                {
+                    ReportInvalidConstruction(context, location, host, $"construction '{construction.ToDisplayString()}' is declared more than once");
+                    return false;
+                }
+
+                if (construction.IsUnboundGenericType)
+                {
+                    ReportInvalidConstruction(context, location, host, $"'{construction.ToDisplayString()}' is an unbound generic type; declare a closed construction like typeof({construction.Name}<...>)");
+                    return false;
+                }
+
+                var declaration = construction.OriginalDefinition;
+                if (!construction.IsGenericType
+                    || !declaration.IsGenericType
+                    || !declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType))
+                {
+                    ReportInvalidConstruction(context, location, host, $"'{construction.ToDisplayString()}' is not a construction of a generic message declaration ('[StandaloneMessage]' required)");
+                    return false;
+                }
+
+                if (conflicts.IsConflicting(construction, classId))
+                {
+                    ReportInvalidConstruction(context, location, host, $"construction '{construction.ToDisplayString()}' (or its ClassId) is declared more than once in this compilation");
                     return false;
                 }
             }
 
             return true;
+        }
+
+        static void ReportInvalidConstruction(
+            SourceProductionContext context,
+            Location location,
+            INamedTypeSymbol host,
+            string reason)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                DiagnosticDescriptors.InvalidGenericMessageDeclaration,
+                location,
+                host.Name,
+                reason));
+        }
+
+        static void EmitConstructionRegistration(
+            INamedTypeSymbol host,
+            List<(INamedTypeSymbol? Construction, uint ClassId)> entries,
+            SourceProductionContext context)
+        {
+            string suffix = MakeCarrierSuffix(host);
+            var sb = new StringBuilder();
+            sb.AppendLine("// <auto-generated/>");
+            sb.AppendLine("using System.Runtime.CompilerServices;");
+            sb.AppendLine("using MessageProtocol.Serialize;");
+            sb.AppendLine();
+            sb.AppendLine($"internal static class __GenericConstructionRegistration_{suffix}");
+            sb.AppendLine("{");
+            sb.AppendLine("    [ModuleInitializer]");
+            sb.AppendLine("    internal static void Initialize()");
+            sb.AppendLine("    {");
+            foreach (var (construction, classId) in entries)
+            {
+                string constructionName = construction!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                sb.AppendLine($"        MessageSerializer.RegisterGenericConstruction<{constructionName}>({classId});");
+            }
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
+
+            context.AddSource(
+                SanitizeHintName($"__GenericConstructionRegistration_{suffix}"),
+                SourceText.From(sb.ToString(), Encoding.UTF8));
+        }
+
+        static string MakeCarrierSuffix(INamedTypeSymbol symbol)
+        {
+            string ns = symbol.ContainingNamespace == null || symbol.ContainingNamespace.IsGlobalNamespace
+                ? string.Empty
+                : symbol.ContainingNamespace.ToDisplayString().Replace('.', '_') + "_";
+            return (ns + symbol.MetadataName).Replace('`', '_');
+        }
+
+        /// <summary>컴파일 전체 구성 선언 중복 상태.</summary>
+        internal sealed class ConstructionConflicts
+        {
+            public HashSet<INamedTypeSymbol> DuplicateConstructions { get; } = new(SymbolEqualityComparer.Default);
+            public HashSet<(INamedTypeSymbol Declaration, uint ClassId)> CollidedIds { get; } = new(DeclarationClassIdComparer.Instance);
+
+            public bool IsConflicting(INamedTypeSymbol construction, uint classId)
+            {
+                return DuplicateConstructions.Contains(construction)
+                    || CollidedIds.Contains((construction.OriginalDefinition, classId));
+            }
+        }
+
+        sealed class DeclarationClassIdComparer : IEqualityComparer<(INamedTypeSymbol Declaration, uint ClassId)>
+        {
+            public static readonly DeclarationClassIdComparer Instance = new();
+
+            public bool Equals((INamedTypeSymbol Declaration, uint ClassId) x, (INamedTypeSymbol Declaration, uint ClassId) y)
+            {
+                return SymbolEqualityComparer.Default.Equals(x.Declaration, y.Declaration) && x.ClassId == y.ClassId;
+            }
+
+            public int GetHashCode((INamedTypeSymbol Declaration, uint ClassId) obj)
+            {
+                unchecked
+                {
+                    return (SymbolEqualityComparer.Default.GetHashCode(obj.Declaration) * 397) ^ (int)obj.ClassId;
+                }
+            }
         }
 
         static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences)

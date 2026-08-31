@@ -15,6 +15,15 @@ namespace MessageProtocol.Serialize
         static readonly ConcurrentDictionary<Type, byte> _registeredTypes = new();
         static readonly ConcurrentDictionary<uint, Type> _registeredMessageIds = new();
 
+        /// <summary>닫힌 제네릭 구성별 클래스 ID. 선언부·분산 선언 양쪽 등록이 공유한다.</summary>
+        static readonly ConcurrentDictionary<Type, uint> _genericClassIds = new();
+
+        /// <summary>닫힌 제네릭 구성의 클래스 ID 조회. 미등록 구성은 0.</summary>
+        public static uint GetGenericClassId<T>() where T : IMessageSerializable<T>
+        {
+            return _genericClassIds.TryGetValue(typeof(T), out uint classId) ? classId : 0;
+        }
+
         /// <summary>
         /// ID 메시지 등록 fast path. <see cref="SerializerCache{T}"/> 를 리플렉션 없이 채운다.
         /// </summary>
@@ -118,10 +127,13 @@ namespace MessageProtocol.Serialize
                 RegisterGenericReaderInvoker(messageId, classId, typeof(T),
                     (ref MessageBufferReader r) => (object)deserialize(ref r)!);
                 readerRegistered = true;
+
+                _genericClassIds[typeof(T)] = classId;
             }
             catch
             {
                 _registeredTypes.TryRemove(typeof(T), out _);
+                _genericClassIds.TryRemove(typeof(T), out _);
                 if (writerRegistered) TryRemoveWriterInvoker(typeof(T));
                 if (readerRegistered) TryRemoveGenericReaderInvoker(messageId, classId);
                 throw;

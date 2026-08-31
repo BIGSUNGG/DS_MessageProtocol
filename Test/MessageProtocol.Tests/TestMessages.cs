@@ -164,8 +164,8 @@ public class NotAMessage
 // ---------- 제네릭 ----------
 
 [StandaloneMessage(120)]
-[GenericMessage(typeof(FlatMessage), ClassId = 1)]
-[GenericMessage(typeof(SettingsRecord), ClassId = 2)]
+[GenericMessage(typeof(GenericEnvelope<FlatMessage>), ClassId = 1)]
+[GenericMessage(typeof(GenericEnvelope<SettingsRecord>), ClassId = 2)]
 public partial class GenericEnvelope<T>
 {
     public T? Value { get; set; }
@@ -174,7 +174,7 @@ public partial class GenericEnvelope<T>
 }
 
 [StandaloneMessage(121)]
-[GenericMessage(typeof(FlatMessage), typeof(SettingsRecord), ClassId = 1)]
+[GenericMessage(typeof(GenericDuo<FlatMessage, SettingsRecord>), ClassId = 1)]
 public partial class GenericDuo<TFirst, TSecond>
 {
     public TFirst? First { get; set; }
@@ -187,3 +187,16 @@ public partial class GenericPair<T>
     public T? First { get; set; }
     public int Tag { get; set; }
 }
+
+// 구성 선언이 없는 제네릭 메시지 — 직렬화 시 예외 검증용 (구성 선언 필수 규칙)
+[StandaloneMessage(122)]
+public partial class UnregisteredGeneric<T>
+{
+    public int X { get; set; }
+}
+
+// ---------- 분산 선언 ----------
+
+// 선언부를 수정하지 않고 별도 캐리어 타입으로 GenericEnvelope 의 추가 구성을 선언한다.
+[GenericMessage(typeof(GenericEnvelope<PointMessage>), ClassId = 3)]
+static class GenericEnvelopeExtraConstructions { }
