@@ -1,7 +1,6 @@
 using MessageProtocol.CodeGenerator.Metadata;
 using MessageProtocol.CodeGenerator.Reference;
 using Microsoft.CodeAnalysis;
-using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Graph
 {
@@ -33,7 +32,7 @@ namespace MessageProtocol.CodeGenerator.Graph
         public static SerializationGraph Create(TypeMetadata rootType, AttributeReferences references)
         {
             var usedHelperSuffixes = new HashSet<string>();
-            var rootModel = new SerializableTypeModel(rootType, MakeHelperSuffix(rootType.Symbol, usedHelperSuffixes));
+            var rootModel = new SerializableTypeModel(rootType, SymbolNaming.MakeUniqueSuffix(rootType.Symbol, usedHelperSuffixes));
             var lookup = new Dictionary<ITypeSymbol, SerializableTypeModel>(SymbolEqualityComparer.Default)
             {
                 [rootType.Symbol] = rootModel,
@@ -41,83 +40,6 @@ namespace MessageProtocol.CodeGenerator.Graph
             var graph = new SerializationGraph(rootModel, references, lookup, usedHelperSuffixes);
             graph.Collect(rootType);
             return graph;
-        }
-
-        static string MakeHelperSuffix(INamedTypeSymbol symbol, HashSet<string> usedSuffixes)
-        {
-            var sb = new StringBuilder();
-            if (symbol.ContainingNamespace != null && !symbol.ContainingNamespace.IsGlobalNamespace)
-            {
-                sb.Append(symbol.ContainingNamespace.ToDisplayString()).Append('.');
-            }
-
-            AppendTypeName(sb, symbol);
-
-            // 서로 다른 심볼이 같은 헬퍼 이름을 가지면 생성 코드가 CS0111 로 깨지므로,
-            // 이름 체계가 우연히 겹쳐도 구분자를 붙여 유일성을 보장한다.
-            string suffix = SanitizeIdentifier(sb.ToString());
-            string unique = suffix;
-            for (int discriminator = 2; !usedSuffixes.Add(unique); discriminator++)
-            {
-                unique = $"{suffix}_{discriminator}";
-            }
-
-            return unique;
-        }
-
-        /// <summary>네임스페이스·중첩 타입 체인·제네릭 인자를 포함한 타입 이름을 재귀 구성한다.</summary>
-        static void AppendTypeName(StringBuilder sb, INamedTypeSymbol symbol)
-        {
-            if (symbol.ContainingType != null)
-            {
-                AppendTypeName(sb, symbol.ContainingType);
-                sb.Append('+');
-            }
-
-            // MetadataName 의 제네릭 차수 표기(`)는 유효한 식별자가 아니므로 이후 치환한다.
-            sb.Append(symbol.MetadataName);
-
-            foreach (var typeArgument in symbol.TypeArguments)
-            {
-                sb.Append('[');
-                AppendTypeArgument(sb, typeArgument);
-                sb.Append(']');
-            }
-        }
-
-        static void AppendTypeArgument(StringBuilder sb, ITypeSymbol typeArgument)
-        {
-            switch (typeArgument)
-            {
-                case IArrayTypeSymbol arrayType:
-                    AppendTypeArgument(sb, arrayType.ElementType);
-                    sb.Append("Array");
-                    if (arrayType.Rank > 1)
-                    {
-                        sb.Append(arrayType.Rank);
-                    }
-                    break;
-                case ITypeParameterSymbol typeParameter:
-                    sb.Append(typeParameter.Name);
-                    break;
-                case INamedTypeSymbol namedType:
-                    AppendTypeName(sb, namedType);
-                    break;
-                default:
-                    sb.Append(typeArgument.MetadataName);
-                    break;
-            }
-        }
-
-        static string SanitizeIdentifier(string raw)
-        {
-            var sb = new StringBuilder(raw.Length);
-            foreach (char c in raw)
-            {
-                sb.Append(char.IsLetterOrDigit(c) ? c : '_');
-            }
-
-            return sb.ToString();
         }
 
         public bool IsMessageType(ITypeSymbol typeSymbol)
@@ -193,7 +115,7 @@ namespace MessageProtocol.CodeGenerator.Graph
                 return;
             }
 
-            var typeModel = new SerializableTypeModel(new TypeMetadata(namedType, _references), MakeHelperSuffix(namedType, _usedHelperSuffixes));
+            var typeModel = new SerializableTypeModel(new TypeMetadata(namedType, _references), SymbolNaming.MakeUniqueSuffix(namedType, _usedHelperSuffixes));
             _lookup[namedType] = typeModel;
 
             Collect(typeModel.Metadata);

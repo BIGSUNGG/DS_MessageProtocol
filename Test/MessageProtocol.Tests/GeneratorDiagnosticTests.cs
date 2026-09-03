@@ -536,6 +536,39 @@ public class GeneratorDiagnosticTests
         Assert.Contains(diagnostics, d => d.Id == "MSGPROT011");
     }
 
+    [Fact]
+    public void 동명_중첩_구성_캐리어도_유일한_등록_클래스를_생성한다()
+    {
+        // KI-19 회귀: 같은 네임스페이스의 동명 중첩 캐리어 두 개가 충돌 없이 각각 유일한 등록 클래스를 방출한다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(1)]
+            [GenericMessage(typeof(Envelope<int>), ClassId = 1)]
+            public partial class Envelope<T>
+            {
+                public T? Value { get; set; }
+            }
+
+            static class OuterA
+            {
+                [GenericMessage(typeof(Envelope<string>), ClassId = 2)]
+                internal static class Carrier { }
+            }
+
+            static class OuterB
+            {
+                [GenericMessage(typeof(Envelope<long>), ClassId = 3)]
+                internal static class Carrier { }
+            }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        Assert.Contains("__GenericConstructionRegistration_TestNs_OuterA_Carrier", generated);
+        Assert.Contains("__GenericConstructionRegistration_TestNs_OuterB_Carrier", generated);
+        Assert.Contains("RegisterGenericConstruction<global::TestNs.Envelope<string>>(2)", generated);
+        Assert.Contains("RegisterGenericConstruction<global::TestNs.Envelope<long>>(3)", generated);
+    }
+
     static int CountOccurrences(string text, string pattern)
     {
         int count = 0;

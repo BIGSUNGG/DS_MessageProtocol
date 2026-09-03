@@ -8,7 +8,7 @@ updated: 2026-09-04
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18 추가·같은 날 해결, KI-19~KI-22 추가. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19 추가·같은 날 해결, KI-20~KI-22 추가. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -68,7 +68,7 @@ v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-
 
 한 메시지 그래프에 동일 제네릭 페이로드의 두 구성(`Pair<int>`·`Pair<string>`)이 도달 가능하면 접미사가 `네임스페이스+MetadataName`(`Ns_Pair_1`)으로 동일해 `__WritePayload_…`/`__CreateInstance_…` 헬퍼가 같은 partial 클래스에 중복 방출 → 소비자 프로젝트가 CS0111로 컴파일 실패. 같은 형태가 동명 중첩 타입(`Outer1.Point`·`Outer2.Point`)에서도 발생. 기존 테스트는 한 그래프에 두 구성을 넣지 않아 미발견.
 
-조치 방향: 접미사 유일성 보장 → 완료. `MessageCodeGenerator.MakeCarrierSuffix`(구성 등록 캐리어, KI-19)는 별도 위치라 별도 처리.
+조치 방향: 접미사 유일성 보장 → 완료. `MessageCodeGenerator.MakeCarrierSuffix`(구성 등록 캐리어)는 동일 형태 결함으로 KI-19 에서 같은 전략으로 해결.
 
 ### KI-17. `CollectionsMarshal` 미지원 `List<T>` 벌크 가드 누락 → 불신 피어 최대 8배 선할당 (해결)
 
@@ -90,6 +90,16 @@ KI-13 가드가 5 변형 전부 적용됐다고 기록됐으나, `CollectionsMar
 
 조치 방향: 진단 승격 → 완료. 새 진단 `MSGPROT010`(생성 불가 메시지 타입)·`MSGPROT011`(대입 불가 멤버), `EmitState` 미지원 사유 열거 확장.
 
+### KI-19. 구성 등록 캐리어 접미사 충돌 → 동명 중첩 호스트 CS0102 (해결)
+
+**상태: 해결 (2026-09-04).** `MakeCarrierSuffix` 제거, KI-16과 동일 전략의 공용 `SymbolNaming.MakeUniqueSuffix`(네임스페이스·중첩 체인·제네릭 인자 + 컴파일 단위 사용 접미사 집합으로 구분자 부여)로 교체 — 그래프 헬퍼와 캐리어가 하나의 이름 체계 공유. 회귀 테스트: 같은 네임스페이스 동명 중첩 캐리어 2개(수정 전 충돌 재현 검증). 테스트 90→91.
+
+원본 발견 내용:
+
+`__GenericConstructionRegistration_{접미사}` 캐리어 클래스의 접미사가 `네임스페이스+MetadataName` 이라 같은 네임스페이스의 동명 중첩 호스트(`OuterA.Carrier`·`OuterB.Carrier`)가 동일 접미사 → 두 최상위 클래스 동명 충돌(CS0102) + `AddSource` 힌트 이름 중복으로 생성기 실행 자체가 깨진다. KI-16과 동일 형태의 결함.
+
+조치 방향: 유일 접미사 체계 공유 → 완료.
+
 ## 잠재 결함 (코드 리뷰)
 
 | 번호 | 위치 | 내용 |
@@ -105,7 +115,6 @@ KI-13 가드가 5 변형 전부 적용됐다고 기록됐으나, `CollectionsMar
 | KI-11 | `SerializerCachePrefill` | 같은 타입 병렬 등록/재등록 시 경쟁·잔존 상태 가능 (엣지) |
 | KI-12 | 빌드 경고 | RS2008 — 분석기 릴리스 추적(`AnalyzerReleases.Shipped.md`) 미사용, 경고 16개(클린 빌드 기준, 증분 빌드에 가려짐) |
 | KI-14 | 생성 역직렬화 중첩 객체 판독 | 자기참조 메시지 중첩이 재귀로 판독 — 깊이가 프레임 크기 ÷ 최소 페이로드로만 제한됨. 큰 프레임 상한 환경에서 스택 오버플로 DoS 가능. 프레임 상한을 크게 잡을 경우 깊이 카운터 필요 |
-| KI-19 | `MessageCodeGenerator.cs:437` | `MakeCarrierSuffix`가 타입 인자·중첩 체인을 버림 — 동명 중첩 호스트의 `__GenericConstructionRegistration_…` 클래스 충돌 가능 (KI-16과 동일 형태) |
 | KI-20 | `MessageBufferWriter.WriteString`·`MessageBufferReader.ReadString` | UTF8 기본(관대한) 폴백 — 고립 서로게이트·무효 바이트가 대체 문자로 조용히 변환되어 왕복 시 문자열 변형·와이어 손상 은폐. 정책 결정 필요(엄격 거부 또는 문서화) |
 | KI-21 | `MessageBufferReader.Skip`·`MessageBufferWriter.Advance` | 음수 허용 — `Skip(-n)`이 리더를 뒤로 이동. 생성 코드는 음수를 넘기지 않아 수동·외부 호출자 대상 위험 |
 | KI-22 | `MessageBufferWriter.WriteString:203` | `4 + GetMaxByteCount` 미검사 정수 덧셈 — 특정 초대형 문자열 길이에서 오버플로로 용량 증설 누락(메모리 손상 없음, `ArgumentException`으로 표면화) |
