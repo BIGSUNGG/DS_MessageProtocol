@@ -1,4 +1,9 @@
-using MessageProtocol.CodeGenerator;
+extern alias generator;
+
+using generator::MessageProtocol.CodeGenerator;
+using generator::MessageProtocol.CodeGenerator.Generate;
+using generator::MessageProtocol.CodeGenerator.Metadata;
+using generator::MessageProtocol.CodeGenerator.Reference;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Collections.Immutable;
@@ -17,18 +22,7 @@ public class GeneratorDiagnosticTests
 
     static (ImmutableArray<Diagnostic> Diagnostics, string GeneratedText, ImmutableArray<Diagnostic> CompileErrors) RunGeneratorWithCompilation(string source)
     {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
-        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
-            .Split(System.IO.Path.PathSeparator)
-            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
-            .ToList();
-        references.Add(MetadataReference.CreateFromFile(typeof(Serialize.MessageSerializer).Assembly.Location));
-
-        var compilation = CSharpCompilation.Create(
-            "GeneratorTest",
-            new[] { syntaxTree },
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var compilation = CreateTpaCompilation(source);
 
         var driver = CSharpGeneratorDriver.Create(new MessageCodeGenerator().AsSourceGenerator());
         driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
@@ -40,6 +34,23 @@ public class GeneratorDiagnosticTests
             .Where(d => d.Severity == DiagnosticSeverity.Error)
             .ToImmutableArray();
         return (diagnostics, generated, compileErrors);
+    }
+
+    /// <summary>테스트 런타임 TPA 참조로 소스 컴파일을 만든다 (생성기 내부 구동 테스트 공용).</summary>
+    static CSharpCompilation CreateTpaCompilation(string source)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(System.IO.Path.PathSeparator)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
+            .ToList();
+        references.Add(MetadataReference.CreateFromFile(typeof(Serialize.MessageSerializer).Assembly.Location));
+
+        return CSharpCompilation.Create(
+            "GeneratorTest",
+            new[] { syntaxTree },
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
     const string Header = """
@@ -427,6 +438,31 @@ public class GeneratorDiagnosticTests
         Assert.Contains("namespace A.B", generated);
         Assert.Contains("namespace A", generated);
         Assert.Equal(2, CountOccurrences(generated, "RegisterHasIdMessage<C>"));
+    }
+
+    [Fact]
+    public void CollectionsMarshal_미지원_타깃의_List_벌크_판독도_개수_곱하기_요소크기를_검증한다()
+    {
+        // KI-17 회귀: CollectionsMarshal 이 없는 타깃(예: netstandard2.0 소비자)의 요소별 판독 경로도
+        // List 사전 할당 전에 개수×요소크기 ≤ 남은 바이트 를 검증해야 한다 (개수만 검증하면 8배 선할당 강요).
+        var compilation = CreateTpaCompilation(Header + """
+            [StandaloneMessage(1)]
+            public partial class BulkFallbackMessage
+            {
+                public System.Collections.Generic.List<long>? Values { get; set; }
+            }
+            """ + Footer);
+
+        var rootType = compilation.GetTypeByMetadataName("TestNs.BulkFallbackMessage")!;
+        var attributeReferences = new AttributeReferences(compilation);
+        var typeMeta = new TypeMetadata(rootType, attributeReferences);
+
+        bool emitted = MessageSerializeCodeEmitter.TryEmit(
+            typeMeta, attributeReferences, hasCollectionsMarshal: false, out var code, out _);
+
+        Assert.True(emitted);
+        Assert.NotNull(code);
+        Assert.Contains("* 8 > reader.Remaining", code);
     }
 
     static int CountOccurrences(string text, string pattern)

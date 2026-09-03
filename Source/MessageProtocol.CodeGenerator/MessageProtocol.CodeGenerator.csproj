@@ -26,6 +26,11 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 생성 이미터 단위 테스트가 내부 진입점(TryEmit)을 직접 구동한다 -->
+    <InternalsVisibleTo Include="MessageProtocol.Tests" />
+  </ItemGroup>
+
 
   <ItemGroup>
     <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />

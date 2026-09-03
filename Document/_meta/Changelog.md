@@ -5,6 +5,7 @@
 ## 2026-09-04
 
 - KI-16 해결 — 동일 제네릭 페이로드의 두 구성이 한 그래프에 공존할 때 헬퍼 메서드 이름 충돌(소비자 CS0111 컴파일 실패). `SerializationGraph` 헬퍼 접미사에 타입 인자·중첩 타입 체인 반영 + 그래프 단위 유일성 구분자. 회귀 픽스처·왕복 테스트로 수정 전 재현 검증. 테스트 83→84. `Known-Issues` KI-17~KI-22 추가(감사 발견 미해결: `CollectionsMarshal` 미지원 벌크 가드 누락·생성 불가 페이로드 무진단·캐리어 접미사 충돌·UTF8 관대 폴백·음수 Skip/Advance·WriteString 오버플로).
+- KI-17 해결 — `CollectionsMarshal` 미지원 타깃의 `List<T>` 벌크 판독 분기 할당 전 가드 격상(`개수 ≤ Remaining` → `개수×요소크기 ≤ Remaining`, long 산술, `EmitListRead`). `InternalsVisibleTo` 추가 후 `TryEmit(hasCollectionsMarshal: false)` 직접 구동 회귀 테스트(약한 가드로 역전 시 실패 검증). 테스트 84→85. `Known-Issues` KI-17 해결 승격.
 
 ## 2026-09-01
 

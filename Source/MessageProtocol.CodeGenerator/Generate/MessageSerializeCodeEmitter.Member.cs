@@ -507,9 +507,9 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (IsBulkCopyable(elementType))
                 {
+                    int size = GetBulkElementSize(elementType);
                     if (state.HasCollectionsMarshal)
                     {
-                        int size = GetBulkElementSize(elementType);
                         return $@"{indent}{{
 {indent}    int __c{uid} = reader.ReadInt32();
 {indent}    if (__c{uid} < 0)
@@ -540,7 +540,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
-{indent}        if (__c{uid} > reader.Remaining) throw new System.IO.EndOfStreamException(""Collection length prefix exceeds the remaining buffer."");
+{indent}        if ((long)__c{uid} * {size} > reader.Remaining) throw new System.IO.EndOfStreamException(""Collection length prefix exceeds the remaining buffer."");
 {indent}        var __list{uid} = new System.Collections.Generic.List<{elementTypeName}>(__c{uid});
 {indent}        for (int __i{uid} = 0; __i{uid} < __c{uid}; __i{uid}++)
 {indent}        {{

@@ -20,9 +20,10 @@
   <ItemGroup>
     <!-- 속성·계약 사용 컴파일 대상 -->
     <ProjectReference Include="..\..\Source\MessageProtocol.Core\MessageProtocol.Core.csproj" />
-    <!-- 생성기 단위 테스트(GeneratorDriver)용 참조 -->
+    <!-- 생성기 단위 테스트(GeneratorDriver)용 참조 — 별칭으로 Core 공용 타입과의 동명 충돌 방지 -->
     <ProjectReference Include="..\..\Source\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj">
       <SetTargetFramework>TargetFramework=netstandard2.0</SetTargetFramework>
+      <Aliases>generator</Aliases>
     </ProjectReference>
     <!-- 생성 코드 실제 동작 검증용 분석기 참조 -->
     <ProjectReference Include="..\..\Source\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj"
