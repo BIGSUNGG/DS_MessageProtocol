@@ -465,6 +465,77 @@ public class GeneratorDiagnosticTests
         Assert.Contains("* 8 > reader.Remaining", code);
     }
 
+    [Fact]
+    public void MSGPROT010_추상_메시지_타입은_생성_거부()
+    {
+        var (diagnostics, generated) = RunGenerator(Header + """
+            [NonIdMessage]
+            public abstract partial class AbstractMessage { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT010");
+        Assert.DoesNotContain("__WritePayload", generated);
+    }
+
+    [Fact]
+    public void MSGPROT010_포지셔널_레코드_메시지는_생성_거부()
+    {
+        var (diagnostics, generated) = RunGenerator(Header + """
+            [NonIdMessage]
+            public partial record PointRecord(int X);
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT010");
+        Assert.DoesNotContain("__WritePayload", generated);
+    }
+
+    [Fact]
+    public void MSGPROT011_읽기_전용_멤버는_생성_거부()
+    {
+        var (diagnostics, generated) = RunGenerator(Header + """
+            [NonIdMessage]
+            public partial class GetOnlyMessage { public int X { get; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT011");
+        Assert.DoesNotContain("__WritePayload", generated);
+    }
+
+    [Fact]
+    public void MSGPROT006_생성_불가_페이로드_멤버는_미지원_타입_진단()
+    {
+        // 추상 클래스·포지셔널 레코드 페이로드는 기본 생성자로 인스턴스를 만들 수 없어 멤버 단위 진단으로 거부한다.
+        var (diagnostics, _) = RunGenerator(Header + """
+            public abstract class AbstractPayload { public int X { get; set; } }
+            public partial record PositionalPayload(int X);
+
+            [StandaloneMessage(1)]
+            public partial class Host
+            {
+                public AbstractPayload? A { get; set; }
+                public PositionalPayload? B { get; set; }
+            }
+            """ + Footer);
+
+        Assert.Equal(2, diagnostics.Count(d => d.Id == "MSGPROT006"));
+    }
+
+    [Fact]
+    public void MSGPROT011_페이로드의_읽기_전용_멤버는_생성_거부()
+    {
+        var (diagnostics, _) = RunGenerator(Header + """
+            public partial class GetOnlyPayload { public int X { get; } }
+
+            [StandaloneMessage(1)]
+            public partial class Host
+            {
+                public GetOnlyPayload? Payload { get; set; }
+            }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT011");
+    }
+
     static int CountOccurrences(string text, string pattern)
     {
         int count = 0;

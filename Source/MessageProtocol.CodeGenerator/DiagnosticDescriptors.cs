@@ -69,5 +69,21 @@ namespace MessageProtocol.CodeGenerator
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor UnconstructibleMessageType = new(
+            id: "MSGPROT010",
+            title: "Message type must be constructible",
+            messageFormat: "Message type '{0}' cannot be deserialized: it must be a concrete type with a parameterless constructor (abstract types and positional records are not supported)",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor NotAssignableMember = new(
+            id: "MSGPROT011",
+            title: "Message member must be assignable",
+            messageFormat: "Member '{1}' (type '{0}') cannot be deserialized: it has no setter assignable from generated code (get-only, init-only and read-only members are not supported)",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

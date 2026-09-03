@@ -171,12 +171,13 @@ namespace MessageProtocol.CodeGenerator.Generate
 
             static string EmitTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state)
             {
+                bool isRootType = ReferenceEquals(typeModel, graph.RootType);
                 return typeModel.IsReferenceType
-                    ? EmitReferenceTypeMethods(typeModel, indent, graph, state)
-                    : EmitValueTypeMethods(typeModel, indent, graph, state);
+                    ? EmitReferenceTypeMethods(typeModel, indent, graph, state, isRootType)
+                    : EmitValueTypeMethods(typeModel, indent, graph, state, isRootType);
             }
 
-            static string EmitReferenceTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state)
+            static string EmitReferenceTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state, bool isRootType)
             {
                 var sb = new StringBuilder();
 
@@ -196,14 +197,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}{{");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state));
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state, isRootType));
                 }
                 sb.AppendLine($@"{indent}}}");
 
                 return sb.ToString();
             }
 
-            static string EmitValueTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state)
+            static string EmitValueTypeMethods(SerializableTypeModel typeModel, string indent, SerializationGraph graph, EmitState state, bool isRootType)
             {
                 var sb = new StringBuilder();
 
@@ -218,7 +219,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}    var result = default({typeModel.TypeName});");
                 foreach (var member in GetAllMembers(typeModel.Metadata))
                 {
-                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state));
+                    sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state, isRootType));
                 }
                 sb.AppendLine($@"{indent}    return result;");
                 sb.AppendLine($@"{indent}}}");

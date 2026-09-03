@@ -31,11 +31,54 @@ namespace MessageProtocol.CodeGenerator.Generate
                 string instanceExpression,
                 string indent,
                 SerializationGraph graph,
-                EmitState state)
+                EmitState state,
+                bool isRootType)
             {
                 string memberAccess = $"{instanceExpression}.{member.Name}";
                 Location location = member.Symbol.Locations.FirstOrDefault() ?? Location.None;
+
+                if (!IsDeserializableMember(member, isRootType))
+                {
+                    state.ReportNotAssignable(location, GetTypeDisplayName(member.Type), member.Name);
+                    return string.Empty;
+                }
+
                 return EmitDeserializeValue(member.Type, memberAccess, indent, graph, state, location, member.Name);
+            }
+
+            /// <summary>
+            /// 생성 코드는 멤버마다 `result.멤버 = …` 로 대입한다 — 읽기 전용·초기화 전용·읽기전용 필드는 채울 수 없다.
+            /// 루트 타입은 자기 partial 안이라 모든 접근 수준 허용, 중첩 페이로드는 루트 클래스에서 접근 가능한 internal 이상만 허용.
+            /// </summary>
+            static bool IsDeserializableMember(MemberMetadata member, bool isRootType)
+            {
+                if (member.Symbol is IFieldSymbol field)
+                {
+                    if (field.IsConst || field.IsReadOnly)
+                    {
+                        return false;
+                    }
+
+                    return isRootType || IsAtLeastInternal(field.DeclaredAccessibility);
+                }
+
+                if (member.Symbol is IPropertySymbol property)
+                {
+                    var setter = property.SetMethod;
+                    if (setter == null || setter.IsInitOnly)
+                    {
+                        return false;
+                    }
+
+                    return isRootType || IsAtLeastInternal(setter.DeclaredAccessibility);
+                }
+
+                return false;
+            }
+
+            static bool IsAtLeastInternal(Accessibility accessibility)
+            {
+                return accessibility == Accessibility.Public || accessibility == Accessibility.Internal;
             }
 
             static string EmitSerializeValue(

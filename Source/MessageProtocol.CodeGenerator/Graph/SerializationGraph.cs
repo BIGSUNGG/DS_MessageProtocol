@@ -262,7 +262,41 @@ namespace MessageProtocol.CodeGenerator.Graph
                 return false;
             }
 
-            return !namedType.IsAnonymousType;
+            if (namedType.IsAnonymousType)
+            {
+                return false;
+            }
+
+            // 역직렬화는 기본 생성자로 인스턴스를 만든다 — 추상 클래스·포지셔널 레코드 등
+            // 접근 가능한 매개변수 없는 생성자가 없는 참조 타입은 멤버 단위 진단으로 거른다.
+            if (namedType.TypeKind == TypeKind.Class && !HasAccessibleParameterlessConstructor(namedType))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>생성 코드는 루트 메시지 partial 클래스에 배치되므로 생성자는 최소 internal 접근 가능이어야 한다.</summary>
+        static bool HasAccessibleParameterlessConstructor(INamedTypeSymbol namedType)
+        {
+            if (namedType.IsAbstract)
+            {
+                return false;
+            }
+
+            foreach (var constructor in namedType.InstanceConstructors)
+            {
+                if (constructor.Parameters.Length != 0)
+                {
+                    continue;
+                }
+
+                return constructor.DeclaredAccessibility == Accessibility.Public ||
+                       constructor.DeclaredAccessibility == Accessibility.Internal;
+            }
+
+            return false;
         }
     }
 }

@@ -134,13 +134,23 @@ namespace MessageProtocol.CodeGenerator
                 return;
             }
 
+            // 메시지 타입은 매개변수 없는 생성자로 인스턴스를 만들 수 있어야 한다 (추상 클래스·포지셔널 레코드 거부).
+            if (!IsConstructibleMessageType(typeSymbol))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.UnconstructibleMessageType, location, typeSymbol.Name));
+                return;
+            }
+
             bool hasCollectionsMarshal = compilation.GetTypeByMetadataName("System.Runtime.InteropServices.CollectionsMarshal") != null;
             if (!MessageSerializeCodeEmitter.TryEmit(typeMeta, attributeReferences, hasCollectionsMarshal, out string? serializeCode, out var unsupportedMembers))
             {
                 foreach (var unsupported in unsupportedMembers)
                 {
+                    var descriptor = unsupported.Kind == UnsupportedMemberKind.NotAssignable
+                        ? DiagnosticDescriptors.NotAssignableMember
+                        : DiagnosticDescriptors.UnsupportedMemberType;
                     context.ReportDiagnostic(Diagnostic.Create(
-                        DiagnosticDescriptors.UnsupportedMemberType,
+                        descriptor,
                         unsupported.Location,
                         unsupported.TypeName,
                         unsupported.MemberOrTypeName));
@@ -149,6 +159,22 @@ namespace MessageProtocol.CodeGenerator
             }
 
             context.AddSource($"{GetGeneratedFileName(typeMeta.Symbol)}.g.cs", SourceText.From(serializeCode!, Encoding.UTF8));
+        }
+
+        /// <summary>매개변수 없는 생성자로 만들 수 있는 구체 타입인지 확인한다. 생성 partial 은 타입 내부라 비공개 생성자도 호출 가능하다.</summary>
+        static bool IsConstructibleMessageType(INamedTypeSymbol typeSymbol)
+        {
+            if (typeSymbol.IsAbstract)
+            {
+                return false;
+            }
+
+            if (typeSymbol.TypeKind == TypeKind.Struct)
+            {
+                return true;
+            }
+
+            return typeSymbol.InstanceConstructors.Any(constructor => constructor.Parameters.Length == 0);
         }
 
         static bool HasMessageAttribute(INamedTypeSymbol typeSymbol, AttributeReferences attributeReferences)
