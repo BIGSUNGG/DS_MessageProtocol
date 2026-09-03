@@ -284,6 +284,23 @@ public class RoundTripTests
     }
 
     [Fact]
+    public void 동일_제네릭_페이로드_두_구성이_한_메시지에서_왕복한다()
+    {
+        var msg = new DuplicateGenericPayloadsMessage
+        {
+            IntPair = new GenericPair<int> { First = 42, Tag = 1 },
+            TextPair = new GenericPair<string> { First = "pair", Tag = 2 },
+        };
+
+        var rt = MessageSerializer.Deserialize<DuplicateGenericPayloadsMessage>(MessageSerializer.Serialize(msg));
+
+        Assert.Equal(42, rt.IntPair!.First);
+        Assert.Equal(1, rt.IntPair.Tag);
+        Assert.Equal("pair", rt.TextPair!.First);
+        Assert.Equal(2, rt.TextPair.Tag);
+    }
+
+    [Fact]
     public void 구성_선언_없는_제네릭_메시지는_직렬화_시_예외()
     {
         var msg = new UnregisteredGeneric<FlatMessage> { X = 1 };

@@ -188,6 +188,14 @@ public partial class GenericPair<T>
     public int Tag { get; set; }
 }
 
+// 동일 제네릭 페이로드의 두 구성이 한 그래프에 공존 — 헬퍼 이름 충돌 회귀 픽스처
+[StandaloneMessage(123)]
+public partial class DuplicateGenericPayloadsMessage
+{
+    public GenericPair<int>? IntPair { get; set; }
+    public GenericPair<string>? TextPair { get; set; }
+}
+
 // 구성 선언이 없는 제네릭 메시지 — 직렬화 시 예외 검증용 (구성 선언 필수 규칙)
 [StandaloneMessage(122)]
 public partial class UnregisteredGeneric<T>

@@ -3,12 +3,12 @@ project: DS_MessageProtocol
 type: troubleshoot
 status: draft
 tags: [known-issues, generator, runtime]
-updated: 2026-09-01
+updated: 2026-09-04
 ---
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16 추가·같은 날 해결, KI-17~KI-22 추가. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -60,6 +60,16 @@ v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-
 
 조치 방향: 판독 시 flags 검증(거부) → 완료. 무결성 위반은 `EndOfStreamException`(경계)과 구분해 `InvalidDataException`(와이어 내용 불법)으로 보고.
 
+### KI-16. 동일 제네릭 페이로드 두 구성의 헬퍼 이름 충돌 → 소비자 CS0111 (해결)
+
+**상태: 해결 (2026-09-04).** `SerializationGraph.MakeHelperSuffix`가 타입 인자·중첩 타입 체인을 포함한 유일 접미사를 만들고, 그래프 단위 사용 접미사 집합으로 잔여 충돌에 구분자를 붙인다. 회귀 픽스처 `DuplicateGenericPayloadsMessage`(`GenericPair<int>`+`GenericPair<string>` 공존)·왕복 테스트 추가로 수정 전 CS0111 재현 검증. 테스트 83→84.
+
+원본 발견 내용:
+
+한 메시지 그래프에 동일 제네릭 페이로드의 두 구성(`Pair<int>`·`Pair<string>`)이 도달 가능하면 접미사가 `네임스페이스+MetadataName`(`Ns_Pair_1`)으로 동일해 `__WritePayload_…`/`__CreateInstance_…` 헬퍼가 같은 partial 클래스에 중복 방출 → 소비자 프로젝트가 CS0111로 컴파일 실패. 같은 형태가 동명 중첩 타입(`Outer1.Point`·`Outer2.Point`)에서도 발생. 기존 테스트는 한 그래프에 두 구성을 넣지 않아 미발견.
+
+조치 방향: 접미사 유일성 보장 → 완료. `MessageCodeGenerator.MakeCarrierSuffix`(구성 등록 캐리어, KI-19)는 별도 위치라 별도 처리.
+
 ## 잠재 결함 (코드 리뷰)
 
 | 번호 | 위치 | 내용 |
@@ -73,8 +83,14 @@ v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-
 | KI-9 | 그래프 밖 메시지 위임 (`EmitOutOfGraphMessage*`) | 위임 시 새 `SerializeContext` — 어셈블리 경계 넘는 공유 참조 복원 불가, 경계 넘는 순환 참조는 스택 오버플로. 제약 문서화 필요 |
 | KI-10 | 증분 파이프라인 | `Collect` 결과 `ImmutableArray`는 참조 동등성이라 후보 캐시가 매번 무효 — 편집마다 전체 재방출 (성능) |
 | KI-11 | `SerializerCachePrefill` | 같은 타입 병렬 등록/재등록 시 경쟁·잔존 상태 가능 (엣지) |
-| KI-12 | 빌드 경고 | RS2008 — 분석기 릴리스 추적(`AnalyzerReleases.Shipped.md`) 미사용, 경고 12개 |
+| KI-12 | 빌드 경고 | RS2008 — 분석기 릴리스 추적(`AnalyzerReleases.Shipped.md`) 미사용, 경고 16개(클린 빌드 기준, 증분 빌드에 가려짐) |
 | KI-14 | 생성 역직렬화 중첩 객체 판독 | 자기참조 메시지 중첩이 재귀로 판독 — 깊이가 프레임 크기 ÷ 최소 페이로드로만 제한됨. 큰 프레임 상한 환경에서 스택 오버플로 DoS 가능. 프레임 상한을 크게 잡을 경우 깊이 카운터 필요 |
+| KI-17 | `MessageSerializeCodeEmitter.Member.cs:543` | `CollectionsMarshal` 미지원 타깃의 `List<T>` 벌크 판독이 `개수 ≤ Remaining` 만 검증 — 고정 크기 8바이트 요소(`long`·`double`)에서 남은 버퍼의 최대 8배 선할당 강요. KI-13 가드의 누락 변형(형제 경로는 `개수×크기` 검증) |
+| KI-18 | `MessageSerializeCodeEmitter.Method.cs:185` | 추상 클래스·포지셔널 레코드·설정 불가 멤버 등 생성 불가 페이로드에 진단 대신 컴파일 불가 코드 방출(`new AbstractType()`, init-only 대입) — MSGPROT 진단으로 승격 필요 |
+| KI-19 | `MessageCodeGenerator.cs:437` | `MakeCarrierSuffix`가 타입 인자·중첩 체인을 버림 — 동명 중첩 호스트의 `__GenericConstructionRegistration_…` 클래스 충돌 가능 (KI-16과 동일 형태) |
+| KI-20 | `MessageBufferWriter.WriteString`·`MessageBufferReader.ReadString` | UTF8 기본(관대한) 폴백 — 고립 서로게이트·무효 바이트가 대체 문자로 조용히 변환되어 왕복 시 문자열 변형·와이어 손상 은폐. 정책 결정 필요(엄격 거부 또는 문서화) |
+| KI-21 | `MessageBufferReader.Skip`·`MessageBufferWriter.Advance` | 음수 허용 — `Skip(-n)`이 리더를 뒤로 이동. 생성 코드는 음수를 넘기지 않아 수동·외부 호출자 대상 위험 |
+| KI-22 | `MessageBufferWriter.WriteString:203` | `4 + GetMaxByteCount` 미검사 정수 덧셈 — 특정 초대형 문자열 길이에서 오버플로로 용량 증설 누락(메모리 손상 없음, `ArgumentException`으로 표면화) |
 
 ## 관련
 
