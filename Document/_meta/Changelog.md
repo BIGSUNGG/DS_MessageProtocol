@@ -8,6 +8,7 @@
 - KI-17 해결 — `CollectionsMarshal` 미지원 타깃의 `List<T>` 벌크 판독 분기 할당 전 가드 격상(`개수 ≤ Remaining` → `개수×요소크기 ≤ Remaining`, long 산술, `EmitListRead`). `InternalsVisibleTo` 추가 후 `TryEmit(hasCollectionsMarshal: false)` 직접 구동 회귀 테스트(약한 가드로 역전 시 실패 검증). 테스트 84→85. `Known-Issues` KI-17 해결 승격.
 - KI-18 해결 — 생성 불가 페이로드 진단 승격: 루트 메시지 추상·매개변수 없는 생성자 없음 → `MSGPROT010`, 중첩 페이로드 기본 생성 불가(추상·포지셔널 레코드) → 그래프 제외 후 멤버 단위 `MSGPROT006`, 대입 불가 멤버(get-only·init-only·읽기전용 필드) → `MSGPROT011` (`SerializationGraph.IsSerializableObjectType`·`MessageCodeGenerator.IsConstructibleMessageType`·`Member.IsDeserializableMember`, `EmitState` 사유 열거 확장). 회귀 테스트 5개. 테스트 85→90. `Feature-Spec` F5 진단 목록 갱신.
 - KI-19 해결 — 제네릭 구성 등록 캐리어 접미사 충돌: `MakeCarrierSuffix` 제거 후 KI-16과 동일 전략의 공용 `SymbolNaming.MakeUniqueSuffix`(네임스페이스·중첩 체인·제네릭 인자 + 사용 접미사 집합 구분자)로 교체 — 그래프 헬퍼·캐리어 이름 체계 단일화. 동명 중첩 캐리어 회귀 테스트(수정 전 충돌 검증). 테스트 90→91.
+- KI-20 해결 — 문자열 엄격 UTF-8 정책 확정: `WriteString`·`ReadString` 이 엄격 폴백(`EncoderFallback.ExceptionFallback`·`DecoderFallback.ExceptionFallback`) 사용 — 고립 서로게이트 쓰기 인코딩 예외 거부, 무효 UTF-8 읽기 `InvalidDataException` 거부(KI-15 와이어 무결성 기조 동일). 회귀 테스트 2개. 테스트 91→93. `Feature-Spec` F3 엄격 UTF-8 규칙 명문화.
 
 ## 2026-09-01
 

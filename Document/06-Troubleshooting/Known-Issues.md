@@ -8,7 +8,7 @@ updated: 2026-09-04
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19 추가·같은 날 해결, KI-20~KI-22 추가. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -100,6 +100,16 @@ KI-13 가드가 5 변형 전부 적용됐다고 기록됐으나, `CollectionsMar
 
 조치 방향: 유일 접미사 체계 공유 → 완료.
 
+### KI-20. UTF8 관대한 폴백 → 왕복 시 조용한 문자열 변형 (해결)
+
+**상태: 해결 (2026-09-04).** 정책 결정: 와이어 무결성 엄격 정책(KI-15와 동일 기조). `WriteString`·`ReadString` 이 엄격 UTF-8(`EncoderFallback.ExceptionFallback`·`DecoderFallback.ExceptionFallback`) 사용 — 고립 서로게이트는 쓰기에서 인코딩 예외로 실패(대체 바이트로 조용한 변환 없음), 무효 UTF-8 바이트는 읽기에서 `InvalidDataException` 거부(경계 `EndOfStreamException` 과 구분). 회귀 테스트 2개. 테스트 91→93.
+
+원본 발견 내용:
+
+기본(교체 폴백) `Encoding.UTF8` 이 송신 측에서는 고립 서로게이트를 대체 바이트로 조용히 재인코딩하고, 수신 측에서는 무효 바이트를 U+FFFD 로 변환했다 — 왕복이 송신과 다른 문자열을 반환할 수 있고, 손상 패킷이 오류 없이 복호되어 와이어 손상이 은폐됐다.
+
+조치 방향: 교체 대신 거부 → 완료. 송신 측 예외는 자연스러운 `EncoderFallbackException`(프로그래밍 오류), 수신 측은 `InvalidDataException`(와이어 내용 불법)으로 보고.
+
 ## 잠재 결함 (코드 리뷰)
 
 | 번호 | 위치 | 내용 |
@@ -115,7 +125,6 @@ KI-13 가드가 5 변형 전부 적용됐다고 기록됐으나, `CollectionsMar
 | KI-11 | `SerializerCachePrefill` | 같은 타입 병렬 등록/재등록 시 경쟁·잔존 상태 가능 (엣지) |
 | KI-12 | 빌드 경고 | RS2008 — 분석기 릴리스 추적(`AnalyzerReleases.Shipped.md`) 미사용, 경고 16개(클린 빌드 기준, 증분 빌드에 가려짐) |
 | KI-14 | 생성 역직렬화 중첩 객체 판독 | 자기참조 메시지 중첩이 재귀로 판독 — 깊이가 프레임 크기 ÷ 최소 페이로드로만 제한됨. 큰 프레임 상한 환경에서 스택 오버플로 DoS 가능. 프레임 상한을 크게 잡을 경우 깊이 카운터 필요 |
-| KI-20 | `MessageBufferWriter.WriteString`·`MessageBufferReader.ReadString` | UTF8 기본(관대한) 폴백 — 고립 서로게이트·무효 바이트가 대체 문자로 조용히 변환되어 왕복 시 문자열 변형·와이어 손상 은폐. 정책 결정 필요(엄격 거부 또는 문서화) |
 | KI-21 | `MessageBufferReader.Skip`·`MessageBufferWriter.Advance` | 음수 허용 — `Skip(-n)`이 리더를 뒤로 이동. 생성 코드는 음수를 넘기지 않아 수동·외부 호출자 대상 위험 |
 | KI-22 | `MessageBufferWriter.WriteString:203` | `4 + GetMaxByteCount` 미검사 정수 덧셈 — 특정 초대형 문자열 길이에서 오버플로로 용량 증설 누락(메모리 손상 없음, `ArgumentException`으로 표면화) |
 

@@ -120,6 +120,34 @@ public class BufferIOTests
     }
 
     [Fact]
+    public void 고립_서로게이트_문자열은_쓰기에서_거부된다()
+    {
+        // KI-20 회귀: 고립 서로게이트를 대체 바이트로 조용히 바꾸지 않고 인코딩 실패를 표면화한다.
+        Assert.ThrowsAny<ArgumentException>(WriteLoneSurrogate);
+    }
+
+    static void WriteLoneSurrogate()
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            writer.WriteString("앞 \uD800 뒤");
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Fact]
+    public void 무효_UTF8_문자열_페이로드는_읽기에서_거부된다()
+    {
+        // KI-20 회귀: 길이 접두 2 + 2바이트 시퀀스 선도 바이트 0xC2 뒤에 연속 바이트가 아닌 0x01 → 무효 UTF-8.
+        byte[] bytes = { 2, 0, 0, 0, 0xC2, 0x01 };
+        Assert.Throws<InvalidDataException>(() => new MessageBufferReader(bytes).ReadString());
+    }
+
+    [Fact]
     public void 범위를_벗어난_읽기는_EndOfStreamException()
     {
         Assert.Throws<EndOfStreamException>(ReadPastEnd);

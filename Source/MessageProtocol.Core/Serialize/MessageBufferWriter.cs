@@ -200,12 +200,16 @@ namespace MessageProtocol.Serialize
                 return;
             }
 
-            int maxBytes = Encoding.UTF8.GetMaxByteCount(value.Length);
+            int maxBytes = StrictUtf8.GetMaxByteCount(value.Length);
             EnsureCapacity(4 + maxBytes);
-            int written = Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position + 4);
+            int written = StrictUtf8.GetBytes(value, 0, value.Length, _buffer, _position + 4);
             BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(_position), written);
             _position += 4 + written;
         }
+
+        // 고립 서로게이트를 대체 바이트로 조용히 바꾸면 수신 측이 송신과 다른 문자열을 보므로,
+        // 인코딩 실패를 있는 그대로 표면화하는 엄격 폴백을 쓴다 (와이어 무결성 정책 — Known-Issues KI-20).
+        static readonly Encoding StrictUtf8 = Encoding.GetEncoding(65001, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
         /// <summary>지정 오프셋에 int32 를 다시 쓴다 (외부 프레이밍 등 드문 용도).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

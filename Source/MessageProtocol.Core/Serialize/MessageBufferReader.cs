@@ -150,14 +150,25 @@ namespace MessageProtocol.Serialize
             return span;
         }
 
-        /// <summary>int32 길이 접두 문자열. -1 은 null, 0 은 빈 문자열.</summary>
+        /// <summary>int32 길이 접두 문자열. -1 은 null, 0 은 빈 문자열. 무효 UTF-8 은 와이어 손상으로 거부한다.</summary>
         public string? ReadString()
         {
             int length = ReadInt32();
             if (length < 0) return null;
             if (length == 0) return string.Empty;
-            return Encoding.UTF8.GetString(ReadBytes(length));
+            try
+            {
+                return StrictUtf8.GetString(ReadBytes(length));
+            }
+            catch (DecoderFallbackException exception)
+            {
+                // 경계 위반(EndOfStreamException)과 구분해 와이어 내용 불법을 보고 — ReadDecimal KI-15 정책과 동일.
+                throw new InvalidDataException("String payload is not valid UTF-8.", exception);
+            }
         }
+
+        // 무효 바이트를 U+FFFD 로 조용히 바꾸면 손상 패킷이 티 없이 복호되므로 엄격 폴백으로 거부한다 (Known-Issues KI-20).
+        static readonly Encoding StrictUtf8 = Encoding.GetEncoding(65001, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Skip(int count)
