@@ -99,7 +99,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 // 1.5) 타입 매개변수: 런타임 메시지 디스패치 (T 에는 등록된 메시지 타입만 올 수 있다).
                 if (typeSymbol is ITypeParameterSymbol)
                 {
-                    return EmitTypeParameterWrite(valueExpression, indent);
+                    return EmitRuntimeDispatchWrite(valueExpression, indent);
                 }
 
                 // 2) 배열 (1차원만 지원)
@@ -127,10 +127,15 @@ namespace MessageProtocol.CodeGenerator.Generate
                     return EmitInGraphMessageWrite(inGraphModel, valueExpression, indent);
                 }
 
-                // 5) 메시지 타입인데 그래프 밖 (다른 어셈블리 등) — 정적 Serialize 위임
+                // 5) 메시지 타입인데 그래프 밖 (다른 어셈블리 등) — 정적 Serialize 위임.
+                //    단, 추상 메시지 타입(abstract [GroupRootMessage] 등)은 생성기가 정적 Serialize/Deserialize 를
+                //    방출하지 않으므로(MSGPROT010 계열 — 인스턴스 생성 불가) 위임 코드가 소비자 빌드를 CS0117 로 깨뜨린다.
+                //    대신 런타임 메시지 디스패치로 *구체* 요소를 헤더째 쓴다 — 파생 멤버 유실 없이 다형성이 복원된다.
                 if (graph.IsMessageType(typeSymbol))
                 {
-                    return EmitOutOfGraphMessageWrite(typeSymbol, valueExpression, indent);
+                    return typeSymbol.IsAbstract
+                        ? EmitRuntimeDispatchWrite(valueExpression, indent)
+                        : EmitOutOfGraphMessageWrite(typeSymbol, valueExpression, indent);
                 }
 
                 return ReportUnsupported(typeSymbol, state, diagnosticLocation, memberDisplayName);
@@ -152,7 +157,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (typeSymbol is ITypeParameterSymbol)
                 {
-                    return EmitTypeParameterRead(typeSymbol, targetExpression, indent);
+                    return EmitRuntimeDispatchRead(typeSymbol, targetExpression, indent);
                 }
 
                 if (typeSymbol is IArrayTypeSymbol arrayType)
@@ -177,9 +182,13 @@ namespace MessageProtocol.CodeGenerator.Generate
                     return EmitInGraphMessageRead(inGraphModel, targetExpression, indent);
                 }
 
+                // 추상 메시지 타입은 생성 정적 Deserialize 가 없어 위임이 CS0117 을 낸다 — 쓰기 경로와 같은 이유로
+                // 런타임 디스패치로 읽고 선언 타입(추상 루트)으로 캐스트한다 (실체 인스턴스는 등록된 구체 요소).
                 if (graph.IsMessageType(typeSymbol))
                 {
-                    return EmitOutOfGraphMessageRead(typeSymbol, targetExpression, indent);
+                    return typeSymbol.IsAbstract
+                        ? EmitRuntimeDispatchRead(typeSymbol, targetExpression, indent)
+                        : EmitOutOfGraphMessageRead(typeSymbol, targetExpression, indent);
                 }
 
                 return ReportUnsupported(typeSymbol, state, diagnosticLocation, memberDisplayName);
@@ -302,13 +311,13 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return $"{indent}{targetExpression} = {typeName}.Deserialize(ref reader);\n";
             }
 
-            // ------- 타입 매개변수 (런타임 메시지 디스패치) -------
+            // ------- 런타임 메시지 디스패치 (타입 매개변수·추상 메시지 멤버) -------
 
             /// <summary>
-            /// T 멤버 직렬화: 전체 메시지(헤더 포함)를 런타임 타입 디스패치로 쓴다.
-            /// 그래프 밖 위임과 같은 형태이며 백레퍼런스 추적은 하지 않는다.
+            /// 런타임 타입 디스패치 쓰기: 전체 메시지(헤더 포함)를 <c>SerializeToWriter</c> 로 쓴다.
+            /// 타입 매개변수 멤버와 추상 메시지 타입 멤버가 공유하며, 백레퍼런스 추적은 하지 않는다.
             /// </summary>
-            static string EmitTypeParameterWrite(string valueExpression, string indent)
+            static string EmitRuntimeDispatchWrite(string valueExpression, string indent)
             {
                 return $@"{indent}if ({valueExpression} is null)
 {indent}{{
@@ -322,7 +331,8 @@ namespace MessageProtocol.CodeGenerator.Generate
 ";
             }
 
-            static string EmitTypeParameterRead(ITypeSymbol typeSymbol, string targetExpression, string indent)
+            /// <summary>런타임 타입 디스패치 읽기: 헤더의 MessageId 로 등록된 구체 타입을 복원하고 선언 타입으로 캐스트한다.</summary>
+            static string EmitRuntimeDispatchRead(ITypeSymbol typeSymbol, string targetExpression, string indent)
             {
                 int uid = NextUniqueId();
                 return $@"{indent}{{

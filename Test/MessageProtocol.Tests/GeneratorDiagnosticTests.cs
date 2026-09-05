@@ -589,6 +589,59 @@ public class GeneratorDiagnosticTests
         Assert.Empty(compileErrors);
     }
 
+    [Fact]
+    public void 추상_메시지_타입_멤버는_위임_대신_런타임_디스패치를_생성한다()
+    {
+        // KI-24 회귀: abstract [GroupRootMessage] 는 다형 그룹의 자연스러운 선언이지만 생성기는 인스턴스를
+        // 만들 수 없어 정적 Serialize/Deserialize 를 방출하지 않는다 — 위임 코드는 진단 없이 소비자 빌드를
+        // CS0117('AbstractEvent'에 'Serialize' 정의가 없음)로 깨뜨렸다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [GroupRootMessage(300)]
+            public abstract partial class AbstractEvent { public long Timestamp { get; set; } }
+
+            [GroupElementMessage(301)]
+            public partial class LoginEvent : AbstractEvent { public string? User { get; set; } }
+
+            [StandaloneMessage(302)]
+            public partial class Envelope
+            {
+                public AbstractEvent? Payload { get; set; }
+                public System.Collections.Generic.List<AbstractEvent>? History { get; set; }
+            }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.DoesNotContain("AbstractEvent.Serialize", generated);
+        Assert.DoesNotContain("AbstractEvent.Deserialize", generated);
+        Assert.Contains("MessageSerializer.SerializeToWriter(message.Payload, ref writer)", generated);
+        Assert.Contains("(global::TestNs.AbstractEvent)MessageSerializer.DeserializeFromReader(ref reader)", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void 그래프_밖_구체_메시지_멤버는_정적_위임을_유지한다()
+    {
+        // KI-24 수정의 역방향 가드: 비공개 매개변수 없는 생성자 때문에 그래프에서 빠진 *구체* 메시지 타입은
+        // 여전히 생성 정적 멤버를 가지므로 정적 위임이 맞다 (런타임 디스패치로 과도하게 돌리면 안 된다).
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(310)]
+            public partial class PrivateCtorHost { public PrivateCtorPayload? Payload { get; set; } }
+
+            [NonIdMessage]
+            public partial class PrivateCtorPayload
+            {
+                PrivateCtorPayload() { }
+                public int X { get; set; }
+            }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains("global::TestNs.PrivateCtorPayload.Serialize(message.Payload, ref writer)", generated);
+        Assert.Contains("global::TestNs.PrivateCtorPayload.Deserialize(ref reader)", generated);
+        Assert.DoesNotContain("SerializeToWriter", generated);
+        Assert.Empty(compileErrors);
+    }
+
     static int CountOccurrences(string text, string pattern)
     {
         int count = 0;

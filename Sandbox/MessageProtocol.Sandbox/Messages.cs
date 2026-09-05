@@ -107,3 +107,31 @@ public partial class Envelope<T>
     public string? Note { get; set; }
     public List<T?>? Items { get; set; }
 }
+
+// ---------- S13: 추상 그룹 루트 다형 멤버 ----------
+// abstract [GroupRootMessage] 는 인스턴스를 만들 수 없어 정적 Serialize/Deserialize 가 생성되지 않는다.
+// 이 타입을 멤버로 쓰면 생성기는 정적 위임 대신 런타임 메시지 디스패치로 *구체* 요소를 헤더째 기록한다.
+[GroupRootMessage(70)]
+public abstract partial class ShapeCommand
+{
+    public long Seq { get; set; }
+}
+
+[GroupElementMessage(71)]
+public partial class DrawCommand : ShapeCommand
+{
+    public string? Layer { get; set; }
+}
+
+[GroupElementMessage(72)]
+public partial class ClearCommand : ShapeCommand
+{
+    public bool Full { get; set; }
+}
+
+[StandaloneMessage(73)]
+public partial class CommandBatch
+{
+    public ShapeCommand? Head { get; set; }
+    public List<ShapeCommand>? Queue { get; set; }
+}

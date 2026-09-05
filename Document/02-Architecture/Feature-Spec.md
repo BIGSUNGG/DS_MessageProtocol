@@ -50,6 +50,7 @@ updated: 2026-09-05
 | 열거형 | underlying 프리미티브로 직렬화 |
 | 컬렉션 | 1차원 배열 `T[]`, `List<T>`, `IList<T>` (요소 타입은 재귀적으로 위 규칙 적용) |
 | 중첩 메시지 | 직렬화 대상 객체 멤버 (그래프 수집) |
+| 다형 멤버 | 추상 메시지 타입 멤버 — 런타임 디스패치로 구체 요소를 헤더째 기록 |
 | 순환 참조 | 객체 아이디 백레퍼런스로 처리 (무한 루프 없이 round-trip) |
 | byte 데이터 | `byte[]` (길이 + 내용) |
 
@@ -66,6 +67,8 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 문자열 길이 접두사는 int32 이며 `-1` 만 null, `0` 은 빈 문자열이다 — 그 외 음수(`-2`…`int.MinValue`)는 규약 위반이므로 읽기에서 `InvalidDataException` 으로 거부한다 (손상 프레임이 null 문자열로 조용히 복호되는 것 차단).
 
 중첩 객체 역직렬화 깊이는 reader 단위 상한으로 제한한다 — 기본 `MessageBufferReader.DefaultMaxNestingDepth = 64`, 생성 코드(그래프 내부 중첩 객체·그래프 밖 메시지 위임)와 `DeserializeFromReader`(타입 매개변수 멤버)가 재귀 지점에서 `EnterNestedObject`·`LeaveNestedObject` 쌍을 호출하고 상한 초과 시 `InvalidDataException` 으로 거부한다 (자기참조 메시지를 `ReferenceKind.NewObject` 1바이트씩만 늘어놓은 20KB 남짓한 적대 프레임이 재귀 스택을 소진시켜 **catch 불가한 스택 오버플로(프로세스 사망)** 를 일으키던 경로 차단 — Known-Issues KI-14). 합법적으로 깊은 객체 그래프는 `new MessageBufferReader(buffer, maxNestingDepth)` 로 reader 단위 상한을 올려 처리한다.
+
+메시지 타입 멤버는 세 경로로 나뉜다 — (1) 그래프 내부 타입(같은 컴파일의 구체 타입)은 백레퍼런스 추적 페이로드로, (2) 그래프 밖 **구체** 메시지(다른 어셈블리 등)는 그 타입의 생성 정적 `Serialize`/`Deserialize` 위임으로, (3) **추상 메시지 타입**(예: `abstract [GroupRootMessage]` — 상속 전용이라 생성 정적 멤버가 존재하지 않는다)은 런타임 메시지 디스패치(`SerializeToWriter`·`DeserializeFromReader`)로 기록한다. (3) 은 와이어에 구체 요소의 헤더(MessageId)를 포함하므로 수신 측이 **등록된 구체 요소 타입과 파생 멤버를 그대로 복원**한다(다형 멤버 — 베이스 타입 페이로드로 써서 파생 필드를 잃는 일이 없다). (3) 경로는 타입 매개변수(`T`) 멤버와 동일하게 백레퍼런스를 추적하지 않으므로, 그 멤버를 통한 공유 참조·순환 참조는 지원하지 않는다(Known-Issues KI-24·KI-9).
 
 ## F4. 멤버 제어
 

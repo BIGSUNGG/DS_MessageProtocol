@@ -145,4 +145,52 @@ public class RegistrationTests
         // NoIdMessage 는 모듈 초기화에서 등록됨 — 다시 등록하면 중복 예외
         Assert.Throws<InvalidOperationException>(() => MessageSerializer.RegisterNonIdMessage<NoIdMessage>());
     }
+
+    // ---------- 추상 메시지 타입 멤버 (KI-24) ----------
+
+    [Fact]
+    public void 추상_그룹_루트_멤버는_구체_요소로_왕복한다()
+    {
+        var envelope = new CommandEnvelope
+        {
+            Command = new StartCommand { Seq = 7, Target = "alpha" },
+            History = new List<AbstractCommand>
+            {
+                new StartCommand { Seq = 1, Target = "a" },
+                new StopCommand { Seq = 2, Code = 9 },
+            },
+        };
+
+        var roundTrip = MessageSerializer.Deserialize<CommandEnvelope>(MessageSerializer.Serialize(envelope));
+
+        // 런타임 디스패치라 선언 타입(추상 루트)이 아니라 구체 요소 타입이 복원되고 파생 멤버가 유실되지 않는다.
+        var command = Assert.IsType<StartCommand>(roundTrip.Command);
+        Assert.Equal(7, command.Seq);          // 베이스(루트) 멤버
+        Assert.Equal("alpha", command.Target); // 파생 멤버
+
+        Assert.Equal(2, roundTrip.History!.Count);
+        Assert.Equal("a", Assert.IsType<StartCommand>(roundTrip.History[0]).Target);
+        Assert.Equal(9, Assert.IsType<StopCommand>(roundTrip.History[1]).Code);
+    }
+
+    [Fact]
+    public void 추상_그룹_루트_멤버의_null은_null로_왕복한다()
+    {
+        var roundTrip = MessageSerializer.Deserialize<CommandEnvelope>(
+            MessageSerializer.Serialize(new CommandEnvelope()));
+
+        Assert.Null(roundTrip.Command);
+        Assert.Null(roundTrip.History);
+    }
+
+    [Fact]
+    public void 추상_그룹_루트_멤버를_든_메시지도_object_dispatch로_왕복한다()
+    {
+        object envelope = new CommandEnvelope { Command = new StopCommand { Seq = 3, Code = 5 } };
+
+        var roundTrip = (CommandEnvelope)MessageSerializer.Deserialize(MessageSerializer.Serialize(envelope))!;
+
+        Assert.Equal(3, roundTrip.Command!.Seq);
+        Assert.Equal(5, Assert.IsType<StopCommand>(roundTrip.Command).Code);
+    }
 }

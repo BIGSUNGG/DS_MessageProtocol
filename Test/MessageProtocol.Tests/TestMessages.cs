@@ -225,3 +225,33 @@ public partial class WideChainMessage
 {
     public List<ChainMessage>? Items { get; set; }
 }
+
+// ---------- 추상 그룹 루트 다형 멤버 (KI-24) ----------
+
+// abstract [GroupRootMessage] 는 다형 그룹의 자연스러운 선언 형태지만 생성기는 인스턴스를 만들 수 없어
+// 정적 Serialize/Deserialize 를 방출하지 않는다 — 멤버 타입으로 쓰이면 런타임 메시지 디스패치로
+// *구체* 요소가 헤더째 기록되어야 한다 (정적 위임은 소비자 빌드를 CS0117 로 깨뜨렸다).
+[GroupRootMessage(126)]
+public abstract partial class AbstractCommand
+{
+    public long Seq { get; set; }
+}
+
+[GroupElementMessage(127)]
+public partial class StartCommand : AbstractCommand
+{
+    public string? Target { get; set; }
+}
+
+[GroupElementMessage(128)]
+public partial class StopCommand : AbstractCommand
+{
+    public int Code { get; set; }
+}
+
+[StandaloneMessage(129)]
+public partial class CommandEnvelope
+{
+    public AbstractCommand? Command { get; set; }
+    public List<AbstractCommand>? History { get; set; }
+}

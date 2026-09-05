@@ -208,6 +208,32 @@ void Check(string name, bool condition)
     Check("S12 분산 선언 구성 dispatch", decoded is Envelope<TreeNode> env && env.Value!.Label == "dist");
 }
 
+// ---------- S13: 추상 그룹 루트 다형 멤버 ----------
+{
+    // abstract [GroupRootMessage] 멤버는 런타임 메시지 디스패치로 구체 요소가 기록된다 —
+    // 선언 타입(추상 루트)이 아니라 실제 요소 타입과 파생 멤버가 복원되어야 한다.
+    var batch = new CommandBatch
+    {
+        Head = new DrawCommand { Seq = 1, Layer = "bg" },
+        Queue = new List<ShapeCommand>
+        {
+            new ClearCommand { Seq = 2, Full = true },
+            new DrawCommand { Seq = 3, Layer = "fg" },
+        },
+    };
+
+    var roundTrip = MessageSerializer.Deserialize<CommandBatch>(MessageSerializer.Serialize(batch));
+
+    Check("S13 추상 루트 멤버 구체 타입 복원",
+        roundTrip.Head is DrawCommand head && head.Layer == "bg" && head.Seq == 1);
+    Check("S13 추상 루트 컬렉션 다형 복원",
+        roundTrip.Queue is { Count: 2 }
+        && roundTrip.Queue[0] is ClearCommand clear && clear.Full && clear.Seq == 2
+        && roundTrip.Queue[1] is DrawCommand tail && tail.Layer == "fg");
+    Check("S13 추상 루트 멤버 null 왕복",
+        MessageSerializer.Deserialize<CommandBatch>(MessageSerializer.Serialize(new CommandBatch())).Head is null);
+}
+
 Console.WriteLine();
 Console.WriteLine(failures == 0 ? "ALL SCENARIOS PASSED" : $"{failures} SCENARIO CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;
