@@ -36,7 +36,7 @@ updated: 2026-09-05
 | `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
 | `NonIdMessage` | ID 없는 메시지 |
 | `MessageCategory(Category0..15)` | 카테고리 니블 |
-| `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). 제네릭 선언에는 `StandaloneMessage` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
+| `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). `ClassId` 범위 **1 .. 2^24-1**(MessageId 와 같은 3바이트 와이어 슬롯 — 벗어나면 컴파일 진단). 제네릭 선언에는 `StandaloneMessage` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
 
 - 메시지 타입은 `partial` 선언이 필수.
 - 그룹 계층 규칙 위반은 컴파일 진단으로 거부 (F5).
@@ -94,7 +94,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
   - `MSGPROT005` ID 값 범위 초과
   - `MSGPROT006` 미지원 멤버 타입
   - `MSGPROT007` 메시지 속성 중복 (경고 — 상호 배타, 생성 건너뜀. Legacy에 없는 신규 진단)
-  - `MSGPROT008` 잘못된 GenericMessage 선언 (비메시지 구성 대상·미바운드 제네릭·ClassId 누락/중복·컴파일 내 중복 선언)
+  - `MSGPROT008` 잘못된 GenericMessage 선언 (비메시지 구성 대상·미바운드 제네릭·ClassId 누락/중복/**범위 초과(0 또는 2^24 이상 — 방치하면 모듈 이니셜라이저에서 `TypeInitializationException`)**·컴파일 내 중복 선언)
   - `MSGPROT009` (삭제됨 — `MSGPROT008` 로 흡수)
   - `MSGPROT010` 메시지 타입 생성 불가 (추상 클래스·매개변수 없는 생성자 없음 — 포지셔널 레코드 등. Legacy에 없는 신규 진단)
   - `MSGPROT011` 멤버 대입 불가 (읽기 전용·초기화 전용 프로퍼티·읽기전용 필드 — 역직렬화 불가. Legacy에 없는 신규 진단)

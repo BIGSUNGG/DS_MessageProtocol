@@ -257,6 +257,42 @@ public class GeneratorDiagnosticTests
         Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
     }
 
+    [Theory]
+    [InlineData(16777216u)]    // 2^24 — 24비트 와이어 슬롯을 넘는 첫 값
+    [InlineData(4294967295u)]  // uint.MaxValue
+    public void MSGPROT008_ClassId_상한_초과는_컴파일_진단으로_거부된다(uint classId)
+    {
+        // KI-27 회귀: 상한 미검증이라 생성기를 통과하고, 생성된 등록 캐리어가 **모듈 이니셜라이저**에서
+        // RegisterGenericConstruction 의 ArgumentOutOfRangeException 을 터뜨려 TypeInitializationException(어셈블리 로드 실패)이 된다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
+            [StandaloneMessage(1)]
+            [GenericMessage(typeof(Box<int>), ClassId = {{classId}})]
+            public partial class Box<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT008");
+        // `<` 까지 봐야 한다 — 생성 `Serialize` 의 안내 예외 메시지도 "RegisterGenericConstruction" 이라는 단어를 포함한다.
+        Assert.DoesNotContain("RegisterGenericConstruction<", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Theory]
+    [InlineData(1u)]          // 최소 허용
+    [InlineData(16777215u)]   // 최대 허용 (2^24 - 1)
+    public void ClassId_경계값은_진단_없이_등록_코드를_생성한다(uint classId)
+    {
+        // 역방향 가드: 상한 검증을 넣으면서 정상 범위(특히 경계값)를 잘라내면 안 된다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
+            [StandaloneMessage(1)]
+            [GenericMessage(typeof(Box<int>), ClassId = {{classId}})]
+            public partial class Box<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains("RegisterGenericConstruction<", generated);
+        Assert.Empty(compileErrors);
+    }
+
     [Fact]
     public void 분산_선언_캐리어는_구성_등록_코드를_생성한다()
     {

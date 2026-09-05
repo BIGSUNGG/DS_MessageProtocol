@@ -375,7 +375,17 @@ namespace MessageProtocol.CodeGenerator
 
                 if (classId == 0)
                 {
-                    ReportInvalidConstruction(context, location, host, $"construction '{construction.ToDisplayString()}' is missing 'ClassId' (must be 1 .. 16777215)");
+                    ReportInvalidConstruction(context, location, host, $"construction '{construction.ToDisplayString()}' is missing 'ClassId' (must be 1 .. {TypeMetadata.MaxMessageAttributeValue})");
+                    return false;
+                }
+
+                // ClassId 는 MessageId 와 같은 24비트 와이어 슬롯(`GenericIdHeaderSize` 의 뒤 3바이트)에 담긴다.
+                // 상한 초과는 와이어에 잘리므로 런타임 등록이 거부하는데, 그 등록은 **모듈 이니셜라이저** 안에서 돌아
+                // ArgumentOutOfRangeException 이 TypeInitializationException(어셈블리 로드 실패)으로 번진다.
+                // 런타임 크래시 대신 컴파일 진단으로 승격한다 (Known-Issues KI-27).
+                if (classId > TypeMetadata.MaxMessageAttributeValue)
+                {
+                    ReportInvalidConstruction(context, location, host, $"ClassId {classId} is out of range for construction '{construction.ToDisplayString()}' (must be 1 .. {TypeMetadata.MaxMessageAttributeValue})");
                     return false;
                 }
 

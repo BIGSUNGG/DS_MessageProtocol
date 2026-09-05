@@ -8,7 +8,7 @@ updated: 2026-09-05
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26 추가·해결, KI-25·KI-11·KI-4 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26·KI-27 추가·해결, KI-25·KI-11·KI-4 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -223,6 +223,16 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 두 가지 문제였다. ① **비용** — 요소마다 프로퍼티 게터와(`IList<T>` 는 인터페이스 `Count` 호출까지) 멤버 접근이 반복됐다. `CollectionsMarshal` 이 있는 타깃의 `List<T>` 는 이미 `AsSpan` 스냅샷으로 한 번만 평가했지만, 배열·`IList<T>`·그리고 `CollectionsMarshal` 이 없는 타깃(**Unity/netstandard2.1**)의 `List<T>` 는 루프가 멤버를 계속 다시 읽었다 — 이 저장소의 1차 타깃이 바로 그 경로다. ② **일관성(더 심각)** — 길이 접두와 요소를 *서로 다른 평가*에서 가져오므로, `public IList<int> Codes => Build();` 같은 계산형 프로퍼티에서는 길이와 요소가 다른 컬렉션 인스턴스에서 나와 프레임이 스스로 모순될 수 있고(수신 측에서 길이·내용 불일치), 게터가 두 번째 호출에서 null 을 돌려주면 `else` 분기 안에서 `NullReferenceException` 이 난다(TOCTOU). 스냅샷 방식은 `CollectionsMarshal` 경로가 이미 따르던 규약이라 6변형이 같은 의미가 됐다.
 
 조치 방향: 멤버 표현식 1회 평가 + 로컬 스냅샷(null 판정 포함) → 완료. 부수 효과: 직렬화 중 컬렉션이 변하는 경우 프레임이 "한 순간 스냅샷"으로 일관되게 나온다(이전에는 길이와 요소가 다른 시점 값일 수 있었다). 직렬화 중 컬렉션 변경은 여전히 계약 위반이다.
+
+### KI-27. `GenericMessage.ClassId` 상한 미검증 → 모듈 이니셜라이저에서 `TypeInitializationException` (해결)
+
+**상태: 해결 (2026-09-05).** `ValidateConstructionEntries` 가 `classId == 0`(누락)만 거부하고 상한을 보지 않던 자리에 `classId > TypeMetadata.MaxMessageAttributeValue`(= `MessageWireFormat.MessageIdValueMask`, 2^24-1) 검증을 추가 — `MSGPROT008`(잘못된 GenericMessage 선언)로 컴파일 진단 승격하고 해당 구성의 등록 캐리어를 방출하지 않는다. ClassId 는 MessageId 와 같은 3바이트 와이어 슬롯(`GenericIdHeaderSize` 의 뒤 3바이트)에 담기므로 상한이 동일해야 맞다. 누락(0) 안내 메시지의 하드코딩 `16777215` 도 같은 상수로 교체. 런타임 검증(`RegisterGenericConstruction` 의 `ArgumentOutOfRangeException`, `GenericMessageAttribute.ClassId` 설정자의 `MessageAttributeRange.Validate`)은 방어층으로 유지. 회귀 테스트 4개(케이스) — `MSGPROT008_ClassId_상한_초과는_컴파일_진단으로_거부된다`(Theory: 2^24, `uint.MaxValue` → MSGPROT008 보고·`RegisterGenericConstruction<` 미방출·컴파일 오류 0) + 역방향 가드 `ClassId_경계값은_진단_없이_등록_코드를_생성한다`(Theory: 1, 2^24-1 → 진단 0·등록 코드 방출). **이빨 확인**: 수정 전 두 거부 케이스 실패(진단 없음), 경계 케이스는 통과(과잉 차단 아님). 테스트 148→152(net8.0·net9.0), Sandbox 전체 통과, Release 빌드 경고 0·오류 0. `Feature-Spec` F2 ClassId 범위·F5 MSGPROT008 사유 목록 갱신(진단 규칙 자체는 기존 것이라 분석기 릴리스 추적 파일 변경 없음).
+
+원본 발견 내용:
+
+`[GenericMessage(typeof(Box<int>), ClassId = 16777216)]` 처럼 24비트를 넘는 ClassId 는 생성기를 **진단 없이** 통과하고, 생성된 등록 캐리어가 `MessageSerializer.RegisterGenericConstruction<Box<int>>(16777216)` 을 `[ModuleInitializer]` 에서 호출한다. 런타임은 이미 상한을 검증하므로 예외 자체는 나지만 — 그것이 **모듈 이니셜라이저 안**이라 CLR 이 `TypeInitializationException` 으로 감싸 **모듈 로드 자체가 실패**한다. 즉 속성 값 오타 한 자리(`1677721` → `16777216`)의 증상이 "어셈블리 로드 실패"로 나타나고, 원인이 속성 값 범위라는 단서는 어디에도 없었다. 상한 검증이 없으면 값이 와이어에 3바이트로 잘려 들어갈 수 있다는 점도 문제다(그 경우 등록은 성공하지만 송수신 ClassId 가 어긋난다).
+
+조치 방향: 컴파일 진단 승격 → 완료. `MSGPROT005`(ID 값 범위 초과)가 메시지 ID 에 대해 하는 일을 ClassId 에 대해 한 것이며, 새 진단 ID 를 늘이지 않고 기존 `MSGPROT008` 사유로 흡수했다.
 
 ## 잠재 결함 (코드 리뷰)
 
