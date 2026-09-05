@@ -332,6 +332,71 @@ public class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void 이미트_순서와_횟수에_관계없이_같은_타입은_같은_생성_텍스트를_낸다()
+    {
+        // KI-3 회귀: 생성 로컬 이름 번호(`__item3` 등)가 프로세스 전역 정적 카운터였을 때는
+        // 두 번째 이미트가 다른 번호를 받아 **동일 입력 → 다른 텍스트**가 됐다. 그 비결정성은
+        // Roslyn 의 생성 출력 비교를 매번 깨뜨려 무관한 편집에도 생성 트리가 교체·재컴파일되게 하고,
+        // 빌드 재현성·diff 판독성도 해친다. 이제 번호는 EmitState(이미트 단위) 상태라 입력에만 의존한다.
+        var compilation = CreateTpaCompilation(Header + """
+            [StandaloneMessage(1)]
+            public partial class DeterminismMessage
+            {
+                public System.Collections.Generic.List<int>? Values { get; set; }
+                public string[]? Tags { get; set; }
+                public DeterminismMessage? Next { get; set; }
+                public DeterminismPayload? Payload { get; set; }
+            }
+
+            public class DeterminismPayload
+            {
+                public int X { get; set; }
+                public string? Name { get; set; }
+            }
+
+            [StandaloneMessage(2)]
+            public partial class OtherDeterminismMessage
+            {
+                public System.Collections.Generic.List<long>? Samples { get; set; }
+                public OtherDeterminismMessage? Next { get; set; }
+            }
+            """ + Footer);
+
+        var attributeReferences = new AttributeReferences(compilation);
+
+        // A → B → A → B 순서로 두 번씩 이미트: 전역 카운터였다면 두 번째 A/B 는 번호가 밀려 다르다.
+        string firstA = EmitFor(compilation, "TestNs.DeterminismMessage", attributeReferences);
+        string firstB = EmitFor(compilation, "TestNs.OtherDeterminismMessage", attributeReferences);
+        string secondA = EmitFor(compilation, "TestNs.DeterminismMessage", attributeReferences);
+        string secondB = EmitFor(compilation, "TestNs.OtherDeterminismMessage", attributeReferences);
+
+        // 번호를 실제로 쓰는 로컬이 여럿 있는지 먼저 확인 — 빈 텍스트 비교로 검증이 vacuous 해지지 않게.
+        Assert.Contains("__item", firstA);
+        Assert.Contains("__arr", firstA);
+        Assert.Contains("__span", firstA);
+        Assert.Contains("__refKind", firstA);
+        Assert.Contains("__backId", firstA);
+
+        Assert.Equal(firstA, secondA);
+        Assert.Equal(firstB, secondB);
+        Assert.NotEqual(firstA, firstB);
+    }
+
+    /// <summary>지정 타입에 대해 이미터를 한 번 구동해 생성 텍스트를 반환한다(매 호출이 새 EmitState).</summary>
+    static string EmitFor(CSharpCompilation compilation, string metadataName, AttributeReferences attributeReferences)
+    {
+        var rootType = compilation.GetTypeByMetadataName(metadataName)!;
+        var typeMeta = new TypeMetadata(rootType, attributeReferences);
+
+        bool emitted = MessageSerializeCodeEmitter.TryEmit(
+            typeMeta, attributeReferences, hasCollectionsMarshal: true, out var code, out _);
+
+        Assert.True(emitted);
+        Assert.NotNull(code);
+        return code!;
+    }
+
+    [Fact]
     public void 분산_선언_캐리어는_구성_등록_코드를_생성한다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """

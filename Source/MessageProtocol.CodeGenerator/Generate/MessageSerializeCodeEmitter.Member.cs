@@ -1,7 +1,6 @@
 using MessageProtocol.CodeGenerator.Graph;
 using MessageProtocol.CodeGenerator.Metadata;
 using Microsoft.CodeAnalysis;
-using System.Threading;
 
 namespace MessageProtocol.CodeGenerator.Generate
 {
@@ -10,10 +9,6 @@ namespace MessageProtocol.CodeGenerator.Generate
         /// <summary>멤버 단위 직렬화·역직렬화 코드 이미터.</summary>
         internal static class Member
         {
-            static int _uniqueIdCounter;
-
-            static int NextUniqueId() => Interlocked.Increment(ref _uniqueIdCounter);
-
             public static string EmitSerialize(
                 MemberMetadata member,
                 string instanceExpression,
@@ -99,7 +94,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 // 1.5) 타입 매개변수: 런타임 메시지 디스패치 (T 에는 등록된 메시지 타입만 올 수 있다).
                 if (typeSymbol is ITypeParameterSymbol)
                 {
-                    return EmitRuntimeDispatchWrite(valueExpression, indent);
+                    return EmitRuntimeDispatchWrite(valueExpression, indent, state);
                 }
 
                 // 2) 배열 (1차원만 지원)
@@ -124,7 +119,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 // 4) 그래프 내부 타입 (메시지·중첩 객체 공통)
                 if (graph.TryGetSerializableObjectType(typeSymbol, out var inGraphModel))
                 {
-                    return EmitInGraphMessageWrite(inGraphModel, valueExpression, indent);
+                    return EmitInGraphMessageWrite(inGraphModel, valueExpression, indent, state);
                 }
 
                 // 5) 메시지 타입인데 그래프 밖 (다른 어셈블리 등) — 정적 Serialize 위임.
@@ -134,8 +129,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (graph.IsMessageType(typeSymbol))
                 {
                     return typeSymbol.IsAbstract
-                        ? EmitRuntimeDispatchWrite(valueExpression, indent)
-                        : EmitOutOfGraphMessageWrite(typeSymbol, valueExpression, indent);
+                        ? EmitRuntimeDispatchWrite(valueExpression, indent, state)
+                        : EmitOutOfGraphMessageWrite(typeSymbol, valueExpression, indent, state);
                 }
 
                 return ReportUnsupported(typeSymbol, state, diagnosticLocation, memberDisplayName);
@@ -157,7 +152,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (typeSymbol is ITypeParameterSymbol)
                 {
-                    return EmitRuntimeDispatchRead(typeSymbol, targetExpression, indent);
+                    return EmitRuntimeDispatchRead(typeSymbol, targetExpression, indent, state);
                 }
 
                 if (typeSymbol is IArrayTypeSymbol arrayType)
@@ -179,7 +174,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (graph.TryGetSerializableObjectType(typeSymbol, out var inGraphModel))
                 {
-                    return EmitInGraphMessageRead(inGraphModel, targetExpression, indent);
+                    return EmitInGraphMessageRead(inGraphModel, targetExpression, indent, state);
                 }
 
                 // 추상 메시지 타입은 생성 정적 Deserialize 가 없어 위임이 CS0117 을 낸다 — 쓰기 경로와 같은 이유로
@@ -187,8 +182,8 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (graph.IsMessageType(typeSymbol))
                 {
                     return typeSymbol.IsAbstract
-                        ? EmitRuntimeDispatchRead(typeSymbol, targetExpression, indent)
-                        : EmitOutOfGraphMessageRead(typeSymbol, targetExpression, indent);
+                        ? EmitRuntimeDispatchRead(typeSymbol, targetExpression, indent, state)
+                        : EmitOutOfGraphMessageRead(typeSymbol, targetExpression, indent, state);
                 }
 
                 return ReportUnsupported(typeSymbol, state, diagnosticLocation, memberDisplayName);
@@ -206,14 +201,14 @@ namespace MessageProtocol.CodeGenerator.Generate
 
             // ------- 그래프 내부 객체 (참조 추적) -------
 
-            static string EmitInGraphMessageWrite(SerializableTypeModel model, string valueExpression, string indent)
+            static string EmitInGraphMessageWrite(SerializableTypeModel model, string valueExpression, string indent, EmitState state)
             {
                 if (!model.IsReferenceType)
                 {
                     return $"{indent}{model.WritePayloadMethodName}(ref writer, {valueExpression}, ref context);\n";
                 }
 
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
                 return $@"{indent}if ({valueExpression} is null)
 {indent}{{
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.Null);
@@ -234,14 +229,14 @@ namespace MessageProtocol.CodeGenerator.Generate
 ";
             }
 
-            static string EmitInGraphMessageRead(SerializableTypeModel model, string targetExpression, string indent)
+            static string EmitInGraphMessageRead(SerializableTypeModel model, string targetExpression, string indent, EmitState state)
             {
                 if (!model.IsReferenceType)
                 {
                     return $"{indent}{targetExpression} = {model.ReadPayloadMethodName}(ref reader, ref context);\n";
                 }
 
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
                 return $@"{indent}{{
 {indent}    byte __refKind{uid} = reader.ReadByte();
 {indent}    if (__refKind{uid} == (byte)MessageSerializer.ReferenceKind.Null)
@@ -268,7 +263,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 
             // ------- 그래프 밖 메시지 (정적 Serialize/Deserialize 위임) -------
 
-            static string EmitOutOfGraphMessageWrite(ITypeSymbol typeSymbol, string valueExpression, string indent)
+            static string EmitOutOfGraphMessageWrite(ITypeSymbol typeSymbol, string valueExpression, string indent, EmitState state)
             {
                 string typeName = GetTypeDisplayName(typeSymbol);
                 if (typeSymbol.IsReferenceType)
@@ -290,10 +285,10 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return $"{indent}{typeName}.Serialize({valueExpression}, ref writer);\n";
             }
 
-            static string EmitOutOfGraphMessageRead(ITypeSymbol typeSymbol, string targetExpression, string indent)
+            static string EmitOutOfGraphMessageRead(ITypeSymbol typeSymbol, string targetExpression, string indent, EmitState state)
             {
                 string typeName = GetTypeDisplayName(typeSymbol);
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
                 if (typeSymbol.IsReferenceType)
                 {
                     return $@"{indent}{{
@@ -321,7 +316,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             /// 런타임 타입 디스패치 쓰기: 전체 메시지(헤더 포함)를 <c>SerializeToWriter</c> 로 쓴다.
             /// 타입 매개변수 멤버와 추상 메시지 타입 멤버가 공유하며, 백레퍼런스 추적은 하지 않는다.
             /// </summary>
-            static string EmitRuntimeDispatchWrite(string valueExpression, string indent)
+            static string EmitRuntimeDispatchWrite(string valueExpression, string indent, EmitState state)
             {
                 return $@"{indent}if ({valueExpression} is null)
 {indent}{{
@@ -336,9 +331,9 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             /// <summary>런타임 타입 디스패치 읽기: 헤더의 MessageId 로 등록된 구체 타입을 복원하고 선언 타입으로 캐스트한다.</summary>
-            static string EmitRuntimeDispatchRead(ITypeSymbol typeSymbol, string targetExpression, string indent)
+            static string EmitRuntimeDispatchRead(ITypeSymbol typeSymbol, string targetExpression, string indent, EmitState state)
             {
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
                 return $@"{indent}{{
 {indent}    byte __pk{uid} = reader.ReadByte();
 {indent}    if (__pk{uid} == (byte)MessageSerializer.ReferenceKind.Null)
@@ -375,7 +370,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 var elementType = arrayType.ElementType;
                 string elementTypeName = GetTypeDisplayName(elementType);
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
 
                 if (IsBulkCopyable(elementType))
                 {
@@ -424,7 +419,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 var elementType = arrayType.ElementType;
                 string elementTypeName = GetTypeDisplayName(elementType);
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
 
                 if (IsBulkCopyable(elementType))
                 {
@@ -494,7 +489,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 Location diagnosticLocation,
                 string memberDisplayName)
             {
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
                 bool useCollectionsMarshal = UseCollectionsMarshal(containerType, state);
 
                 if (IsBulkCopyable(elementType))
@@ -583,7 +578,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 string memberDisplayName)
             {
                 string elementTypeName = GetTypeDisplayName(elementType);
-                int uid = NextUniqueId();
+                int uid = state.NextUniqueId();
 
                 if (IsBulkCopyable(elementType))
                 {
