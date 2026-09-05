@@ -997,6 +997,68 @@ public class GeneratorDiagnosticTests
             .ToList();
     }
 
+    [Fact]
+    public void 무관한_편집에도_생성_파일별_텍스트는_변하지_않는다()
+    {
+        // KI-3 가 산 성질을 **드라이버 수준**에서 고정한다. 측정 결과(Known-Issues KI-10): 증분 파이프라인의
+        // 출력 스텝은 매 편집마다 재실행된다 — `Compilation` 스텝이 항상 Modified 이고 `ForAttributeWithMetadataName`
+        // 의 transform 출력이 컴파일별 심볼 인스턴스라 값 동등성이 없어서다(`SourceOutput -> Modified`).
+        // 그래도 생성 **텍스트**이 동일하면 Roslyn 의 출력 비교가 다운스트림을 막아 생성 트리가 교체·재컴파일되지
+        // 않는다 — KI-3(전역 카운터 제거) 이전에는 텍스트가 매번 달라서 그 방어막이 소용없었다.
+        string source = Header + """
+            [StandaloneMessage(1)]
+            public partial class IncrementalMsgA
+            {
+                public int X { get; set; }
+                public System.Collections.Generic.List<int>? Values { get; set; }
+                public IncrementalMsgA? Next { get; set; }
+            }
+
+            [StandaloneMessage(2)]
+            public partial class IncrementalMsgB { public string? Text { get; set; } }
+
+            public static class IncrementalUnrelated
+            {
+                public static int Compute(int value) => value + 1;
+            }
+            """ + Footer;
+
+        var compilation = CreateTpaCompilation(source);
+        var driver = CSharpGeneratorDriver.Create(
+            new[] { new MessageCodeGenerator().AsSourceGenerator() },
+            driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, true));
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        var firstRun = driver.GetRunResult().Results.Single();
+
+        // 무관한 편집: 메시지 타입이 아닌 클래스의 본문만 바꾼다.
+        var edited = compilation.ReplaceSyntaxTree(
+            compilation.SyntaxTrees.Single(),
+            CSharpSyntaxTree.ParseText(source.Replace("value + 1", "value + 2")));
+        var secondRun = ((CSharpGeneratorDriver)driver.RunGenerators(edited)).GetRunResult().Results.Single();
+
+        var first = GeneratedByHintName(firstRun);
+        var second = GeneratedByHintName(secondRun);
+
+        // 비교가 vacuous 하지 않도록 실제 생성물이 있음을 먼저 확인한다.
+        Assert.Equal(2, first.Count);
+        Assert.All(first.Values, text => Assert.Contains("__WritePayload", text));
+
+        Assert.Equal(
+            first.Keys.OrderBy(static key => key, StringComparer.Ordinal),
+            second.Keys.OrderBy(static key => key, StringComparer.Ordinal));
+        foreach (var (hintName, text) in first)
+        {
+            Assert.Equal(text, second[hintName]);
+        }
+    }
+
+    static Dictionary<string, string> GeneratedByHintName(GeneratorRunResult runResult)
+    {
+        return runResult.GeneratedSources.ToDictionary(
+            static source => source.HintName,
+            static source => source.SourceText.ToString());
+    }
+
     static int CountOccurrences(string text, string pattern)
     {
         int count = 0;

@@ -116,7 +116,7 @@ KI-13 가드가 5 변형 전부 적용됐다고 기록됐으나, `CollectionsMar
 
 원본 발견 내용:
 
-null 규약은 길이 접두 `-1` 인데 판독 코드가 `length < 0` 전체를 null 로 처리했다. 손상되거나 악意적인 프레임의 `-2`·`int.MinValue` 접두사가 오류 없이 null 문자열로 복호되어, 필드 누락(전송 실패)과 와이어 손상을 수신 측이 구분할 수 없었다.
+null 규약은 길이 접두 `-1` 인데 판독 코드가 `length < 0` 전체를 null 로 처리했다. 손상되거나 악의적인 프레임의 `-2`·`int.MinValue` 접두사가 오류 없이 null 문자열로 복호되어, 필드 누락(전송 실패)과 와이어 손상을 수신 측이 구분할 수 없었다.
 
 조치 방향: 규약 외 음수 거부 → 완료.
 
@@ -284,7 +284,21 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | KI-7 | `MessageBufferWriter.PatchInt32` | 오프셋 경계 검증 없음. `Grow`의 `Length * 2`는 1GB 부근 int 오버플로 가능 |
 | KI-8 | `MessageCategoryAttribute` | 범위 밖 카테고리 값이 `& 0x0F` 로 조용히 마스킹 |
 | KI-9 | 그래프 밖 메시지 위임·런타임 디스패치 멤버 (`EmitOutOfGraphMessage*`·`EmitRuntimeDispatch*`) | 위임·디스패치 시 새 `SerializeContext` — 경계 넘는 공유 참조 복원 불가(중복 기록). 경계 넘는 순환 참조는 KI-25 writer 깊이 가드가 `InvalidOperationException` 으로 막는다(스택 오버플로 아님). 남은 제약 문서화 필요 |
-| KI-10 | 증분 파이프라인 | `Collect` 결과 `ImmutableArray`는 참조 동등성이라 후보 캐시가 매번 무효 — 편집마다 전체 재방출 (성능) |
+| KI-10 | 증분 파이프라인 | **측정 완료(2026-09-05, 아래 기록)** — 출력 스텝은 매 편집마다 재실행되지만(`Compilation` 스텝 항상 Modified + `ForAttributeWithMetadataName` transform 출력이 컴파일별 심볼 인스턴스) 생성 텍스트는 동일해서 다운스트림 재컴파일은 이미 차단됨. 남은 비용은 편집당 생성기 CPU(메시지 타입 수에 비례)뿐이며, 근본 해결은 value-equatable 모델 재작성(대규모)이라 측정 근거로 연기 |
+
+### KI-10 측정 기록 (2026-09-05)
+
+`GeneratorDriverOptions(trackIncrementalSteps: true)` 로 **무관한 편집**(메시지 타입이 아닌 클래스 본문 한 줄 변경) 전·후 드라이버를 두 번 돌려 스텝별 `IncrementalStepRunReason` 을 관측했다.
+
+| 관측 | 결과 |
+| ---- | ---- |
+| 생성 텍스트 | **동일** (7,571자 / 7,571자, 생성 파일 2개 → 2개, 파일별 텍스트 동일) |
+| `Compilation` 스텝 | `Modified` (컴파일 인스턴스가 매 편집마다 새로움 — 출력 스텝이 `CompilationProvider` 와 결합돼 있음) |
+| `result_ForAttributeWithMetadataName` | `Modified, Modified` (transform 출력 = `INamedTypeSymbol`, 컴파일별 새 인스턴스 → 참조 동등성) |
+| `SourceOutput` | **`Modified`** → 생성기 본문(문자열 방출)은 매 편집 재실행 |
+| `CompilationOptions`·global aliases 계열 | `Cached`/`Unchanged` (무관한 입력은 정상 캐싱됨 — 파이프라인 자체가 깨진 것은 아님) |
+
+해석: 비싼 쪽(생성 파일 재컴파일·재분석)은 **이미 차단**돼 있다 — Roslyn 은 출력 스텝이 내놓은 `SourceText` 를 비교하므로 텍스트가 같으면 생성 트리를 교체하지 않는다. 그 성질을 보장하는 것이 KI-3(전역 카운터 제거)이었고, 회귀 시 이 방어막이 사라진다(드라이버 수준 테스트 `무관한_편집에도_생성_파일별_텍스트는_변하지_않는다` 가 고정 — KI-3 를 되돌리면 이 테스트가 실패함을 확인). 남은 비용은 편집당 생성기 CPU(후보 타입 전부에 대한 `TypeMetadata`·`SerializationGraph`·문자열 방출)이며, 이를 없애려면 transform 출력을 값 동등 스냅샷 모델로 바꾸고 출력 스텝에서 `Compilation` 의존을 제거해야 한다 — 이미터 전부가 `ISymbol` 을 소비하므로 대규모 재작성이다. 측정상 비용이 "생성기 CPU"로 한정됐으므로(재컴파일 아님) 지금 시점에서는 연기가 맞다고 판단한다.
 
 ## 관련
 

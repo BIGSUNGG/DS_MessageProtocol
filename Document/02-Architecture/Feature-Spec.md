@@ -85,7 +85,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 
 - 속성 붙은 `partial` 메시지 타입에서 `Serialize` / `Deserialize` / (ID면) `MessageId` 생성.
 - `[ModuleInitializer]` 등록 코드 생성 → 모듈 로드 시 런타임에 자동 등록 (수동 등록 불필요).
-- Incremental generator. 생성 텍스트는 **결정적**이다 — 로컬 이름 번호가 이미트 단위 상태(`EmitState`)라 같은 입력은 항상 같은 출력을 내고, 컴파일러 프로세스의 이전 컴파일 이력에 의존하지 않는다(Roslyn 의 생성 출력 비교가 무관한 편집에 무효화되지 않음 — Known-Issues KI-3).
+- Incremental generator. 생성 텍스트는 **결정적**이다 — 로컬 이름 번호가 이미트 단위 상태(`EmitState`)라 같은 입력은 항상 같은 출력을 내고, 컴파일러 프로세스의 이전 컴파일 이력에 의존하지 않는다(Roslyn 의 생성 출력 비교가 무관한 편집에 무효화되지 않음 — Known-Issues KI-3). 측정(KI-10 측정 기록): 출력 스텝 자체는 `Compilation` 의존 때문에 매 편집 재실행되지만, 생성 텍스트가 동일하므로 Roslyn 의 출력 비교가 **생성 트리 교체·재컴파일을 막는다** — 남은 비용은 편집당 생성기 CPU 뿐이다.
 - 제네릭 메시지 타입 지원: `[GenericMessage(typeof(닫힌 구성), ClassId = n)]` 단일 속성으로 구성 선언(선언부·캐리어 무관) — 헤더 플래그 Generic(0) + MessageId 뒤에 구성 클래스 ID 24비트 와이어, 선언 구성은 모듈 로드 시 자동 등록(송수신 무설정), 다중 타입 매개변수 지원. 제네릭 + 스탠드얼론 선언은 항상 제네릭 와이어이며 **구성 선언 필수**(미선언 직렬화는 예외) ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)).
 - 수동 구현 지원: 생성기 없이 동일한 계약 형태(`IMessageSerializable<T>` 등)를 직접 구현·등록 가능. 수동 구현 시 헤더는 사용자가 직접 쓴다.
 - 진단 (Legacy 기준, 동등한 검출 필요):
