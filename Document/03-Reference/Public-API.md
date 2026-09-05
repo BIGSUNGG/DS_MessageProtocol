@@ -26,6 +26,8 @@ updated: 2026-09-05
 
 중첩 깊이 계약: `MessageBufferReader` 는 중첩 객체 역직렬화 깊이를 reader 단위로 센다 — `EnterNestedObject()` 는 상한(`MaxNestingDepth`, 기본 `MessageBufferReader.DefaultMaxNestingDepth = 64`)에 도달하면 `InvalidDataException` 을 던지고(와이어 내용 불법 — 경계 `EndOfStreamException` 과 구분), `LeaveNestedObject()` 는 깊이를 1 낮춘다(0 아래로 클램프 — 짝이 맞지 않는 호출이 가드를 무력화하지 못함). 현재 깊이는 `NestingDepth` 로 관찰한다. 생성 코드(그래프 내부 중첩 객체·그래프 밖 메시지 위임)와 `MessageSerializer.DeserializeFromReader`(타입 매개변수 멤버·외부 호출자)가 재귀 지점에서 이 쌍을 호출하므로, 불신 피어가 작은 프레임에 `ReferenceKind.NewObject` 만 늘어놓아 재귀 스택을 소진시키는 것(스택 오버플로 — catch 불가, 프로세스 사망)이 차단된다. **수동 구현도 중첩 객체를 재귀로 판독할 때 같은 쌍을 호출해야 한다.** 합법적으로 깊은 객체 그래프는 `new MessageBufferReader(buffer, maxNestingDepth)` 로 상한을 올려 처리하며(0 이하 `ArgumentOutOfRangeException`), 상한은 스레드 스택 크기보다 작아야 한다.
 
+쓰기 쪽도 동일한 계약을 갖는다 — `MessageBufferWriter.EnterNestedObject()` 는 상한(`MaxNestingDepth`, 기본 `MessageBufferWriter.DefaultMaxNestingDepth` = reader 기본값과 **동일하게 고정**) 도달 시 `InvalidOperationException` 을 던지고(와이어 손상이 아니라 호출자 객체 그래프가 너무 깊은 경우라 예외 타입이 다르다), `LeaveNestedObject()` 는 0 아래로 클램프하며 낮춘다. 생성 코드(그래프 내부 중첩 객체·그래프 밖 메시지 위임)와 `MessageSerializer.SerializeToWriter`(타입 매개변수·추상 메시지 멤버, 수동 구현)가 재귀 지점에서 이 쌍을 호출하므로, 수만 노드 연결 리스트·깊은 트리나 **디스패치 멤버로 돌아가는 순환 그래프**(그 경로는 백레퍼런스를 추적하지 않음)가 쓰기 재귀로 스택을 소진시키는 것(catch 불가 스택 오버플로)이 차단된다. 상한은 `MessageBufferWriter.Create(initialCapacity, maxNestingDepth)` 로 올리며(0 이하 `ArgumentOutOfRangeException`), **깊은 그래프를 보내려면 수신 측 reader 상한도 같이 올려야 한다**(기본값이 서로 같으므로 기본 설정끼리는 쓴 것은 항상 읽힌다).
+
 ## 메시지 타입 속성
 
 | 속성 | 역할 |

@@ -84,12 +84,26 @@ namespace MessageProtocol.Serialize
         }
 
         /// <summary>object dispatch: 지정 writer 에 직접 기록한다 (중첩 메시지 용도).</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        /// <remarks>
+        /// 중첩 객체 한 수준으로 계산된다(<see cref="MessageBufferWriter.EnterNestedObject"/>) — 타입 매개변수·추상 메시지 멤버와
+        /// 수동 구현의 재귀가 writer 깊이 카운터에 연결되어, 백레퍼런스가 추적되지 않는 디스패치 경로의 순환 그래프가
+        /// 재귀 스택을 소진시키는 것(catch 불가 스택 오버플로)을 막는다 (Known-Issues KI-25).
+        /// </remarks>
         public static void SerializeToWriter(object message, ref MessageBufferWriter writer)
         {
             if (message is null) throw new ArgumentNullException(nameof(message));
             var invoker = GetWriterInvoker(message.GetType());
-            invoker(message, ref writer);
+
+            // 공개 경유 지점이라 호출자가 예외 후 같은 writer 를 계속 쓸 수 있다 — finally 로 짝을 맞춘다.
+            writer.EnterNestedObject();
+            try
+            {
+                invoker(message, ref writer);
+            }
+            finally
+            {
+                writer.LeaveNestedObject();
+            }
         }
 
         static readonly object _lazyRegisterLock = new();

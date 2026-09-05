@@ -13,27 +13,78 @@ namespace MessageProtocol.Serialize
     /// </summary>
     public ref struct MessageBufferWriter
     {
+        /// <summary>
+        /// 기본 중첩 객체 직렬화 깊이 상한. reader 기본 상한과 **의도적으로 동일**하다 —
+        /// 써서 보낼 수 있는 그래프를 상대가 기본 설정으로 읽지 못하는 비대칭을 막는다 (Known-Issues KI-25).
+        /// </summary>
+        public const int DefaultMaxNestingDepth = MessageBufferReader.DefaultMaxNestingDepth;
+
         byte[] _buffer;
         int _position;
+        int _depth;
+        int _maxNestingDepth;
 
-        MessageBufferWriter(byte[] buffer)
+        MessageBufferWriter(byte[] buffer, int maxNestingDepth)
         {
             _buffer = buffer;
             _position = 0;
+            _depth = 0;
+            _maxNestingDepth = maxNestingDepth;
         }
 
         public static MessageBufferWriter Create(int initialCapacity = 256)
         {
+            return Create(initialCapacity, DefaultMaxNestingDepth);
+        }
+
+        /// <param name="initialCapacity">초기 대여 용량(0 이하는 빈 버퍼로 시작해 첫 쓰기에서 증설).</param>
+        /// <param name="maxNestingDepth">
+        /// 중첩 객체 직렬화 깊이 상한. 합법적으로 깊은 객체 그래프를 다루는 호출자가 올리는 탈출구이며,
+        /// 수신 측도 읽으려면 <see cref="MessageBufferReader(ReadOnlySpan{byte}, int)"/> 로 같은 상한을 맞춰야 한다. 0 이하 거부.
+        /// </param>
+        public static MessageBufferWriter Create(int initialCapacity, int maxNestingDepth)
+        {
+            if (maxNestingDepth <= 0) ThrowInvalidMaxNestingDepth(maxNestingDepth);
             var buffer = initialCapacity <= 0
                 ? Array.Empty<byte>()
                 : ArrayPool<byte>.Shared.Rent(initialCapacity);
-            return new MessageBufferWriter(buffer);
+            return new MessageBufferWriter(buffer, maxNestingDepth);
         }
 
         public int Length => _position;
         public int Capacity => _buffer.Length;
         public Span<byte> WrittenSpan => _buffer.AsSpan(0, _position);
         public ReadOnlySpan<byte> WrittenReadOnlySpan => _buffer.AsSpan(0, _position);
+
+        /// <summary>이 writer 가 허용하는 중첩 객체 깊이 상한.</summary>
+        public int MaxNestingDepth => _maxNestingDepth;
+
+        /// <summary>현재 중첩 깊이 — <see cref="EnterNestedObject"/>·<see cref="LeaveNestedObject"/> 가 관리한다.</summary>
+        public int NestingDepth => _depth;
+
+        /// <summary>
+        /// 중첩 객체 기록 시작을 알린다. 상한 도달 시 <see cref="InvalidOperationException"/> —
+        /// 객체 그래프가 너무 깊거나(긴 연결 리스트·깊은 트리), 런타임 디스패치 멤버를 통해 순환이 흘렀다
+        /// (디스패치 경로는 백레퍼런스를 추적하지 않는다). 가드가 없으면 두 경우 모두 재귀가 스택을
+        /// 소진해 **catch 불가한 스택 오버플로**로 프로세스가 죽는다 (Known-Issues KI-25).
+        /// 생성 코드·<c>SerializeToWriter</c> 가 재귀 지점에서 호출한다.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void EnterNestedObject()
+        {
+            if (_depth >= _maxNestingDepth) ThrowNestingTooDeep(_maxNestingDepth);
+            _depth++;
+        }
+
+        /// <summary>
+        /// 중첩 객체 기록 종료를 알린다. 짝이 맞지 않는 호출(기록 중 예외)은 깊이를 부풀리기만 하므로
+        /// 가드는 실패 방향으로 안전하다. 음수로 내려가지 않도록 0 에서 클램프(음수 깊이가 상한을 무력화하는 것 차단).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LeaveNestedObject()
+        {
+            if (_depth > 0) _depth--;
+        }
 
         /// <summary><paramref name="size"/> 바이트를 쓸 공간을 확보하고 해당 구간을 반환·전진한다.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -248,6 +299,7 @@ namespace MessageProtocol.Serialize
             var owner = PooledBuffer.FromRented(_buffer, _position);
             _buffer = Array.Empty<byte>();
             _position = 0;
+            _depth = 0;
             return owner;
         }
 
@@ -287,6 +339,26 @@ namespace MessageProtocol.Serialize
             throw new ArgumentException(
                 $"String of {charCount} characters needs more than the maximum buffer size ({MaxBufferLength} bytes) and cannot be serialized.",
                 "value");
+        }
+
+        // writer 쪽 한계 위반은 호출자 데이터·상태 문제라 reader(와이어 내용 불법 = InvalidDataException)와 달리
+        // InvalidOperationException 으로 보고한다 — `ThrowAdvanceBeyondCapacity` 와 동일 기조.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowNestingTooDeep(int maxNestingDepth)
+        {
+            throw new InvalidOperationException(
+                $"Nested object depth exceeds the maximum of {maxNestingDepth}. " +
+                $"The object graph is too deep to serialize (long chain, deep tree, or a cycle through a " +
+                $"runtime-dispatched member such as a type parameter or an abstract message type). " +
+                $"Use 'MessageBufferWriter.Create(initialCapacity, maxNestingDepth)' if this graph is legitimately deeper, " +
+                $"and raise the receiving reader's limit to match.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowInvalidMaxNestingDepth(int maxNestingDepth)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxNestingDepth), maxNestingDepth, "Max nesting depth must be positive.");
         }
     }
 }

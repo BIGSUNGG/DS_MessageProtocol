@@ -125,6 +125,128 @@ public class NestingDepthTests
             () => new MessageBufferReader(new byte[4], maxNestingDepth));
     }
 
+    // ---------- 쓰기 경로 (KI-25) ----------
+
+    [Fact]
+    public void writer와_reader_기본_상한은_의도적으로_동일하다()
+    {
+        // 비대칭이면 송신 측이 성공적으로 쓴 프레임을 수신 측이 기본 설정으로 읽지 못한다.
+        Assert.Equal(MessageBufferReader.DefaultMaxNestingDepth, MessageBufferWriter.DefaultMaxNestingDepth);
+    }
+
+    [Fact]
+    public void 깊은_체인_직렬화는_스택오버플로_대신_InvalidOperationException으로_거부된다()
+    {
+        ChainMessage head = BuildChain(MessageBufferReader.DefaultMaxNestingDepth + 1);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => MessageSerializer.Serialize(head));
+
+        Assert.Contains(MessageBufferWriter.DefaultMaxNestingDepth.ToString(), exception.Message);
+    }
+
+    [Fact]
+    public void 디스패치_멤버_순환_그래프는_스택오버플로_대신_InvalidOperationException으로_거부된다()
+    {
+        // 추상 메시지 멤버는 런타임 디스패치로 기록되고 그 경로는 백레퍼런스를 추적하지 않는다 —
+        // 가드 없으면 이 순환은 쓰기 재귀를 무한히 깊게 만들어 프로세스를 죽인다.
+        var envelope = new CommandEnvelope();
+        envelope.Command = new WrapCommand { Seq = 1, Inner = envelope };
+
+        Assert.Throws<InvalidOperationException>(() => MessageSerializer.Serialize(envelope));
+    }
+
+    [Fact]
+    public void writer_상한을_올리면_깊은_체인을_쓰고_맞춘_reader_상한으로_되읽는다()
+    {
+        int links = 200;
+        ChainMessage head = BuildChain(links);
+
+        var writer = MessageBufferWriter.Create(256, 512);
+        byte[] bytes;
+        try
+        {
+            MessageSerializer.Serialize(head, ref writer);
+            bytes = writer.ToArray();
+            Assert.Equal(0, writer.NestingDepth);   // 재귀가 되돌아 나오며 짝 맞게 감소
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+
+        var reader = new MessageBufferReader(bytes, 512);
+        var roundTrip = MessageSerializer.Deserialize<ChainMessage>(ref reader);
+
+        Assert.Equal(links, CountChain(roundTrip));
+    }
+
+    [Fact]
+    public void 깊지_않고_넓은_그래프_직렬화는_쓰기_상한에_걸리지_않는다()
+    {
+        var message = new WideChainMessage
+        {
+            Items = Enumerable.Range(0, 500).Select(_ => new ChainMessage()).ToList(),
+        };
+
+        var roundTrip = MessageSerializer.Deserialize<WideChainMessage>(MessageSerializer.Serialize(message));
+
+        Assert.Equal(500, roundTrip.Items!.Count);
+    }
+
+    [Fact]
+    public void writer_Enter는_상한에서_거부되고_Leave는_0_아래로_내려가지_않는다()
+    {
+        var writer = MessageBufferWriter.Create(8, 2);
+
+        writer.EnterNestedObject();
+        writer.EnterNestedObject();
+        Assert.Equal(2, writer.NestingDepth);
+
+        // ref struct 로컬은 람다에 포획할 수 없어 try/catch 로 직접 검증한다.
+        Exception? thrown = null;
+        try
+        {
+            writer.EnterNestedObject();
+        }
+        catch (Exception exception)
+        {
+            thrown = exception;
+        }
+
+        Assert.IsType<InvalidOperationException>(thrown);
+        Assert.Equal(2, writer.NestingDepth);   // 거부된 Enter 는 깊이를 올리지 않는다
+
+        writer.LeaveNestedObject();
+        writer.LeaveNestedObject();
+        writer.LeaveNestedObject();             // 짝이 맞지 않는 호출 — 음수 깊이가 가드를 무력화하면 안 된다
+        Assert.Equal(0, writer.NestingDepth);
+        writer.Dispose();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void 상한이_0_이하면_writer_생성에서_거부된다(int maxNestingDepth)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => MessageBufferWriter.Create(16, maxNestingDepth));
+    }
+
+    /// <summary>links 개만큼 자기참조가 이어진 체인을 만든다(노드 수는 links + 1). 재귀 없이 반복으로 조립한다.</summary>
+    static ChainMessage BuildChain(int links)
+    {
+        var head = new ChainMessage();
+        var tail = head;
+        for (int i = 0; i < links; i++)
+        {
+            tail.Next = new ChainMessage();
+            tail = tail.Next;
+        }
+
+        return head;
+    }
+
     /// <summary>
     /// 적대 프레임을 바이트로 직접 조립한다 — 객체 그래프를 만들어 직렬화하면 쓰기 측이 먼저
     /// 같은 깊이만큼 재귀하므로, 수신 경로만 검증하려면 와이어 바이트가 필요하다.

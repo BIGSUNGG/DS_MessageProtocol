@@ -8,7 +8,7 @@ updated: 2026-09-05
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24 추가·해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-25 추가·해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -181,6 +181,18 @@ null 규약은 길이 접두 `-1` 인데 판독 코드가 `length < 0` 전체를
 `abstract [GroupRootMessage] AbstractEvent` 를 멤버로 가진 메시지는 **MSGPROT 진단이 하나도 없이** `global::TestNs.AbstractEvent.Serialize(message.Payload, ref writer);` · `result.Payload = global::TestNs.AbstractEvent.Deserialize(ref reader);` 를 방출해 소비자 빌드가 `CS0117` 2건으로 깨졌다(GeneratorDriver 실험으로 확인 — 생성기 진단 0건, 컴파일 오류 `CS0117: 'AbstractEvent'에 'Serialize' 정의가 없음` ×2). 추상 루트 + 구체 요소는 그룹 메시지의 **정상적인 선언 형태**(상속 전용 루트라 `MessageCodeGenerator` 가 의도적으로 생성을 건너뜀)라, 다형 페이로드를 담은 봉투 메시지라는 자연스러운 사용이 곧장 빌드 붕괴로 이어졌고 원인이 생성기라는 단서도 없었다. 구조적 원인: 그래프 수집(`SerializationGraph.IsSerializableObjectType`)이 추상 타입을 제외한 뒤 `IsMessageType` 분기로 빠지는데, 이 분기는 **위임 대상에 정적 멤버가 실제로 존재하는지 검증하지 않는** 사각지대였다(KI-18 은 비메시지 추상 페이로드만 MSGPROT006 으로 걸렀다). 회귀 테스트의 이빨도 확인 — 이미터 변경만 되돌리면 테스트 프로젝트가 생성 코드 CS0117 로 빌드 실패한다.
 
 조치 방향: 추상 메시지 멤버를 런타임 디스패치로 연결 → 완료. 제약: 이 경로는 백레퍼런스를 추적하지 않으므로 추상 멤버를 통한 공유·순환 참조는 미지원(`T` 멤버·KI-9 와 동일 제약, `Feature-Spec` F3 명문화). 남은 꼬리: **구체** 베이스 타입 멤버(예: `EventBase` 타입 멤버에 `LoginEvent` 인스턴스)는 여전히 그래프 내부 페이로드 경로라 선언 타입 기준으로 직렬화되어 파생 필드가 유실된다 — 감사 원장 HIGH 항목(백레퍼런스 캐스트·파생 필드 유실)으로 별도 추적 중이며 와이어 형식 정책 결정이 필요해 이번 변경에서 분리했다.
+
+### KI-25. 쓰기 측 중첩 재귀 무제한 → 송신 측 스택 오버플로·읽기 가드와의 비대칭 (해결)
+
+**상태: 해결 (2026-09-05).** KI-14 의 읽기 가드와 **대칭**으로 writer 가 깊이를 센다 — `MessageBufferWriter.DefaultMaxNestingDepth`(= `MessageBufferReader.DefaultMaxNestingDepth` 를 참조해 구조적으로 동일 고정)·`EnterNestedObject()`(상한 도달 시 `InvalidOperationException`)·`LeaveNestedObject()`(0 아래 클램프)·`MaxNestingDepth`·`NestingDepth`, 상한 상향 탈출구 `MessageBufferWriter.Create(initialCapacity, maxNestingDepth)`(0 이하 `ArgumentOutOfRangeException`). 계상 지점은 읽기 측과 동일한 세 갈래: 생성기 방출 2곳(그래프 내부 중첩 객체 기록·그래프 밖 메시지 위임)과 런타임 경유 지점 `MessageSerializer.SerializeToWriter`(타입 매개변수·추상 메시지 멤버, 수동 구현 — `try/finally`). 예외 타입은 reader(`InvalidDataException` = 와이어 내용 불법)와 달리 `InvalidOperationException` — writer 쪽 한계 위반은 호출자 데이터·상태 문제라 `ThrowAdvanceBeyondCapacity` 와 같은 기조. 회귀 테스트 9개(케이스) — `NestingDepthTests` 쓰기 섹션(기본 상한 대칭 고정·깊은 체인 거부·**디스패치 멤버 순환 그래프 거부**·상한 상향 후 200단계 쓰기+맞춤 reader 로 되읽기·넓은 그래프 무영향·Enter/Leave 계약과 0 클램프·0 이하 상한 거부 ×3), 순환 픽스처 `WrapCommand`(130, 추상 루트 요소가 `CommandEnvelope` 을 되참조). 테스트 129→138(net8.0·net9.0), Sandbox 전체 통과, Release 빌드 경고 0·오류 0. `Feature-Spec` F3·F7, `Public-API` writer 중첩 깊이 계약 명문화.
+
+원본 발견 내용 (실험 검증):
+
+KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없어 두 가지가 **catch 불가한 스택 오버플로(프로세스 즉시 사망)** 로 끝났다 — 저장소 밖 소비자 프로젝트에서 확인: ① 송신자가 스스로 만든 **합법적 데이터**인 20,000노드 자기참조 연결 리스트를 `Serialize` 하면 사망(10,000노드는 생존 — 임계는 스택 크기·빌드 구성에 따라 내려감), ② 런타임 디스패치 멤버(KI-24 로 지원된 추상 메시지 멤버, 기존 `T` 멤버)로 돌아가는 **순환 그래프**(`batch.Head = new WrapCommand { Inner = batch }`)는 디스패치마다 `SerializeContext` 가 새로 만들어져 백레퍼런스가 동작하지 않아 재귀가 무한히 깊어지고 사망. 수정 후 세 경우(20,000·100,000노드·순환) 모두 `InvalidOperationException` 으로 catch 되고 프로세스는 생존한다(exit 0).
+
+부수적으로 **비대칭**이 사라졌다: KI-14 이후 수신 측은 깊이 64 초과 프레임을 거부하는데 송신 측은 훨씬 깊은 프레임도 문제없이 만들어냈다 — 즉 성공적으로 직렬화된 메시지가 상대에게서 읽히지 않을 수 있었다. 양쪽 기본 상한을 하나의 상수로 묶어( writer 가 reader 상한을 참조) "기본 설정으로 쓴 것은 기본 설정으로 읽힌다" 가 구조적으로 보장되고, 송신 측이 **먼저** 실패하므로 원인 추적이 수신 측에서 끝나지 않는다.
+
+조치 방향: reader 와 대칭인 writer 깊이 카운터 + 생성 코드·런타임 경유 지점 계상 → 완료. 생성 코드 쪽은 읽기 측과 동일하게 `try/finally` 없이 짝만 맞춘다(기록 중 예외 시 깊이는 부풀기만 하므로 실패 방향 안전, 부분 기록된 writer 는 재사용 대상 아님). 남은 꼬리: 디스패치 멤버의 백레퍼런스 미추적 자체는 여전하므로 **공유 참조**(순환이 아닌 동일 인스턴스 두 번 등장)는 디스패치 멤버를 통과하면 중복 기록되고 참조 동일성이 복원되지 않는다 — KI-9 제약으로 문서화됨, 가드는 그 경로가 프로세스를 죽이지 못하게 막는 것까지가 범위.
 
 ## 잠재 결함 (코드 리뷰)
 

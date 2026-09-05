@@ -227,7 +227,9 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}{{
 {indent}    context.RegisterObject({valueExpression});
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
+{indent}    writer.EnterNestedObject();
 {indent}    {model.WritePayloadMethodName}(ref writer, {valueExpression}, ref context);
+{indent}    writer.LeaveNestedObject();
 {indent}}}
 ";
             }
@@ -278,7 +280,9 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}else
 {indent}{{
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
+{indent}    writer.EnterNestedObject();
 {indent}    {typeName}.Serialize({valueExpression}, ref writer);
+{indent}    writer.LeaveNestedObject();
 {indent}}}
 ";
                 }

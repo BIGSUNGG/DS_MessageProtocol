@@ -255,3 +255,11 @@ public partial class CommandEnvelope
     public AbstractCommand? Command { get; set; }
     public List<AbstractCommand>? History { get; set; }
 }
+
+// 런타임 디스패치 멤버(추상 메시지 타입)를 통한 순환 그래프 픽스처 — 디스패치 경로는 백레퍼런스를
+// 추적하지 않으므로 이 멤버로 돌아가는 순환은 쓰기 재귀를 무한히 깊게 만든다 (KI-25).
+[GroupElementMessage(130)]
+public partial class WrapCommand : AbstractCommand
+{
+    public CommandEnvelope? Inner { get; set; }
+}
