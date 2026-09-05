@@ -178,6 +178,8 @@ namespace MessageProtocol.Serialize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Skip(int count)
         {
+            // 음수 Skip 은 위치를 뒤로 돌려 이미 소비한 바이트를 다시 읽게 한다 — forward-only 규약 위반 (Known-Issues KI-21).
+            if (count < 0) ThrowNegativeCount(count);
             EnsureRemaining(count);
             _position += count;
         }
@@ -194,6 +196,12 @@ namespace MessageProtocol.Serialize
         static void ThrowEndOfBuffer()
         {
             throw new EndOfStreamException("Attempted to read past the end of the buffer.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowNegativeCount(int count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), count, "Count must not be negative.");
         }
     }
 }

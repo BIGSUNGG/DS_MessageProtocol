@@ -268,4 +268,113 @@ public class BufferIOTests
         writer.Dispose();
         return bytes;
     }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void 음수_Skip은_거부된다(int count)
+    {
+        // KI-21 회귀: Skip(-n) 이 리더를 뒤로 이동시켜 forward-only 규약을 깨는 것을 차단한다.
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkipAfterFourBytes(count));
+    }
+
+    static void SkipAfterFourBytes(int count)
+    {
+        var reader = new MessageBufferReader(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 });
+        reader.Skip(4);
+        reader.Skip(count);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void 음수_Advance는_거부된다(int count)
+    {
+        // KI-21 회귀: Advance(-n) 이 기록 위치를 되돌려 이후 쓰기가 기존 페이로드를 덮어쓰는 것을 차단한다.
+        Assert.Throws<ArgumentOutOfRangeException>(() => AdvanceAfterOneByte(count));
+    }
+
+    static void AdvanceAfterOneByte(int count)
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            writer.WriteByte(0xAA);
+            writer.Advance(count);
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Fact]
+    public void 음수_Skip으로_소비한_바이트를_다시_읽을_수_없다()
+    {
+        // 수정 전 Skip(-1) 은 예외 없이 위치만 되돌려 같은 바이트를 두 번 소비하게 했다.
+        Assert.False(TryRewindAndReread());
+    }
+
+    static bool TryRewindAndReread()
+    {
+        var reader = new MessageBufferReader(new byte[] { 0xAA, 0xBB });
+        reader.ReadByte();
+        try
+        {
+            reader.Skip(-1);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+        return reader.ReadByte() == 0xAA; // 되돌아갔다면 같은 바이트를 다시 읽는다
+    }
+
+    [Fact]
+    public void 음수_Advance로_기록한_페이로드를_덮어쓸_수_없다()
+    {
+        // 수정 전 Advance(-1) 은 길이를 줄여 다음 쓰기가 첫 바이트를 덮어쓰게 했다.
+        Assert.False(TryRewindAndOverwrite());
+    }
+
+    static bool TryRewindAndOverwrite()
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            writer.WriteByte(0xAA);
+            try
+            {
+                writer.Advance(-1);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+            writer.WriteByte(0xBB);
+            return writer.Length == 1 && writer.WrittenSpan[0] == 0xBB; // 되돌아갔다면 첫 바이트가 덮어써진다
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Fact]
+    public void 위치_전진은_0과_양수만_허용된다()
+    {
+        // 정상 경로 보존: Skip(0)·Advance(0) 은 무해하고 양수 전진은 기존대로 동작한다.
+        var writer = MessageBufferWriter.Create();
+        writer.WriteInt32(11);
+        writer.WriteInt32(22);
+        writer.Advance(0);
+        Assert.Equal(8, writer.Length);
+
+        var reader = new MessageBufferReader(writer.WrittenReadOnlySpan);
+        reader.Skip(0);
+        Assert.Equal(11, reader.ReadInt32());
+        reader.Skip(4);
+        Assert.Equal(0, reader.Remaining);
+        writer.Dispose();
+    }
 }

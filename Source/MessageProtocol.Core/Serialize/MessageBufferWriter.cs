@@ -48,6 +48,8 @@ namespace MessageProtocol.Serialize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Advance(int count)
         {
+            // 음수 Advance 는 위치를 뒤로 돌려 이후 쓰기가 이미 기록한 페이로드를 덮어쓴다 (Known-Issues KI-21).
+            if (count < 0) ThrowNegativeCount(count);
             if ((uint)(_position + count) > (uint)_buffer.Length)
             {
                 ThrowAdvanceBeyondCapacity();
@@ -249,6 +251,12 @@ namespace MessageProtocol.Serialize
         static void ThrowAdvanceBeyondCapacity()
         {
             throw new InvalidOperationException("Advance would move position beyond buffer capacity.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowNegativeCount(int count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), count, "Count must not be negative.");
         }
     }
 }
