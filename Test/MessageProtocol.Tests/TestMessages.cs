@@ -308,3 +308,16 @@ public partial class SnapshotCollectionMessage
         set => _tags = value;
     }
 }
+
+// ---------- 구체 베이스 멤버의 파생 필드 유실 (KI-29) ----------
+
+// 의도적으로 MSGPROT012 를 발생시키는 픽스처 — 현재 동작(선언 타입 기준 직렬화 → 파생 멤버 유실)을
+// 실행으로 고정한다. 다형이 필요하면 루트를 abstract 로 선언해 런타임 디스패치(KI-24)로 해결하며,
+// 이 픽스처처럼 의도적으로 베이스 필드만 보낼 때는 #pragma 로 경고를 끄면 된다(억제 수단 검증 포함).
+#pragma warning disable MSGPROT012
+[StandaloneMessage(132)]
+public partial class EventHost
+{
+    public EventBase? Event { get; set; }
+}
+#pragma warning restore MSGPROT012

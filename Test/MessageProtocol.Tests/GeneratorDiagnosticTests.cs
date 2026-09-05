@@ -382,6 +382,87 @@ public class GeneratorDiagnosticTests
         Assert.NotEqual(firstA, firstB);
     }
 
+    [Fact]
+    public void MSGPROT012_구체_베이스_멤버는_파생_멤버_유실을_경고한다()
+    {
+        // KI-29: 파생 메시지 타입이 있는 **구체** 메시지 베이스를 멤버 정적 타입으로 쓰면 선언 타입 기준으로
+        // 직렬화되어 파생 멤버가 조용히 사라진다(실행 확인: LoginEvent.User 유실, 복원 타입은 EventBase).
+        // 동작 자체는 유효하므로 생성은 막지 않고 경고로 알린다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [GroupRootMessage(600)]
+            public partial class PolyRoot { public long Timestamp { get; set; } }
+
+            [GroupElementMessage(601)]
+            public partial class PolyElement : PolyRoot { public string? User { get; set; } }
+
+            [StandaloneMessage(602)]
+            public partial class PolyHost { public PolyRoot? Event { get; set; } }
+            """ + Footer);
+
+        var warning = Assert.Single(diagnostics, d => d.Id == "MSGPROT012");
+        Assert.Equal(DiagnosticSeverity.Warning, warning.Severity);
+        Assert.Contains("Event", warning.GetMessage());
+        // 경고일 뿐 — 생성은 정상적으로 이뤄지고 에러 진단·컴파일 오류도 없다.
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT") && d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("__WritePayload", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT012_컬렉션_요소_타입도_경고한다()
+    {
+        var (diagnostics, _, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [GroupRootMessage(610)]
+            public partial class ListRoot { public long Timestamp { get; set; } }
+
+            [GroupElementMessage(611)]
+            public partial class ListElement : ListRoot { public string? User { get; set; } }
+
+            [StandaloneMessage(612)]
+            public partial class ListHost { public System.Collections.Generic.List<ListRoot>? Events { get; set; } }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT012");
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT012_추상_루트_멤버는_경고하지_않는다()
+    {
+        // 역방향 가드: 추상 메시지 타입 멤버는 런타임 디스패치로 구체 요소가 헤더째 기록되므로(KI-24)
+        // 유실이 없다 — 지원되는 다형 패턴에 경고를 뿌리면 안 된다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [GroupRootMessage(620)]
+            public abstract partial class AbsRoot { public long Timestamp { get; set; } }
+
+            [GroupElementMessage(621)]
+            public partial class AbsElement : AbsRoot { public string? User { get; set; } }
+
+            [StandaloneMessage(622)]
+            public partial class AbsHost { public AbsRoot? Event { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT012");
+        Assert.Contains("SerializeToWriter", generated);   // 디스패치 경로 확인
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT012_파생_메시지가_없는_구체_타입_멤버는_경고하지_않는다()
+    {
+        // 역방향 가드: 파생 메시지 타입이 없는 구체 타입 멤버(일반 중첩 페이로드)는 손실이 없으므로 조용해야 한다.
+        var (diagnostics, _, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(630)]
+            public partial class PlainPayload { public int X { get; set; } }
+
+            [StandaloneMessage(631)]
+            public partial class PlainHost { public PlainPayload? Payload { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT012");
+        Assert.Empty(compileErrors);
+    }
+
     /// <summary>지정 타입에 대해 이미터를 한 번 구동해 생성 텍스트를 반환한다(매 호출이 새 EmitState).</summary>
     static string EmitFor(CSharpCompilation compilation, string metadataName, AttributeReferences attributeReferences)
     {

@@ -193,4 +193,19 @@ public class RegistrationTests
         Assert.Equal(3, roundTrip.Command!.Seq);
         Assert.Equal(5, Assert.IsType<StopCommand>(roundTrip.Command).Code);
     }
+
+    [Fact]
+    public void 구체_베이스_멤버는_선언_타입으로_직렬화되어_파생_멤버가_유실된다()
+    {
+        // KI-29 현재 동작 고정: 파생 메시지 타입이 있는 **구체** 베이스를 멤버 정적 타입으로 쓰면
+        // 선언 타입 기준으로 기록되어 파생 멤버가 예외 없이 사라지고 복원 타입도 베이스가 된다
+        // (실험 확인: 13바이트 프레임에서 LoginEvent.User 유실). 생성기가 MSGPROT012 로 이 형태를 경고하며,
+        // 다형이 필요하면 루트를 abstract 로 선언해 런타임 디스패치(KI-24)로 해결한다.
+        var host = new EventHost { Event = new LoginEvent { Timestamp = 5, User = "kim" } };
+
+        var roundTrip = MessageSerializer.Deserialize<EventHost>(MessageSerializer.Serialize(host));
+
+        Assert.Equal(5, roundTrip.Event!.Timestamp);   // 베이스 멤버는 유지
+        Assert.IsType<EventBase>(roundTrip.Event);     // 파생이 아니라 베이스 인스턴스로 복원 = User 는 와이어에 없다
+    }
 }

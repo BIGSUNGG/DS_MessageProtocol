@@ -85,5 +85,13 @@ namespace MessageProtocol.CodeGenerator
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor PolymorphicMemberSerializesByDeclaredType = new(
+            id: "MSGPROT012",
+            title: "Message member serializes by declared type",
+            messageFormat: "Member '{1}' is declared as '{0}', which has derived message type(s) in this compilation. Serialization writes only '{0}' members, so assigning a derived instance silently drops its extra members. Declare '{0}' abstract to write the concrete element via runtime dispatch, declare the member as the concrete element type, or send the whole message through MessageSerializer.Serialize(object).",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }

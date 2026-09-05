@@ -7,3 +7,4 @@ Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 MSGPROT010 | MessageProtocol | Error | Message type must be constructible
 MSGPROT011 | MessageProtocol | Error | Message member must be assignable
+MSGPROT012 | MessageProtocol | Warning | Message member serializes by declared type

@@ -49,11 +49,14 @@ namespace MessageProtocol.CodeGenerator
                 var attributeReferences = new AttributeReferences(compilation);
                 // 컴파일 전체 구성 선언을 먼저 훑어 중복(모듈 로드 크래시 원인)을 컴파일 진단으로 승격한다.
                 var conflicts = CollectConstructionConflicts(types, attributeReferences);
+                // 파생 메시지 타입을 가진 구체 메시지 베이스 — 이런 타입을 멤버 정적 타입으로 쓰면
+                // 선언 타입 기준으로 직렬화되어 파생 멤버가 조용히 유실된다(MSGPROT012, Known-Issues KI-29).
+                var polymorphicBases = CollectPolymorphicMessageBases(types, attributeReferences);
                 // 캐리어 등록 클래스 이름 유일성 상태 — 동일 접미사 충돌 시 구분자 부여.
                 var usedCarrierSuffixes = new HashSet<string>();
                 foreach (var typeSymbol in types)
                 {
-                    Generate(typeSymbol, compilation, spc, conflicts, usedCarrierSuffixes, attributeReferences);
+                    Generate(typeSymbol, compilation, spc, conflicts, usedCarrierSuffixes, attributeReferences, polymorphicBases);
                 }
             });
         }
@@ -75,7 +78,8 @@ namespace MessageProtocol.CodeGenerator
             SourceProductionContext context,
             ConstructionConflicts conflicts,
             HashSet<string> usedCarrierSuffixes,
-            AttributeReferences? cachedReferences = null)
+            AttributeReferences? cachedReferences = null,
+            ImmutableHashSet<INamedTypeSymbol>? polymorphicBases = null)
         {
             var location = typeSymbol.Locations.FirstOrDefault() ?? Location.None;
             var attributeReferences = cachedReferences ?? new AttributeReferences(compilation);
@@ -161,7 +165,78 @@ namespace MessageProtocol.CodeGenerator
                 return;
             }
 
+            // 생성을 막지 않는 경고 — 베이스 필드만 보내는 것은 유효한 설계일 수 있으므로 판단은 소비자에게 남긴다.
+            ReportPolymorphicMembers(typeMeta, polymorphicBases, context);
+
             context.AddSource($"{GetGeneratedFileName(typeMeta.Symbol)}.g.cs", SourceText.From(serializeCode!, Encoding.UTF8));
+        }
+
+        /// <summary>
+        /// 이 컴파일에서 **파생 메시지 타입을 가진 구체 메시지 타입** 집합.
+        /// 이런 타입을 멤버의 정적 타입으로 쓰면 직렬화가 선언 타입 기준으로 일어나 파생 멤버가 조용히 유실된다.
+        /// 추상 베이스는 제외 — 추상 메시지 타입 멤버는 런타임 디스패치로 구체 요소가 헤더째 기록되므로 손실이 없다(KI-24).
+        /// </summary>
+        static ImmutableHashSet<INamedTypeSymbol> CollectPolymorphicMessageBases(
+            ImmutableArray<INamedTypeSymbol> types,
+            AttributeReferences attributeReferences)
+        {
+            var builder = ImmutableHashSet.CreateBuilder<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+
+            foreach (var typeSymbol in types)
+            {
+                // 파생 쪽이 메시지여야 와이어 정체성(MessageId)을 갖고 디스패치될 수 있다.
+                if (!HasMessageAttribute(typeSymbol, attributeReferences))
+                {
+                    continue;
+                }
+
+                for (var baseType = typeSymbol.BaseType;
+                     baseType != null && baseType.SpecialType != SpecialType.System_Object;
+                     baseType = baseType.BaseType)
+                {
+                    if (!baseType.IsAbstract && HasMessageAttribute(baseType, attributeReferences))
+                    {
+                        builder.Add(baseType);
+                    }
+                }
+            }
+
+            return builder.ToImmutable();
+        }
+
+        /// <summary>
+        /// 와이어 멤버(상속 포함) 중 "파생 메시지 타입이 있는 구체 메시지 타입"을 정적 타입으로 쓴 멤버에
+        /// <see cref="DiagnosticDescriptors.PolymorphicMemberSerializesByDeclaredType"/> 경고를 보고한다.
+        /// 컬렉션 멤버는 요소 타입을 본다. 다른 어셈블리에만 파생이 있는 베이스는 이 컴파일에서 알 수 없어 보고되지 않는다.
+        /// </summary>
+        static void ReportPolymorphicMembers(
+            TypeMetadata typeMeta,
+            ImmutableHashSet<INamedTypeSymbol>? polymorphicBases,
+            SourceProductionContext context)
+        {
+            if (polymorphicBases is null || polymorphicBases.IsEmpty)
+            {
+                return;
+            }
+
+            foreach (var member in TypeMetadata.GetWireMembers(typeMeta))
+            {
+                ITypeSymbol memberType = Graph.SerializationGraph.TryGetCollectionElementType(member.Type, out var elementType)
+                    ? elementType
+                    : member.Type;
+
+                if (memberType is INamedTypeSymbol named && polymorphicBases.Contains(named))
+                {
+                    // `?`(nullable 주석)는 진단 문장에서 노이즈다 — "'EventBase?' 를 abstract 로 선언하라"는 읽히지 않는다.
+                    string declaredType = named.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString();
+
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.PolymorphicMemberSerializesByDeclaredType,
+                        member.Symbol.Locations.FirstOrDefault() ?? Location.None,
+                        declaredType,
+                        member.Name));
+                }
+            }
         }
 
         /// <summary>매개변수 없는 생성자로 만들 수 있는 구체 타입인지 확인한다. 생성 partial 은 타입 내부라 비공개 생성자도 호출 가능하다.</summary>
