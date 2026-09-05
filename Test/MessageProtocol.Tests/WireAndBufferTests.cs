@@ -1,3 +1,4 @@
+using System.Text;
 using MessageProtocol;
 using MessageProtocol.Serialize;
 using Xunit;
@@ -377,4 +378,56 @@ public class BufferIOTests
         Assert.Equal(0, reader.Remaining);
         writer.Dispose();
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(1024)]
+    [InlineData(1_000_000)]
+    [InlineData(715_827_881)] // 인코딩 자체 상한이 int 로 표현되는 마지막 부근
+    public void 문자열_버퍼_요구량은_UTF8_인코딩_상한과_일치한다(int charCount)
+    {
+        // KI-22 회귀: 자체 long 공식이 `Encoding.GetMaxByteCount` + 길이 접두 4바이트와 같아야
+        // 상한을 좁히지(버퍼 부족)도 헤프게(과할당)도 바꾸지 않는다.
+        int maxBytes = StrictUtf8().GetMaxByteCount(charCount);
+        Assert.Equal(4L + maxBytes, MessageBufferWriter.GetStringBufferRequirement(charCount));
+    }
+
+    [Fact]
+    public void 문자열_버퍼_요구량은_int_상한_너머에서도_오버플로하지_않는다()
+    {
+        // KI-22 회귀: 715,827,882 자부터 필요 용량이 int.MaxValue 를 넘으므로 int 산술로는 표현 자체가 불가하다.
+        const int charCount = 715_827_882;
+        long required = MessageBufferWriter.GetStringBufferRequirement(charCount);
+        Assert.True(required > int.MaxValue);                       // long 이라 정확히 표현됨
+        Assert.True(unchecked(4 + (charCount * 3 + 3)) < 0);        // 기존 int 표현은 음수로 오버플로 → 증설 누락
+    }
+
+    [Fact]
+    public void 문자열_버퍼_요구량은_문자_수에_단조증가한다()
+    {
+        long previous = MessageBufferWriter.GetStringBufferRequirement(0);
+        foreach (int charCount in new[] { 1, 1000, 715_827_882, int.MaxValue })
+        {
+            long current = MessageBufferWriter.GetStringBufferRequirement(charCount);
+            Assert.True(current > previous);
+            previous = current;
+        }
+    }
+
+    [Fact]
+    public void 큰_문자열도_정상_증설되어_왕복한다()
+    {
+        // KI-22 정상 경로: 새 long 용량 산술이 기존 증설·기록 동작을 바꾸지 않았는지 확인.
+        string value = new string('가', 100_000); // U+AC00 → UTF-8 문자당 3바이트
+        var writer = MessageBufferWriter.Create(4);
+        writer.WriteString(value);
+        Assert.Equal(4 + 300_000, writer.Length);
+        Assert.Equal(value, new MessageBufferReader(writer.WrittenReadOnlySpan).ReadString());
+        writer.Dispose();
+    }
+
+    static Encoding StrictUtf8() =>
+        Encoding.GetEncoding(65001, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 }

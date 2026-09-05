@@ -19,4 +19,9 @@
     <PackageReference Include="System.Memory" Version="4.5.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 버퍼 용량 산술(KI-22) 같은 내부 계약을 회귀 테스트가 직접 검증하도록 노출 -->
+    <InternalsVisibleTo Include="MessageProtocol.Tests" />
+  </ItemGroup>
+
 </Project>

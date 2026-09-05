@@ -202,11 +202,33 @@ namespace MessageProtocol.Serialize
                 return;
             }
 
-            int maxBytes = StrictUtf8.GetMaxByteCount(value.Length);
-            EnsureCapacity(4 + maxBytes);
+            // 필요 용량을 long 으로 구한다 — `4 + GetMaxByteCount(int)` 는 초대형 문자열에서 음수로 오버플로해
+            // EnsureCapacity 의 증설을 건너뛰게 하고, 그럼 GetBytes 가 내부 ArgumentException 으로 실패한다 (KI-22).
+            long required = GetStringBufferRequirement(value.Length);
+            if (_position + required > MaxBufferLength)
+            {
+                ThrowStringTooLarge(value.Length);
+            }
+            // 위 가드로 required ≤ MaxBufferLength - _position < int.MaxValue 이므로 좁힘과 이후 int 합산이 안전하다.
+            EnsureCapacity((int)required);
             int written = StrictUtf8.GetBytes(value, 0, value.Length, _buffer, _position + 4);
             BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(_position), written);
             _position += 4 + written;
+        }
+
+        // UTF-8 인코딩 상한 공식(문자당 최대 3바이트 + 프리앰블 3바이트). `Encoding.GetMaxByteCount(int)` 와 같지만
+        // 그 메서드는 약 7.15억 자에서 `charCount * 3 + 3` 이 int 를 넘겨 음수를 반환한다 (Known-Issues KI-22).
+        const long Utf8MaxBytesPerChar = 3;
+        const long Utf8PreambleBytes = 3;
+        const int LengthPrefixBytes = 4;
+
+        /// <summary>byte[] 버퍼의 최대 길이(.NET 배열 상한) — 이보다 큰 페이로드는 단일 버퍼에 담을 수 없다.</summary>
+        const long MaxBufferLength = 0X7FEFFFFFL;
+
+        /// <summary>문자열 페이로드(길이 접두 4바이트 + UTF-8 상한)에 필요한 버퍼 바이트 수를 long 으로 반환한다.</summary>
+        internal static long GetStringBufferRequirement(int charCount)
+        {
+            return LengthPrefixBytes + (Utf8MaxBytesPerChar * charCount) + Utf8PreambleBytes;
         }
 
         // 고립 서로게이트를 대체 바이트로 조용히 바꾸면 수신 측이 송신과 다른 문자열을 보므로,
@@ -257,6 +279,14 @@ namespace MessageProtocol.Serialize
         static void ThrowNegativeCount(int count)
         {
             throw new ArgumentOutOfRangeException(nameof(count), count, "Count must not be negative.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowStringTooLarge(int charCount)
+        {
+            throw new ArgumentException(
+                $"String of {charCount} characters needs more than the maximum buffer size ({MaxBufferLength} bytes) and cannot be serialized.",
+                "value");
         }
     }
 }

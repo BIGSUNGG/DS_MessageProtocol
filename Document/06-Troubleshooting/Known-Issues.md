@@ -8,7 +8,7 @@ updated: 2026-09-05
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-21 해결. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-21·KI-22 해결. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -130,6 +130,16 @@ null 규약은 길이 접두 `-1` 인데 판독 코드가 `length < 0` 전체를
 
 조치 방향: 공개 경계에서 음수 거부 → 완료. 되돌림은 `EndOfStreamException`(와이어 경계) 이 아니라 `ArgumentOutOfRangeException`(호출자 프로그래밍 오류) 으로 보고.
 
+### KI-22. `WriteString` 용량 산술 int 오버플로 → 증설 누락 (해결)
+
+**상태: 해결 (2026-09-05).** 필요 용량을 `long` 으로 계산하는 내부 헬퍼 `GetStringBufferRequirement(charCount)` 도입(UTF-8 상한 공식 `4 + 문자당 3바이트 + 프리앰블 3` 을 직접 long 산술) — `Encoding.GetMaxByteCount(int)` 의 int 오버플로 의존 제거. 버퍼(배열) 상한 `0X7FEFFFFF` 를 넘으면 `GetBytes` 의 내부 `ArgumentException` 대신 명확한 메시지의 `ArgumentException` 으로 거부. 가드 후 `required ≤ MaxBufferLength - _position < int.MaxValue` 라 좁힘·이후 `EnsureCapacity` int 합산도 오버플로하지 않는다. 회귀 테스트 9개(케이스) — 자체 공식이 `GetMaxByteCount + 4` 와 일치함을 715,827,881자까지 검증(상한을 좁히거나 헤프게 바꾸지 않음), int 상한 너머에서 양수·단조증가 유지, 30만 바이트 한글 문자열 증설·왕복. 테스트 104→113. `Core` 에 `InternalsVisibleTo(MessageProtocol.Tests)` 추가.
+
+원본 발견 내용:
+
+`WriteString` 이 `EnsureCapacity(4 + StrictUtf8.GetMaxByteCount(value.Length))` 로 용량을 확보했는데, `GetMaxByteCount` 는 `charCount * 3 + 3` 을 int 로 계산하므로 약 7.15억 자(문자 수 > 715,827,881)에서 음수로 오버플로한다. 음수가 `EnsureCapacity` 에 들어가면 `_position + additional > _buffer.Length` 비교가 거짓이 되어 증설이 건너뛰어지고, 이은 `GetBytes` 가 공간 부족으로 실패했다. `GetBytes` 가 출력 배열 경계를 검사하므로 메모리 손상은 없고 예외만 내부 원인(버퍼 부족)을 가리는 형태였다.
+
+조치 방향: long 산술 + 명확한 상한 거부 → 완료. 임계값 미만에서는 기존과 동일한 용량을 요청하므로 동작 변화 없음(회귀 테스트로 고정).
+
 ## 잠재 결함 (코드 리뷰)
 
 | 번호 | 위치 | 내용 |
@@ -144,7 +154,6 @@ null 규약은 길이 접두 `-1` 인데 판독 코드가 `length < 0` 전체를
 | KI-11 | `SerializerCachePrefill` | 같은 타입 병렬 등록/재등록 시 경쟁·잔존 상태 가능 (엣지) |
 | KI-12 | 빌드 경고 | RS2008 — 분석기 릴리스 추적(`AnalyzerReleases.Shipped.md`) 미사용, 경고 16개(클린 빌드 기준, 증분 빌드에 가려짐) |
 | KI-14 | 생성 역직렬화 중첩 객체 판독 | 자기참조 메시지 중첩이 재귀로 판독 — 깊이가 프레임 크기 ÷ 최소 페이로드로만 제한됨. 큰 프레임 상한 환경에서 스택 오버플로 DoS 가능. 프레임 상한을 크게 잡을 경우 깊이 카운터 필요 |
-| KI-22 | `MessageBufferWriter.WriteString:203` | `4 + GetMaxByteCount` 미검사 정수 덧셈 — 특정 초대형 문자열 길이에서 오버플로로 용량 증설 누락(메모리 손상 없음, `ArgumentException`으로 표면화) |
 
 ## 관련
 

@@ -22,7 +22,7 @@ updated: 2026-09-05
 
 `MessageWireFormat` 상수: `NonIdHeaderSize=1`, `IdHeaderSize=4`, `NullSizedPayloadLength=-1`, `DefaultStreamCapacity=256`, `NibbleMask=0x0F`, `MessageIdValueMask=0x00FFFFFF`.
 
-버퍼 I/O 계약: 위치는 forward-only — `Skip`·`Advance` 는 음수 `count` 를 `ArgumentOutOfRangeException` 으로 거부하고(되돌려 이미 소비·기록한 구간을 다시 읽거나 덮어쓰는 것 차단), 범위를 넘는 전진은 reader `EndOfStreamException` / writer `InvalidOperationException` 을 던진다. 문자열 길이 접두사는 `-1` 만 null 이고 그 외 음수는 `InvalidDataException` 으로 거부된다.
+버퍼 I/O 계약: 위치는 forward-only — `Skip`·`Advance` 는 음수 `count` 를 `ArgumentOutOfRangeException` 으로 거부하고(되돌려 이미 소비·기록한 구간을 다시 읽거나 덮어쓰는 것 차단), 범위를 넘는 전진은 reader `EndOfStreamException` / writer `InvalidOperationException` 을 던진다. 문자열 길이 접두사는 `-1` 만 null 이고 그 외 음수는 `InvalidDataException` 으로 거부된다. 버퍼는 단일 `byte[]` 이라 페이로드 상한은 배열 상한(`0X7FEFFFFF` 바이트)이며, 이를 넘는 문자열은 `WriteString` 이 `ArgumentException` 으로 거부한다(용량 산술은 `long` — int 오버플로로 증설이 건너뛰어지지 않음).
 
 ## 메시지 타입 속성
 

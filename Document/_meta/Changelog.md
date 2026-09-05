@@ -6,6 +6,7 @@
 
 - KI-6 해결 — `MessageBufferReader.ReadString` 음수 길이 접두사 검증: `-1` 만 null 로 복호하고 나머지 음수(`-2`…`int.MinValue`)는 `InvalidDataException` 거부(KI-15·KI-20 와이어 무결성 엄격 기조 동일, 경계 `EndOfStreamException` 과 구분). 회귀 테스트 4개(`WireAndBufferTests`). 테스트 93→97. `Known-Issues` KI-6 해결 섹션 승격(잠재 결함 표에서 이동), `Feature-Spec` F3 문자열 길이 접두 규약 명문화.
 - KI-21 해결 — `MessageBufferReader.Skip`·`MessageBufferWriter.Advance` 음수 `count` 거부(`ArgumentOutOfRangeException`, 공개 경계에서 검증) — forward-only 규약 강제. 되돌림으로 소비한 바이트 재읽기·기록한 페이로드 덮어쓰기가 불가능해졌고, 경계 위반(`EndOfStreamException`)과 호출자 프로그래밍 오류가 분리됐다. 회귀 테스트 7개(케이스). 테스트 97→104. `Known-Issues` KI-21 해결 섹션 승격, `Public-API` 버퍼 I/O 계약 명문화.
+- KI-22 해결 — `MessageBufferWriter.WriteString` 용량 산술 오버플로 제거: `4 + GetMaxByteCount(int)`(약 7.15억 자에서 음수 오버플로 → `EnsureCapacity` 증설 누락 → `GetBytes` 내부 실패) 대신 long 산술 내부 헬퍼 `GetStringBufferRequirement` 사용, 버퍼(배열) 상한 `0X7FEFFFFF` 초과 문자열은 명확한 `ArgumentException` 으로 거부. 임계값 미만 동작 불변(회귀 테스트로 고정). 회귀 테스트 9개(케이스). 테스트 104→113. `Core` 에 `InternalsVisibleTo(MessageProtocol.Tests)` 추가, `Known-Issues` KI-22 해결 섹션 승격, `Public-API` 버퍼 상한 계약 명문화.
 
 ## 2026-09-04
 
