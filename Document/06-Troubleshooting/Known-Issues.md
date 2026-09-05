@@ -8,7 +8,7 @@ updated: 2026-09-05
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26·KI-27·KI-28·KI-29·KI-30 추가·해결(KI-29 는 부분 해결), KI-25·KI-11·KI-4·KI-3·KI-7 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26·KI-27·KI-28·KI-29·KI-30 추가·해결(KI-29 는 부분 해결), KI-25·KI-11·KI-4·KI-3·KI-7·KI-8 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -281,7 +281,6 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | 번호 | 위치 | 내용 |
 | ---- | ---- | ---- |
 | KI-5 | 생성 `Deserialize(ref reader)` | 헤더·MessageId 를 검증하지 않고 건너뜀 — 다른 타입 바이트를 먹이면 조용히 재해석 (성능 트레이드오프, 문서화 필요) |
-| KI-8 | `MessageCategoryAttribute` | 범위 밖 카테고리 값이 `& 0x0F` 로 조용히 마스킹 |
 | KI-9 | 그래프 밖 메시지 위임·런타임 디스패치 멤버 (`EmitOutOfGraphMessage*`·`EmitRuntimeDispatch*`) | 위임·디스패치 시 새 `SerializeContext` — 경계 넘는 공유 참조 복원 불가(중복 기록). 경계 넘는 순환 참조는 KI-25 writer 깊이 가드가 `InvalidOperationException` 으로 막는다(스택 오버플로 아님). 남은 제약 문서화 필요 |
 | KI-10 | 증분 파이프라인 | **측정 완료(2026-09-05, 아래 기록)** — 출력 스텝은 매 편집마다 재실행되지만(`Compilation` 스텝 항상 Modified + `ForAttributeWithMetadataName` transform 출력이 컴파일별 심볼 인스턴스) 생성 텍스트는 동일해서 다운스트림 재컴파일은 이미 차단됨. 남은 비용은 편집당 생성기 CPU(메시지 타입 수에 비례)뿐이며, 근본 해결은 value-equatable 모델 재작성(대규모)이라 측정 근거로 연기 |
 
@@ -304,6 +303,16 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 **상태: 해결 (2026-09-05).** 세 곳을 함께 손봤다. ① `EnsureCapacity` 의 `_position + additional` 을 **long 비교**로 — int 합산이 GB 급 요구에서 음수로 오버플로해 증설 가드가 거짓으로 통과하고 이은 `AsSpan`·`CopyTo` 가 원인을 가리는 예외를 던지던 것 차단(감사 원장 LOW 동일 항목). ② `Grow` 의 용량 산정을 long 산술 + 배열 상한 clamp 로 바꾸고 internal 헬퍼 `ComputeGrowCapacity(currentCapacity, required)` 로 분리 — 이전 공식 `Math.Max(_buffer.Length * 2, required)` 는 버퍼가 1GB 를 넘는 순간 배증값이 음수가 되어 `Math.Max` 가 항상 **정확 요구량**을 골랐고, 그래서 매 증설이 여유 없는 대여 + 전체 복사가 되어 성장 비용이 제곱이 됐다(그 크기면 `ArrayPool` 버킷도 아니라 매번 새 배열). 페이로드 상한 `0X7FEFFFFF`(약 2.1GB)는 `WriteString` 이 명시적으로 지원하는 범위라(KI-22) 이 구간은 실제 회귀다. 요구량이 상한을 넘으면 `InvalidOperationException`(정확한 바이트 수 안내)으로 **할당을 시도하지 않고** 거부한다. ③ `PatchInt32` 가 오프셋을 **기록된 구간**(`0 .. Length-4`)으로 검증(`ArgumentOutOfRangeException`) — 이전에는 대여 배열의 미기록 바이트에 쓸 수 있었고 그 배열은 나중에 풀로 돌아간다. 회귀 테스트 15개(케이스, `WriterGrowthTests`) — 증설 용량 산정 Theory(빈 버퍼·배증 우선·요구량 우선·배증=요구량), 1GB 너머에서 음수 아님 + 여유 유지, 상한 불초과·요구량 미달 없음(8×4 조합), 상한 초과 요구의 명확한 예외, 정상 증설과 여유 용량, `PatchInt32` 정상 동작(경계 오프셋 포함)·기록 구간 밖 거부 4케이스·빈 writer 거부. **이빨 확인**: `ComputeGrowCapacity` 를 수정 전 int 산술로 되돌리는 돌연변이에서 1GB 여유 테스트 실패(1/15), 복원 후 187/187. 소비자 프로세스 실험(수정 전 → 후): `EnsureCapacity(int.MaxValue)` `OutOfMemoryException`("Array dimensions exceeded supported range") → `InvalidOperationException`(정확한 바이트 수 안내), `PatchInt32(60)` with `Length=4` **수용** → `ArgumentOutOfRangeException`, `1_500_000_000 * 2 = -1_294_967_296` 확인. 테스트 172→187(net8.0·net9.0), 프로젝트별 클린 리빌드 6/6 경고 0·오류 0, Sandbox 전체 통과. `Public-API` writer 버퍼 계약, `Feature-Spec` F7 성장 계약 명문화.
 
 조치 방향: long 산술 + 상한 clamp + 경계 검증 → 완료. `MessageBufferWriter` 는 `ref struct` 라 `Assert.Throws` 람다 포획이 안 되어 `ref` 인자 헬퍼(`CatchEnsureCapacity`·`CatchPatchInt32`)로 예외를 관찰했다(KI-14 의 reader 테스트와 같은 함정). 남은 꼬리: `GetSpan(size)` 는 증설 후 대여 배열이 바뀌므로 **이전에 받아 간 span 이 무효**가 된다(풀 배열 별칭 위험) — 죽은 공개 API 정리 항목과 함께 별도 추적.
+
+### KI-8. 범위 밖 `MessageCategory` 값의 조용한 마스킹 → 와이어 MessageId 변형·모듈 로드 실패 (해결)
+
+**상태: 해결 (2026-09-05).** `TypeMetadataValidator.TryValidateCategoryRange`(신규, 상한 `MaxCategoryValue = MessageWireFormat.NibbleMask`)가 `MessageCategory` 값을 검사하고, 벗어나면 새 진단 **`MSGPROT013`(Error)** 을 보고하고 생성을 건너뜀다 — `Generate` 에서 기존 MSGPROT005(ID 값 범위) 검사 바로 뒤에 붙였다. 속성이 `Inherited = false` 라 베이스 계층을 걸을 필요 없이 자기 선언만 본다. 신규 규칙이라 `AnalyzerReleases.Unshipped.md` 에 행 추가(KI-12 규약 — 마크다운 자동 서식이 구분 행을 망가뜨리지 않도록 sed 로 편집 후 분리자 무결성 확인). 회귀 테스트 6개(케이스) — 거부 Theory(16·99·255 → MSGPROT013 Error·메시지에 원본 값 포함·생성 건너뜀·컴파일 오류 0), 실험 재현 시나리오 1개, 역방향 가드 Theory(Category0 → 헤더 `0x20`, Category15 → `0x2F` — 진단 0·생성 유지·헤더 니블 확인). **이빨 확인**: 검증 상한을 무력화하는 돌연변이(`value > 999999u`)에서 6개 중 **4개 실패**, 역방향 가드 2개는 양쪽 통과. 테스트 187→193(net8.0·net9.0), 프로젝트별 클린 리빌드 6/6 경고 0·오류 0(RS1032 = 다문장 메시지 마침표 규칙 위반을 이번에 또 밟아 수정), Sandbox 전체 통과. `Feature-Spec` F2 카테고리 범위·`[Flags]` 함정, F5 MSGPROT013 명문화.
+
+원본 발견 내용 (실험 검증):
+
+`ReadMessageCategoryOrDefault` 가 `(byte)(value & 0x0F)` 로 **조용히 마스킹**하고 `MessageCategoryAttribute` 는 아무 검증이 없었다(`GenericMessageAttribute.ClassId` 에는 있는 검증이 여기엔 없었다). 저장소 밖 소비자 프로젝트에서 확인한 실제 형태: `[StandaloneMessage(7)] [MessageCategory((MessageCategory)99)] MaskedCategory` 와 `[StandaloneMessage(7)] [MessageCategory(Category3)] RealCategory3` 는 99 & 0x0F = 3 이라 **동일한 와이어 MessageId 0x23000007(587202567)** 을 만들고, 모듈 로드 시 `InvalidOperationException: Message type with ID 587202567 is already registered by '…'` 로 **어셈블리 로드 자체가 실패**했다(TypeInitializationException). 오류 메시지는 상대 타입 이름만 말할 뿐 원인(카테고리 99)을 가리키지 않는다. 충돌이 없는 경우엔 더 조용해서, 피어는 개발자가 의도하지 않은 카테고리로 라우팅한다. 부수 확인: `MessageCategory` 는 `[Flags]` 라 `Category1 | Category4`(= 5) 처럼 **조합이 다른 단일 카테고리로 조용히 해석**되고, `CategoryMask`(0x0F)가 열거 멤버로 존재해 `Category15` 와 구분되지 않는다 — 값 자체는 0..15 라 범위 검사로는 못 잡으므로 `Feature-Spec` 에 함정으로 명문화했다(열거 형태 변경은 공개 API 결정 사항).
+
+조치 방향: 컴파일 진단 승격 → 완료. 남은 꼬리(별도 추적): **동일 와이어 MessageId 를 가진 두 메시지 타입**에 대한 컴파일 진단은 여전히 없다 — 이번 실험의 충돌은 마스킹이 원인이라 MSGPROT013 으로 막히지만, id 를 그냥 복사해 붙여도 같은 모듈 로드 실패가 난다(런타임 `_registeredMessageIds` 만 검사). 감사 원장에 신규 등록.
 
 ## 관련
 

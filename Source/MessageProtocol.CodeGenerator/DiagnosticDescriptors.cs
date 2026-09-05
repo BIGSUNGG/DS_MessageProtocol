@@ -86,6 +86,14 @@ namespace MessageProtocol.CodeGenerator
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
+        public static readonly DiagnosticDescriptor MessageCategoryOutOfRange = new(
+            id: "MSGPROT013",
+            title: "Message category value is out of range",
+            messageFormat: "Type '{0}' has invalid MessageCategory value '{1}'. Allowed range is 0 to 15 — the header category is a single 4-bit nibble, so the value would otherwise be silently masked and change the wire MessageId.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
         public static readonly DiagnosticDescriptor PolymorphicMemberSerializesByDeclaredType = new(
             id: "MSGPROT012",
             title: "Message member serializes by declared type",

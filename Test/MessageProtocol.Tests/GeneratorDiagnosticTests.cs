@@ -988,7 +988,70 @@ public class GeneratorDiagnosticTests
         Assert.Contains("var __arr", code);      // 배열은 양쪽 구성 모두 스냅샷
     }
 
-    /// <summary>생성 코드에서 `writer.Write*(message.멤버)` 호출의 멤버 이름을 나온 순서대로뽑는다 = 와이어 기록 순서.</summary>
+    [Theory]
+    [InlineData(16)]
+    [InlineData(99)]
+    [InlineData(255)]
+    public void MSGPROT013_범위_밖_카테고리는_컴파일_진단으로_거부된다(int categoryValue)
+    {
+        // KI-8 회귀: 이미터는 카테고리 값을 `& 0x0F` 로 **조용히 마스킹**했으므로 99 는 3 이 되어
+        // 와이어 MessageId 가 개발자 의도와 달라졌다(진단 없음).
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
+            [StandaloneMessage(1)]
+            [MessageCategory((MessageCategory){{categoryValue}})]
+            public partial class BadCategory { public int X { get; set; } }
+            """ + Footer);
+
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == "MSGPROT013");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains(categoryValue.ToString(), diagnostic.GetMessage());
+        Assert.DoesNotContain("__WritePayload", generated);   // 생성 건너뜀
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT013_마스킹이_만드는_MessageId_충돌을_컴파일에서_막는다()
+    {
+        // 실험으로 확인한 실제 형태: `(MessageCategory)99` 는 99 & 0x0F = 3 으로 마스킹되어 `Category3` 메시지와
+        // **동일한 와이어 MessageId**(0x23000007) 를 만들고, 모듈 이니셜라이저에서 등록 충돌 예외
+        // ("Message type with ID 587202567 is already registered by 'MaskedCategory'")로 어셈블리 로드가 실패했다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            [MessageCategory((MessageCategory)99)]
+            public partial class MaskedCategory { public int X { get; set; } }
+
+            [StandaloneMessage(7)]
+            [MessageCategory(MessageCategory.Category3)]
+            public partial class RealCategory3 { public int X { get; set; } }
+            """ + Footer);
+
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == "MSGPROT013");
+        Assert.Contains("MaskedCategory", diagnostic.GetMessage());
+        // 마스킹되지 않은 쪽은 정상 생성된다(과잉 차단 아님).
+        Assert.Contains("RealCategory3", generated);
+        Assert.DoesNotContain("partial class MaskedCategory", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Theory]
+    [InlineData("MessageCategory.Category0", "0x20")]
+    [InlineData("MessageCategory.Category15", "0x2F")]
+    public void 카테고리_경계값은_허용되고_헤더_니블에_그대로_실린다(string categoryExpression, string expectedHeaderByte)
+    {
+        // 역방향 가드: 상한 검증을 넣으면서 정상 범위(특히 0·15)를 잘라내면 안 된다.
+        // Standalone(2) << 4 | category → Category0 = 0x20, Category15 = 0x2F.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
+            [StandaloneMessage(1)]
+            [MessageCategory({{categoryExpression}})]
+            public partial class CategoryBoundary { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains($"writer.WriteByte({expectedHeaderByte})", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    /// <summary>생성 코드에서 `writer.Write*(message.멤버)` 호출의 멤버 이름을 나온 순서대로 뽑는다 = 와이어 기록 순서.</summary>
     static IReadOnlyList<string> ExtractWriteOrder(string generated)
     {
         return System.Text.RegularExpressions.Regex

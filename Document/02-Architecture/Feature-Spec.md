@@ -35,7 +35,7 @@ updated: 2026-09-05
 | `GroupRootMessage(uint id)` | 그룹 루트 |
 | `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
 | `NonIdMessage` | ID 없는 메시지 |
-| `MessageCategory(Category0..15)` | 카테고리 니블 |
+| `MessageCategory(Category0..15)` | 카테고리 니블 — 값 범위 **0 .. 15**(벗어나면 `MSGPROT013`, 조용한 `& 0x0F` 마스킹 없음). `[Flags]` 열거형이라 `Category1`·`Category4` 를 결합한 값(5)은 **다른 단일 카테고리로 조용히 해석**되고 `CategoryMask`(0x0F)는 `Category15` 와 구분되지 않으므로, 항상 단일 카테고리 멤버만 쓴다 |
 | `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). `ClassId` 범위 **1 .. 2^24-1**(MessageId 와 같은 3바이트 와이어 슬롯 — 벗어나면 컴파일 진단). 제네릭 선언에는 `StandaloneMessage` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
 
 - 메시지 타입은 `partial` 선언이 필수.
@@ -101,6 +101,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
   - `MSGPROT010` 메시지 타입 생성 불가 (추상 클래스·매개변수 없는 생성자 없음 — 포지셔널 레코드 등. Legacy에 없는 신규 진단)
   - `MSGPROT011` 멤버 대입 불가 (읽기 전용·초기화 전용 프로퍼티·읽기전용 필드 — 역직렬화 불가. Legacy에 없는 신규 진단)
   - `MSGPROT012` 멤버가 선언 타입으로 직렬화됨 (**경고** — 파생 메시지 타입이 있는 *구체* 메시지 베이스를 멤버 정적 타입으로 쓰면 파생 인스턴스의 추가 멤버가 예외 없이 유실. Legacy에 없는 신규 진단)
+  - `MSGPROT013` `MessageCategory` 값 범위 초과(0..15) — 방치하면 `& 0x0F` 마스킹으로 와이어 MessageId 가 달라져 다른 메시지와 ID 충돌(모듈 로드 실패) 또는 피어 오라우팅. Legacy에 없는 신규 진단
 
 ## F6. 런타임 `MessageSerializer`
 

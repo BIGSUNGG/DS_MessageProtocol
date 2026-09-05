@@ -123,6 +123,18 @@ namespace MessageProtocol.CodeGenerator
                 return;
             }
 
+            if (!TypeMetadataValidator.TryValidateCategoryRange(typeSymbol, attributeReferences, out string invalidCategoryValue))
+            {
+                // 방치하면 이미터가 0x0F 로 마스킹해 **다른 와이어 MessageId** 를 만든다 — 같은 ID 의 다른 메시지와
+                // 충돌하면 모듈 이니셜라이저 등록 충돌로 어셈블리 로드가 실패하고, 오류 메시지는 원인을 가리키지 않는다(KI-8).
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.MessageCategoryOutOfRange,
+                    location,
+                    typeSymbol.Name,
+                    invalidCategoryValue));
+                return;
+            }
+
             var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
 
             if (TryReportDuplicateMessageAttributes(typeMeta, context, location))
