@@ -82,6 +82,9 @@ namespace MessageProtocol.CodeGenerator.Metadata
             Members = typeSymbol.GetMembers()
                 .Where(m => m is IFieldSymbol || m is IPropertySymbol)
                 .Where(m => !m.IsStatic)
+                // 인덱서는 IPropertySymbol 이지만 Roslyn 이름이 "this[]" 라 멤버로 뽑히면 `message.this[]` 같은
+                // 문법 오류 코드가 진단 없이 생성된다. 인수를 받아야 하므로 직렬화 멤버가 될 수 없다 (Known-Issues KI-23).
+                .Where(m => m is not IPropertySymbol { IsIndexer: true })
                 .Where(m =>
                 {
                     bool ignore = m.ContainAttribute(references.MessageIgnoreAttributeType);

@@ -569,6 +569,26 @@ public class GeneratorDiagnosticTests
         Assert.Contains("RegisterGenericConstruction<global::TestNs.Envelope<long>>(3)", generated);
     }
 
+    [Fact]
+    public void 공개_인덱서는_직렬화_멤버에서_제외된다()
+    {
+        // KI-23 회귀: 인덱서도 `IPropertySymbol`(Name = "this[]")이라 멤버로 뽑히면 `message.this[]` 같은
+        // 문법 오류 코드가 진단 없이 생성되어 소비자 빌드가 깨진다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(1)]
+            public partial class WithIndexer
+            {
+                public int Value { get; set; }
+                public int this[int index] { get => Value; set => Value = value; }
+            }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.DoesNotContain("this[", generated);
+        Assert.Contains("Value", generated);
+        Assert.Empty(compileErrors);
+    }
+
     static int CountOccurrences(string text, string pattern)
     {
         int count = 0;

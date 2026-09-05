@@ -55,6 +55,8 @@ updated: 2026-09-05
 
 미지원 타입은 컴파일 타임 에러 진단으로 거부한다 (조용한 스킵 없음).
 
+직렬화 멤버 선택은 `MessageIgnore` > `MessageInclude` > public 접근성 순이며, 정적 멤버와 **인덱서**는 제외한다 — 인덱서는 인수를 받아야 하므로 와이어 멤버가 될 수 없고, Roslyn 심볼 이름이 `this[]` 라 포함 시 `message.this[]` 같은 문법 오류 코드가 생성된다(Known-Issues KI-23).
+
 컬렉션 길이·개수 접두사는 할당 전에 남은 버퍼와 검증한다 — 고정 크기 요소는 `길이×요소크기 ≤ Remaining` 정확 검증, 가변 크기 요소는 `개수 ≤ Remaining`(요소 최소 와이어 1바이트) 상한 검증, 초과 시 `EndOfStreamException` (손상·악성 패킷의 거대 할당 차단).
 
 decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스케일 >28 또는 예약 비트 존재 시 `InvalidDataException` 거부 (무효 스케일의 런타임 내부 크래시 경로 차단).
