@@ -58,6 +58,8 @@ updated: 2026-09-05
 
 직렬화 멤버 선택은 `MessageIgnore` > `MessageInclude` > public 접근성 순이며, 정적 멤버와 **인덱서**는 제외한다 — 인덱서는 인수를 받아야 하므로 와이어 멤버가 될 수 없고, Roslyn 심볼 이름이 `this[]` 라 포함 시 `message.this[]` 같은 문법 오류 코드가 생성된다(Known-Issues KI-23).
 
+와이어 페이로드 **멤버 순서**는 베이스 체인을 루트 쪽부터 내려온 선언 순서이며, 파생이 같은 이름으로 그림자 제거한 멤버는 **베이스의 위치를 유지한 채 파생 심볼(타입)로 기록**된다 — `TypeMetadata.GetWireMembers` 단일 구현을 이미터·그래프가 공유한다. 순서는 송수신 와이어 호환의 일부이므로 `Dictionary` 열거 같은 BCL 구현 세부에 의존하지 않는다(Known-Issues KI-4).
+
 컬렉션 길이·개수 접두사는 할당 전에 남은 버퍼와 검증한다 — 고정 크기 요소는 `길이×요소크기 ≤ Remaining` 정확 검증, 가변 크기 요소는 `개수 ≤ Remaining`(요소 최소 와이어 1바이트) 상한 검증, 초과 시 `EndOfStreamException` (손상·악성 패킷의 거대 할당 차단).
 
 decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스케일 >28 또는 예약 비트 존재 시 `InvalidDataException` 거부 (무효 스케일의 런타임 내부 크래시 경로 차단).

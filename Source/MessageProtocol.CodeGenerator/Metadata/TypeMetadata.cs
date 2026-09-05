@@ -97,6 +97,49 @@ namespace MessageProtocol.CodeGenerator.Metadata
                 .ToArray();
         }
 
+        /// <summary>
+        /// 와이어 페이로드 멤버 순서 — 베이스 체인을 루트 쪽부터 내려오며 **선언 순서**로 병합하고,
+        /// 같은 이름의 파생 멤버가 베이스 멤버를 그림자 제거할 때 **베이스의 위치**를 유지한 채 심볼만 바꾼다.
+        /// <para>
+        /// 이미터와 그래프가 이 한 구현을 공유한다(이전에는 동일한 로직이 두 곳에 복제되어 있었다).
+        /// 순서를 `Dictionary.Values` 열거에 맡기지 않는 이유가 핵심이다 — 그 순서는 삽입 순서일 뿐 규약이 아니라
+        /// BCL 구현 세부모다. 페이로드 바이트 순서는 송수신이 반드시 일치해야 하는 와이어 형식이므로
+        /// 명시적으로 고정한다 (Known-Issues KI-4).
+        /// </para>
+        /// </summary>
+        public static IReadOnlyList<MemberMetadata> GetWireMembers(TypeMetadata typeMeta)
+        {
+            var ordered = new List<MemberMetadata>();
+            var indexByName = new Dictionary<string, int>(StringComparer.Ordinal);
+            AppendWireMembers(typeMeta, ordered, indexByName);
+            return ordered;
+        }
+
+        static void AppendWireMembers(
+            TypeMetadata typeMeta,
+            List<MemberMetadata> ordered,
+            Dictionary<string, int> indexByName)
+        {
+            if (typeMeta.BaseTypeMetadata != null)
+            {
+                AppendWireMembers(typeMeta.BaseTypeMetadata, ordered, indexByName);
+            }
+
+            foreach (var member in typeMeta.Members)
+            {
+                if (indexByName.TryGetValue(member.Name, out int index))
+                {
+                    // 그림자 제거: 위치는 베이스 선언 자리, 타입·심볼은 파생 것으로.
+                    ordered[index] = member;
+                }
+                else
+                {
+                    indexByName[member.Name] = ordered.Count;
+                    ordered.Add(member);
+                }
+            }
+        }
+
         /// <summary>flags + category + id 값을 조립한 프로토콜 MessageId.</summary>
         public uint GetMessageId()
         {

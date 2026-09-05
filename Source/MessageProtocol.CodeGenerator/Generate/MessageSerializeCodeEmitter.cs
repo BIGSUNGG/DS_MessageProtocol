@@ -41,27 +41,6 @@ namespace MessageProtocol.CodeGenerator.Generate
             return true;
         }
 
-        /// <summary>베이스 체인 멤버를 이름 기준으로 병합한다 (파생이 우선).</summary>
-        static IEnumerable<MemberMetadata> GetAllMembers(TypeMetadata typeMeta)
-        {
-            var memberDict = new Dictionary<string, MemberMetadata>();
-
-            if (typeMeta.BaseTypeMetadata != null)
-            {
-                foreach (var member in GetAllMembers(typeMeta.BaseTypeMetadata))
-                {
-                    memberDict[member.Name] = member;
-                }
-            }
-
-            foreach (var member in typeMeta.Members)
-            {
-                memberDict[member.Name] = member;
-            }
-
-            return memberDict.Values;
-        }
-
         static string GetTypeDisplayName(ITypeSymbol typeSymbol)
         {
             return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);

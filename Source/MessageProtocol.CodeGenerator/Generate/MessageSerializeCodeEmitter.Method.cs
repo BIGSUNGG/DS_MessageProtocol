@@ -195,7 +195,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 sb.AppendLine($@"{indent}private static void {typeModel.PopulatePayloadMethodName}(ref MessageBufferReader reader, {typeModel.TypeName} result, ref MessageSerializer.DeserializeContext context)");
                 sb.AppendLine($@"{indent}{{");
-                foreach (var member in GetAllMembers(typeModel.Metadata))
+                foreach (var member in TypeMetadata.GetWireMembers(typeModel.Metadata))
                 {
                     sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state, isRootType));
                 }
@@ -217,7 +217,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}private static {typeModel.TypeName} {typeModel.ReadPayloadMethodName}(ref MessageBufferReader reader, ref MessageSerializer.DeserializeContext context)");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    var result = default({typeModel.TypeName});");
-                foreach (var member in GetAllMembers(typeModel.Metadata))
+                foreach (var member in TypeMetadata.GetWireMembers(typeModel.Metadata))
                 {
                     sb.Append(Member.EmitDeserialize(member, "result", indent + "    ", graph, state, isRootType));
                 }
@@ -236,7 +236,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 EmitState state)
             {
                 int fixedSize = 0;
-                foreach (var member in GetAllMembers(typeModel.Metadata))
+                foreach (var member in TypeMetadata.GetWireMembers(typeModel.Metadata))
                 {
                     if (Member.TryGetFixedPrimitiveWireSize(member.Type, out int size))
                     {
@@ -249,7 +249,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                     sb.AppendLine($@"{indent}writer.EnsureCapacity({fixedSize});");
                 }
 
-                foreach (var member in GetAllMembers(typeModel.Metadata))
+                foreach (var member in TypeMetadata.GetWireMembers(typeModel.Metadata))
                 {
                     sb.Append(Member.EmitSerialize(member, "message", indent, graph, state));
                 }

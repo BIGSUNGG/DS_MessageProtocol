@@ -86,7 +86,7 @@ namespace MessageProtocol.CodeGenerator.Graph
 
         void Collect(TypeMetadata typeMeta)
         {
-            foreach (var member in GetAllMembers(typeMeta))
+            foreach (var member in TypeMetadata.GetWireMembers(typeMeta))
             {
                 Collect(member.Type);
             }
@@ -119,27 +119,6 @@ namespace MessageProtocol.CodeGenerator.Graph
             _lookup[namedType] = typeModel;
 
             Collect(typeModel.Metadata);
-        }
-
-        /// <summary>베이스 체인의 멤버를 이름 기준으로 병합한다 (파생이 그림자 제거).</summary>
-        static IEnumerable<MemberMetadata> GetAllMembers(TypeMetadata typeMeta)
-        {
-            var memberDict = new Dictionary<string, MemberMetadata>();
-
-            if (typeMeta.BaseTypeMetadata != null)
-            {
-                foreach (var member in GetAllMembers(typeMeta.BaseTypeMetadata))
-                {
-                    memberDict[member.Name] = member;
-                }
-            }
-
-            foreach (var member in typeMeta.Members)
-            {
-                memberDict[member.Name] = member;
-            }
-
-            return memberDict.Values;
         }
 
         static bool IsPrimitiveLike(ITypeSymbol typeSymbol)

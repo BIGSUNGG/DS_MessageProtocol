@@ -642,6 +642,102 @@ public class GeneratorDiagnosticTests
         Assert.Empty(compileErrors);
     }
 
+    [Fact]
+    public void 와이어_멤버_순서는_베이스_선언순서와_그림자_제거_위치를_고정한다()
+    {
+        // KI-4 회귀: 페이로드 바이트 순서는 송수신이 반드시 일치해야 하는 와이어 형식인데, 이전에는
+        // `Dictionary.Values` 열거 순서(삽입 순서일 뿐 규약이 아닌 BCL 구현 세부)에 얹혀 있었다.
+        // 이제 `TypeMetadata.GetWireMembers` 가 명시적으로 고정하며, 이 테스트가 그 레이아웃을 못박는다.
+        var compilation = CreateTpaCompilation(Header + """
+            [GroupRootMessage(400)]
+            public partial class OrderBase
+            {
+                public int BaseFirst { get; set; }
+                public string? Shadowed { get; set; }
+                public long BaseLast { get; set; }
+            }
+
+            [GroupElementMessage(401)]
+            public partial class OrderDerived : OrderBase
+            {
+                public new long Shadowed { get; set; }
+                public byte DerivedOwn { get; set; }
+            }
+            """ + Footer);
+
+        var rootType = compilation.GetTypeByMetadataName("TestNs.OrderDerived")!;
+        var attributeReferences = new AttributeReferences(compilation);
+        var typeMeta = new TypeMetadata(rootType, attributeReferences);
+
+        bool emitted = MessageSerializeCodeEmitter.TryEmit(
+            typeMeta, attributeReferences, hasCollectionsMarshal: true, out var code, out _);
+
+        Assert.True(emitted);
+        Assert.NotNull(code);
+        // 베이스 선언 순서 먼저, 파생 고유 멤버 나중.
+        Assert.Equal(
+            new[] { "BaseFirst", "Shadowed", "BaseLast", "DerivedOwn" },
+            ExtractWriteOrder(code!));
+        // 그림자 제거된 멤버는 **베이스 위치**를 유지한 채 파생 타입(long)으로 기록된다.
+        Assert.Contains("writer.WriteInt64(message.Shadowed)", code);
+        Assert.DoesNotContain("writer.WriteString(message.Shadowed)", code);
+    }
+
+    [Fact]
+    public void 중첩_페이로드_헬퍼의_멤버_순서도_같은_규칙을_쓴다()
+    {
+        // 이미터(루트 페이로드)와 그래프(중첩 페이로드 헬퍼)가 예전에는 동일한 병합 로직을 각각 갖고 있었다.
+        // 한 구현(`TypeMetadata.GetWireMembers`)을 공유하므로 중첩 헬퍼의 바이트 순서도 같은 규칙임을 고정한다.
+        var compilation = CreateTpaCompilation(Header + """
+            public class NestedOrderBase
+            {
+                public int NestedBaseFirst { get; set; }
+                public string? NestedShadow { get; set; }
+            }
+
+            public class NestedOrderDerived : NestedOrderBase
+            {
+                public new long NestedShadow { get; set; }
+                public byte NestedOwn { get; set; }
+            }
+
+            [StandaloneMessage(402)]
+            public partial class NestedOrderHost
+            {
+                public int HostOwn { get; set; }
+                public NestedOrderDerived? Payload { get; set; }
+            }
+            """ + Footer);
+
+        var rootType = compilation.GetTypeByMetadataName("TestNs.NestedOrderHost")!;
+        var attributeReferences = new AttributeReferences(compilation);
+        var typeMeta = new TypeMetadata(rootType, attributeReferences);
+
+        bool emitted = MessageSerializeCodeEmitter.TryEmit(
+            typeMeta, attributeReferences, hasCollectionsMarshal: true, out var code, out _);
+
+        Assert.True(emitted);
+        Assert.NotNull(code);
+
+        // 중첩 페이로드 기록 헬퍼(시그니처가 `NestedOrderDerived message`) 이후의 기록 순서만 잘라 검증한다.
+        int helperStart = code!.IndexOf("NestedOrderDerived message", StringComparison.Ordinal);
+        Assert.True(helperStart >= 0, "nested payload write helper not found");
+
+        Assert.Equal(
+            new[] { "NestedBaseFirst", "NestedShadow", "NestedOwn" },
+            ExtractWriteOrder(code[helperStart..]));
+        Assert.Contains("writer.WriteInt64(message.NestedShadow)", code);
+    }
+
+    /// <summary>생성 코드에서 `writer.Write*(message.멤버)` 호출의 멤버 이름을 나온 순서대로뽑는다 = 와이어 기록 순서.</summary>
+    static IReadOnlyList<string> ExtractWriteOrder(string generated)
+    {
+        return System.Text.RegularExpressions.Regex
+            .Matches(generated, @"writer\.Write\w+\(message\.(\w+)")
+            .Select(static match => match.Groups[1].Value)
+            .ToList();
+    }
+
     static int CountOccurrences(string text, string pattern)
     {
         int count = 0;
