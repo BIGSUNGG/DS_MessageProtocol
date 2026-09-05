@@ -147,6 +147,39 @@ public class BufferIOTests
         Assert.Throws<InvalidDataException>(() => new MessageBufferReader(bytes).ReadString());
     }
 
+    [Theory]
+    [InlineData(-2)]
+    [InlineData(-3)]
+    [InlineData(int.MinValue)]
+    public void 마이너스1_외_음수_길이접두는_읽기에서_거부된다(int length)
+    {
+        // KI-6 회귀: null 규약은 -1 뿐 — 다른 음수가 null 로 조용히 복호되면 손상 패킷이 은폐된다.
+        Assert.Throws<InvalidDataException>(() => ReadStringWithLengthPrefix(length));
+    }
+
+    static void ReadStringWithLengthPrefix(int length)
+    {
+        var writer = MessageBufferWriter.Create();
+        try
+        {
+            writer.WriteInt32(length);
+            _ = new MessageBufferReader(writer.WrittenReadOnlySpan).ReadString();
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    [Fact]
+    public void 마이너스1_길이접두는_null로_복호된다()
+    {
+        var writer = MessageBufferWriter.Create();
+        writer.WriteInt32(-1);
+        Assert.Null(new MessageBufferReader(writer.WrittenReadOnlySpan).ReadString());
+        writer.Dispose();
+    }
+
     [Fact]
     public void 범위를_벗어난_읽기는_EndOfStreamException()
     {

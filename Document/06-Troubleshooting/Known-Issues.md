@@ -3,12 +3,12 @@ project: DS_MessageProtocol
 type: troubleshoot
 status: draft
 tags: [known-issues, generator, runtime]
-updated: 2026-09-04
+updated: 2026-09-05
 ---
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남음. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6 해결. 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -110,6 +110,16 @@ KI-13 가드가 5 변형 전부 적용됐다고 기록됐으나, `CollectionsMar
 
 조치 방향: 교체 대신 거부 → 완료. 송신 측 예외는 자연스러운 `EncoderFallbackException`(프로그래밍 오류), 수신 측은 `InvalidDataException`(와이어 내용 불법)으로 보고.
 
+### KI-6. `ReadString` 음수 길이 접두사 → 손상 데이터가 null 로 조용히 통과 (해결)
+
+**상태: 해결 (2026-09-05).** `ReadString` 이 `-1` 만 null 로 복호하고, 나머지 음수(`-2`…`int.MinValue`)는 `InvalidDataException` 으로 거부 — KI-15·KI-20 와이어 무결성 엄격 기조와 동일(경계 위반 `EndOfStreamException` 과 와이어 내용 불법을 구분). 회귀 테스트 4개(`-2`·`-3`·`int.MinValue` 거부 + `-1` null 복호 유지). 테스트 93→97.
+
+원본 발견 내용:
+
+null 규약은 길이 접두 `-1` 인데 판독 코드가 `length < 0` 전체를 null 로 처리했다. 손상되거나 악意적인 프레임의 `-2`·`int.MinValue` 접두사가 오류 없이 null 문자열로 복호되어, 필드 누락(전송 실패)과 와이어 손상을 수신 측이 구분할 수 없었다.
+
+조치 방향: 규약 외 음수 거부 → 완료.
+
 ## 잠재 결함 (코드 리뷰)
 
 | 번호 | 위치 | 내용 |
@@ -117,7 +127,6 @@ KI-13 가드가 5 변형 전부 적용됐다고 기록됐으나, `CollectionsMar
 | KI-3 | `MessageSerializeCodeEmitter.Member._uniqueIdCounter` | 프로세스 전역 정적 카운터 → 생성 코드가 이전 컴파일 이력에 의존(비결정적). 증분 캐싱·재현성 저하. `EmitState`로 옮겨야 함 |
 | KI-4 | `GetAllMembers` (emitter·graph 중복 정의) | 와이어 멤버 순서가 `Dictionary.Values` 열거 순서에 의존 — 현 .NET에서는 삽입 순서지만 규약 아님. `List` 권장 |
 | KI-5 | 생성 `Deserialize(ref reader)` | 헤더·MessageId 를 검증하지 않고 건너뜀 — 다른 타입 바이트를 먹이면 조용히 재해석 (성능 트레이드오프, 문서화 필요) |
-| KI-6 | `MessageBufferReader.ReadString` | `-1`만 null 규약인데 모든 음수를 null 처리 — 손상 데이터가 조용히 통과 |
 | KI-7 | `MessageBufferWriter.PatchInt32` | 오프셋 경계 검증 없음. `Grow`의 `Length * 2`는 1GB 부근 int 오버플로 가능 |
 | KI-8 | `MessageCategoryAttribute` | 범위 밖 카테고리 값이 `& 0x0F` 로 조용히 마스킹 |
 | KI-9 | 그래프 밖 메시지 위임 (`EmitOutOfGraphMessage*`) | 위임 시 새 `SerializeContext` — 어셈블리 경계 넘는 공유 참조 복원 불가, 경계 넘는 순환 참조는 스택 오버플로. 제약 문서화 필요 |

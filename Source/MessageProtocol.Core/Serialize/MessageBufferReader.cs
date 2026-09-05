@@ -154,7 +154,12 @@ namespace MessageProtocol.Serialize
         public string? ReadString()
         {
             int length = ReadInt32();
-            if (length < 0) return null;
+            if (length == -1) return null;
+            // null 규약은 -1 뿐이다. 나머지 음수(-2…int.MinValue)는 손상된 길이 접두이므로 null 로 둔갑시켜 조용히 통과시키지 않는다 (Known-Issues KI-6).
+            if (length < -1)
+            {
+                throw new InvalidDataException("String length prefix is negative but not -1.");
+            }
             if (length == 0) return string.Empty;
             try
             {
