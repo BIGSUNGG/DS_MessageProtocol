@@ -354,6 +354,15 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             // ------- 배열 -------
+            //
+            // 컬렉션 쓰기는 멤버 표현식을 **딱 한 번** 평가해 로컬로 스냅샷한다(`__arr`/`__coll`/`__list` → `__span`/`__count`).
+            // null 판정도 스냅샷 로컬로 한다. 두 가지 이유 (Known-Issues KI-26):
+            //  ① 일관성 — 길이 접두와 요소를 서로 다른 평가에서 가져오면 프레임이 스스로 모순된다.
+            //     계산형 프로퍼티(`public IList<int> Codes => Build();`)에서는 길이가 다른 컬렉션에서 나오고,
+            //     두 번째 평가가 null 을 돌려주면 else 분기 안에서 NRE 가 난다(TOCTOU).
+            //  ② 비용 — 이전 코드는 `Count`(길이 접두) + `Count`(루프 조건, N+1회) + 인덱서(멤버 접근 N회)로
+            //     게터가 2N+2회 돌았다. `CollectionsMarshal` 경로가 이미 스팬으로 스냅샷하던 것과 같은 규약으로 맞춘다
+            //     (특히 `CollectionsMarshal` 이 없는 Unity/netstandard2.1 의 `List<T>`·`IList<T>` 에서 효과).
 
             static string EmitArrayWrite(
                 IArrayTypeSymbol arrayType,
@@ -370,32 +379,35 @@ namespace MessageProtocol.CodeGenerator.Generate
 
                 if (IsBulkCopyable(elementType))
                 {
-                    return $@"{indent}if ({valueExpression} is null)
+                    return $@"{indent}var __arr{uid} = {valueExpression};
+{indent}if (__arr{uid} is null)
 {indent}{{
 {indent}    writer.WriteInt32(-1);
 {indent}}}
 {indent}else
 {indent}{{
-{indent}    writer.WriteInt32({valueExpression}.Length);
-{indent}    if ({valueExpression}.Length > 0)
+{indent}    writer.WriteInt32(__arr{uid}.Length);
+{indent}    if (__arr{uid}.Length > 0)
 {indent}    {{
-{indent}        writer.WriteBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes<{elementTypeName}>({valueExpression}.AsSpan()));
+{indent}        writer.WriteBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes<{elementTypeName}>(__arr{uid}.AsSpan()));
 {indent}    }}
 {indent}}}
 ";
                 }
 
                 var itemName = $"__item{uid}";
-                return $@"{indent}if ({valueExpression} is null)
+                return $@"{indent}var __arr{uid} = {valueExpression};
+{indent}if (__arr{uid} is null)
 {indent}{{
 {indent}    writer.WriteInt32(-1);
 {indent}}}
 {indent}else
 {indent}{{
-{indent}    writer.WriteInt32({valueExpression}.Length);
-{indent}    for (int __i{uid} = 0; __i{uid} < {valueExpression}.Length; __i{uid}++)
+{indent}    int __count{uid} = __arr{uid}.Length;
+{indent}    writer.WriteInt32(__count{uid});
+{indent}    for (int __i{uid} = 0; __i{uid} < __count{uid}; __i{uid}++)
 {indent}    {{
-{indent}        var {itemName} = {valueExpression}[__i{uid}];
+{indent}        var {itemName} = __arr{uid}[__i{uid}];
 {EmitSerializeValue(elementType, itemName, indent + "        ", graph, state, diagnosticLocation, memberDisplayName)}{indent}    }}
 {indent}}}
 ";
@@ -489,32 +501,36 @@ namespace MessageProtocol.CodeGenerator.Generate
                 {
                     if (useCollectionsMarshal)
                     {
-                        return $@"{indent}if ({valueExpression} is null)
+                        return $@"{indent}var __list{uid} = {valueExpression};
+{indent}if (__list{uid} is null)
 {indent}{{
 {indent}    writer.WriteInt32(-1);
 {indent}}}
 {indent}else
 {indent}{{
-{indent}    writer.WriteInt32({valueExpression}.Count);
-{indent}    if ({valueExpression}.Count > 0)
+{indent}    var __span{uid} = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(__list{uid});
+{indent}    writer.WriteInt32(__span{uid}.Length);
+{indent}    if (__span{uid}.Length > 0)
 {indent}    {{
-{indent}        writer.WriteBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes(System.Runtime.InteropServices.CollectionsMarshal.AsSpan({valueExpression})));
+{indent}        writer.WriteBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes(__span{uid}));
 {indent}    }}
 {indent}}}
 ";
                     }
 
                     var bulkItemName = $"__item{uid}";
-                    return $@"{indent}if ({valueExpression} is null)
+                    return $@"{indent}var __coll{uid} = {valueExpression};
+{indent}if (__coll{uid} is null)
 {indent}{{
 {indent}    writer.WriteInt32(-1);
 {indent}}}
 {indent}else
 {indent}{{
-{indent}    writer.WriteInt32({valueExpression}.Count);
-{indent}    for (int __i{uid} = 0; __i{uid} < {valueExpression}.Count; __i{uid}++)
+{indent}    int __count{uid} = __coll{uid}.Count;
+{indent}    writer.WriteInt32(__count{uid});
+{indent}    for (int __i{uid} = 0; __i{uid} < __count{uid}; __i{uid}++)
 {indent}    {{
-{indent}        var {bulkItemName} = {valueExpression}[__i{uid}];
+{indent}        var {bulkItemName} = __coll{uid}[__i{uid}];
 {EmitSerializeValue(elementType, bulkItemName, indent + "        ", graph, state, diagnosticLocation, memberDisplayName)}{indent}    }}
 {indent}}}
 ";
@@ -523,13 +539,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 var itemName = $"__item{uid}";
                 if (useCollectionsMarshal)
                 {
-                    return $@"{indent}if ({valueExpression} is null)
+                    return $@"{indent}var __list{uid} = {valueExpression};
+{indent}if (__list{uid} is null)
 {indent}{{
 {indent}    writer.WriteInt32(-1);
 {indent}}}
 {indent}else
 {indent}{{
-{indent}    var __span{uid} = System.Runtime.InteropServices.CollectionsMarshal.AsSpan({valueExpression});
+{indent}    var __span{uid} = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(__list{uid});
 {indent}    writer.WriteInt32(__span{uid}.Length);
 {indent}    for (int __i{uid} = 0; __i{uid} < __span{uid}.Length; __i{uid}++)
 {indent}    {{
@@ -539,16 +556,18 @@ namespace MessageProtocol.CodeGenerator.Generate
 ";
                 }
 
-                return $@"{indent}if ({valueExpression} is null)
+                return $@"{indent}var __coll{uid} = {valueExpression};
+{indent}if (__coll{uid} is null)
 {indent}{{
 {indent}    writer.WriteInt32(-1);
 {indent}}}
 {indent}else
 {indent}{{
-{indent}    writer.WriteInt32({valueExpression}.Count);
-{indent}    for (int __i{uid} = 0; __i{uid} < {valueExpression}.Count; __i{uid}++)
+{indent}    int __count{uid} = __coll{uid}.Count;
+{indent}    writer.WriteInt32(__count{uid});
+{indent}    for (int __i{uid} = 0; __i{uid} < __count{uid}; __i{uid}++)
 {indent}    {{
-{indent}        var {itemName} = {valueExpression}[__i{uid}];
+{indent}        var {itemName} = __coll{uid}[__i{uid}];
 {EmitSerializeValue(elementType, itemName, indent + "        ", graph, state, diagnosticLocation, memberDisplayName)}{indent}    }}
 {indent}}}
 ";

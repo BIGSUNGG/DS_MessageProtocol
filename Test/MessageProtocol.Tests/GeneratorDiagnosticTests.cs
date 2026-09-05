@@ -729,6 +729,45 @@ public class GeneratorDiagnosticTests
         Assert.Contains("writer.WriteInt64(message.NestedShadow)", code);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void 컬렉션_쓰기는_멤버를_로컬로_스냅샷한다(bool hasCollectionsMarshal)
+    {
+        // KI-26 회귀: 길이 접두·루프 조건·요소 접근이 각자 `message.Values` 를 다시 평가하면 게터가 2N+2회 돌고,
+        // 계산형 프로퍼티에서는 길이와 요소가 서로 다른 인스턴스에서 나와 프레임이 스스로 모순된다.
+        // hasCollectionsMarshal=false 는 Unity/netstandard2.1 소비자 경로라 이 저장소에서는 실행되지 않음 → 생성 텍스트로 고정.
+        var compilation = CreateTpaCompilation(Header + """
+            [StandaloneMessage(1)]
+            public partial class SnapshotMessage
+            {
+                public System.Collections.Generic.List<int>? Values { get; set; }
+                public System.Collections.Generic.List<string>? Names { get; set; }
+                public string[]? Tags { get; set; }
+            }
+            """ + Footer);
+
+        var rootType = compilation.GetTypeByMetadataName("TestNs.SnapshotMessage")!;
+        var attributeReferences = new AttributeReferences(compilation);
+        var typeMeta = new TypeMetadata(rootType, attributeReferences);
+
+        bool emitted = MessageSerializeCodeEmitter.TryEmit(
+            typeMeta, attributeReferences, hasCollectionsMarshal, out var code, out _);
+
+        Assert.True(emitted);
+        Assert.NotNull(code);
+
+        // 멤버 표현식은 스냅샷 한 곳에서만 등장한다 — null 판정도 스냅샷 로컬로 하므로
+        // 계산형 프로퍼티가 두 번째 평가에서 null 을 돌려줘도 NRE 가 나지 않는다(TOCTOU 차단).
+        Assert.Equal(1, CountOccurrences(code!, "message.Values"));
+        Assert.Equal(1, CountOccurrences(code!, "message.Names"));
+        Assert.Equal(1, CountOccurrences(code!, "message.Tags"));
+        Assert.DoesNotContain("if (message.Values is null)", code);
+
+        Assert.Contains(hasCollectionsMarshal ? "var __list" : "var __coll", code);
+        Assert.Contains("var __arr", code);      // 배열은 양쪽 구성 모두 스냅샷
+    }
+
     /// <summary>생성 코드에서 `writer.Write*(message.멤버)` 호출의 멤버 이름을 나온 순서대로뽑는다 = 와이어 기록 순서.</summary>
     static IReadOnlyList<string> ExtractWriteOrder(string generated)
     {

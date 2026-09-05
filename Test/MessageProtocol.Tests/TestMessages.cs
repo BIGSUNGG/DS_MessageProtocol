@@ -278,3 +278,33 @@ public class LateBoundMessage : MessageProtocol.Serialize.IMessageSerializable<L
 {
     public int Value { get; set; }
 }
+
+// ---------- 컬렉션 쓰기 스냅샷 (KI-26) ----------
+
+// 컬렉션 프로퍼티 게터 호출 횟수를 세는 픽스처 — 생성 코드가 길이 접두·루프 조건·요소 접근마다
+// 멤버를 다시 평가하는지(게터 2N+2회) 한 번만 스냅샷하는지(1회)를 실행으로 검증한다.
+[StandaloneMessage(131)]
+public partial class SnapshotCollectionMessage
+{
+    List<int> _codes = new() { 1, 2, 3 };
+    string[] _tags = { "a", "b" };
+
+    [MessageIgnore]
+    public int CodesGetterCalls { get; set; }
+
+    [MessageIgnore]
+    public int TagsGetterCalls { get; set; }
+
+    // IList<T> 선언 — CollectionsMarshal 고속 경로를 타지 않으므로 인덱서 루프 변형이 사용된다.
+    public IList<int> Codes
+    {
+        get { CodesGetterCalls++; return _codes; }
+        set => _codes = (List<int>)value;
+    }
+
+    public string[] Tags
+    {
+        get { TagsGetterCalls++; return _tags; }
+        set => _tags = value;
+    }
+}
