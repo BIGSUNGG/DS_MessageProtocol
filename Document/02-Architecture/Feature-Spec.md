@@ -145,6 +145,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 ## F10. 검증 산출물
 
 - 유닛 테스트: round-trip(타입 종류 × 멤버 조합) · 생성기 진단 · 등록/디스패치 — Legacy 50 테스트 동등.
+- `CollectionsMarshal` 폴백 경로 실행 검증: `Test/MessageProtocol.NetStandardFixtures`(netstandard2.1 = Unity 호환 프로필)가 고속 경로 없는 생성 코드를 담은 어셈블리를 제공하고, Tests(net8.0/net9.0)가 그것을 참조해 **실행**으로 왕복·할당 가드(KI-17)·중첩 깊이 가드(KI-14/25)를 검증한다 — 이 저장소의 테스트 TFM 에는 `CollectionsMarshal` 이 항상 있어 폴백 생성 코드가 텍스트 단언에만 의존했던 공백을 채운다.
 - 벤치마크: 직렬화 핫 경로 (BenchmarkDotNet).
 - 최소 예제: Standalone round-trip 콘솔 샘플.
 - `Sandbox/`는 앞으로 구현될 기능의 실행 가능 인수 조건을 담는다.

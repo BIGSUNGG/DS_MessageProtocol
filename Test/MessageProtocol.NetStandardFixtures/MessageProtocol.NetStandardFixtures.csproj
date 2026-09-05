@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Unity 호환 프로필. 이 TFM 에는 System.Runtime.InteropServices.CollectionsMarshal 이 없으므로
+         생성기가 고속 경로(AsSpan/SetCount) 대신 폴백 변형(인덱서 루프)을 방출한다.
+         Test 프로젝트는 net8.0/net9.0 라 항상 CollectionsMarshal 이 있어 폴백 생성 코드가
+         그동안 어디에서도 실행되지 않았다(생성 텍스트 단언만 존재) — 이 어셈블리가 그 실행 증거다. -->
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <!-- 생성 코드 감사용 디스크 출력 (obj/**/generated) -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Source\MessageProtocol.Core\MessageProtocol.Core.csproj" />
+    <ProjectReference Include="..\..\Source\MessageProtocol.CodeGenerator\MessageProtocol.CodeGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false">
+      <SetTargetFramework>TargetFramework=netstandard2.0</SetTargetFramework>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

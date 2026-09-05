@@ -21,6 +21,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Sandbox", "Sandbox", "{3D40
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.Sandbox", "Sandbox\MessageProtocol.Sandbox\MessageProtocol.Sandbox.csproj", "{05911911-1CD2-4129-9D5A-0C04F63C1EBB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageProtocol.NetStandardFixtures", "Test\MessageProtocol.NetStandardFixtures\MessageProtocol.NetStandardFixtures.csproj", "{E3187C83-D13A-4EA5-8A71-588ED52DC770}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -103,6 +105,18 @@ Global
 		{05911911-1CD2-4129-9D5A-0C04F63C1EBB}.Release|x64.Build.0 = Release|Any CPU
 		{05911911-1CD2-4129-9D5A-0C04F63C1EBB}.Release|x86.ActiveCfg = Release|Any CPU
 		{05911911-1CD2-4129-9D5A-0C04F63C1EBB}.Release|x86.Build.0 = Release|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Debug|x64.Build.0 = Debug|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Debug|x86.Build.0 = Debug|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Release|x64.ActiveCfg = Release|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Release|x64.Build.0 = Release|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Release|x86.ActiveCfg = Release|Any CPU
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -114,5 +128,6 @@ Global
 		{70229FEB-5F22-45AA-8890-FB2F9B00CC0E} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{6A43524A-FAEE-489D-9A9D-B58150CE0C32} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{05911911-1CD2-4129-9D5A-0C04F63C1EBB} = {3D40F055-384E-DE04-BB81-B7972E166B19}
+		{E3187C83-D13A-4EA5-8A71-588ED52DC770} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal

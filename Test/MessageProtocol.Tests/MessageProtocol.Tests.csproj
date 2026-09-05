@@ -31,6 +31,8 @@
                       ReferenceOutputAssembly="false">
       <SetTargetFramework>TargetFramework=netstandard2.0</SetTargetFramework>
     </ProjectReference>
+    <!-- Unity/netstandard2.1 프로필에서 생성된 폴백 코드(CollectionsMarshal 없음)를 실행으로 검증하는 픽스처 어셈블리 -->
+    <ProjectReference Include="..\MessageProtocol.NetStandardFixtures\MessageProtocol.NetStandardFixtures.csproj" />
   </ItemGroup>
 
 </Project>

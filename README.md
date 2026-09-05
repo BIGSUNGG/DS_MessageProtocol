@@ -34,7 +34,7 @@ Unity Package Manager에서 NuGet을 쓰지 않는 경우, 위 패키지에서 �
 | 경로 | 내용 |
 | ------ | ------ |
 | `Source/` | 제품 코드 — Core(런타임) · CodeGenerator(생성기) · MessageProtocol(메타 패키지) · Shared(와이어 규칙 공유 소스) |
-| `Test/` | 스펙 기반 유닛 테스트 · BenchmarkDotNet 벤치마크 |
+| `Test/` | 스펙 기반 유닛 테스트 · BenchmarkDotNet 벤치마크 · netstandard2.1 픽스처(`CollectionsMarshal` 없는 Unity 호환 프로필의 폴백 생성 코드를 실행으로 검증) |
 | `Sandbox/` | 기능 인수 조건을 실행하는 콘솔 시나리오 |
 | `Document/` | Obsidian 문서 vault (진입점: `Document/00-AI/CONTEXT.md`) |
 | `Legacy/` | v1 참조 구현 (읽기 전용) |

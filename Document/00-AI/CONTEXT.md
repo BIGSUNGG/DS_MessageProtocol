@@ -20,7 +20,7 @@ updated: 2026-08-31
 - 문서 vault 루트: `Document/` (이 폴더가 Obsidian Vault)
 - 솔루션: `MessageProtocol.sln`
 - 제품: `Source/` (Core · CodeGenerator · MessageProtocol · Shared)
-- 테스트: `Test/` (MessageProtocol.Tests `net8.0;net9.0` · Benchmarks `net9.0`)
+- 테스트: `Test/` (MessageProtocol.Tests `net8.0;net9.0` · NetStandardFixtures `netstandard2.1` — `CollectionsMarshal` 이 없는 Unity 호환 프로필에서 생성된 폴백 코드를 실행으로 검증하는 픽스처 어셈블리 · Benchmarks `net9.0`)
 - 인수 조건: `Sandbox/MessageProtocol.Sandbox` (실행 시나리오, 통과 시 종료 코드 0)
 - 참조 구현: `Legacy/` (v1 전체 + 구 문서 `Legacy/Document/`)
 
