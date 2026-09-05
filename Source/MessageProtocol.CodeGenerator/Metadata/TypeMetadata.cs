@@ -39,7 +39,9 @@ namespace MessageProtocol.CodeGenerator.Metadata
 
         public TypeMetadata? BaseTypeMetadata { get; }
         public ContainingTypeMetadata[] ContainingTypes { get; }
-        public MemberMetadata[] Members { get; }
+
+        readonly AttributeReferences _references;
+        MemberMetadata[]? _members;
 
         /// <summary>
         /// 제네릭 와이어 메시지 여부: 제네릭 + Standalone 선언은 구성 선언과 무관하게
@@ -50,6 +52,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public TypeMetadata(INamedTypeSymbol typeSymbol, AttributeReferences references)
         {
             Symbol = typeSymbol;
+            _references = references;
             DeclarationKind = TypeDeclarationKindHelper.GetDeclarationKind(typeSymbol);
             ContainingTypes = GetContainingTypes(typeSymbol);
 
@@ -77,9 +80,19 @@ namespace MessageProtocol.CodeGenerator.Metadata
             {
                 BaseTypeMetadata = new TypeMetadata(baseTypeSymbol, references);
             }
+        }
 
+        /// <summary>
+        /// 직렬화 멤버(무시 속성 &gt; 포함 속성 &gt; public 순). **첫 접근에서 계산**한다 —
+        /// MessageId 충돌 검사처럼 속성만 필요한 컴파일 전체 패스에서 `TypeMetadata` 를 만들 때
+        /// 모든 후보 타입의 멤버를 순회·`MemberMetadata` 생성하지 않도록 (Known-Issues KI-31).
+        /// </summary>
+        public MemberMetadata[] Members => _members ??= ComputeMembers(Symbol, _references);
+
+        static MemberMetadata[] ComputeMembers(INamedTypeSymbol typeSymbol, AttributeReferences references)
+        {
             // 무시 속성 > 포함 속성 > public 순으로 직렬화 대상을 고른다.
-            Members = typeSymbol.GetMembers()
+            return typeSymbol.GetMembers()
                 .Where(m => m is IFieldSymbol || m is IPropertySymbol)
                 .Where(m => !m.IsStatic)
                 // 인덱서는 IPropertySymbol 이지만 Roslyn 이름이 "this[]" 라 멤버로 뽑히면 `message.this[]` 같은

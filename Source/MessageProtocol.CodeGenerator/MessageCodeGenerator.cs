@@ -160,6 +160,21 @@ namespace MessageProtocol.CodeGenerator
                 return;
             }
 
+            // 동일 와이어 MessageId 를 조립하는 두 메시지는 모듈 로드 시 `_registeredMessageIds` 등록 충돌로
+            // **어셈블리 로드가 실패**한다(TypeInitializationException) — 런타임까지 기다리지 않고 여기서 거부하며
+            // 상대 타입 이름을 함께 알려 원인을 찾게 한다 (Known-Issues KI-31).
+            uint wireMessageId = typeMeta.GetMessageId();
+            if (conflicts.TryGetMessageIdPeers(wireMessageId, typeSymbol, out string messageIdPeers))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.DuplicateWireMessageId,
+                    location,
+                    typeSymbol.Name,
+                    wireMessageId.ToString("X8"),
+                    messageIdPeers));
+                return;
+            }
+
             bool hasCollectionsMarshal = compilation.GetTypeByMetadataName("System.Runtime.InteropServices.CollectionsMarshal") != null;
             if (!MessageSerializeCodeEmitter.TryEmit(typeMeta, attributeReferences, hasCollectionsMarshal, out string? serializeCode, out var unsupportedMembers))
             {
@@ -273,6 +288,49 @@ namespace MessageProtocol.CodeGenerator
                 || typeSymbol.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
                 || typeSymbol.ContainAttribute(attributeReferences.GroupRootMessageAttributeType)
                 || typeSymbol.ContainAttribute(attributeReferences.GroupElementMessageAttributeType);
+        }
+
+        /// <summary>
+        /// 모듈 로드 시 `_registeredMessageIds` 에 **실제로 등록될** 와이어 MessageId 를 조립해 반환한다.
+        /// 등록되지 않는 형태는 false — NonId(임베디드 ID 없음), 제네릭 선언(런타임 키가 (MessageId, ClassId) 라
+        /// 구성 충돌 검사가 담당), partial 아님·기본 생성 불가(MSGPROT001·MSGPROT010 으로 생성 거부),
+        /// abstract 그룹 루트(상속 전용이라 생성 건너뜀). 이 게이트를 통과한 타입만 충돌 판정에 센다 —
+        /// 어차피 생성되지 않을 타입을 세면 거짓 양성이 난다.
+        /// </summary>
+        static bool TryGetRegisteredWireMessageId(
+            INamedTypeSymbol typeSymbol,
+            AttributeReferences attributeReferences,
+            out uint messageId)
+        {
+            messageId = 0;
+
+            if (typeSymbol.IsGenericType || !HasMessageAttribute(typeSymbol, attributeReferences))
+            {
+                return false;
+            }
+
+            if (!IsPartial(typeSymbol) || !IsConstructibleMessageType(typeSymbol))
+            {
+                return false;
+            }
+
+            // MSGPROT005(ID 값 범위)·MSGPROT013(카테고리 범위)으로 이미 거부될 타입은 생성·등록되지 않으므로
+            // 충돌 판정에서 뺀다 — 그렇지 않으면 그 타입 때문에 **문제없는 상대 타입까지** MSGPROT014 를 맞고
+            // 생성이 막힌다(연쇄 오탐). 실제로 등록될 형태만 세는 것이 이 게이트의 규약이다.
+            if (!TypeMetadataValidator.TryValidateMessageIdRange(typeSymbol, attributeReferences, out _, out _) ||
+                !TypeMetadataValidator.TryValidateCategoryRange(typeSymbol, attributeReferences, out _))
+            {
+                return false;
+            }
+
+            var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
+            if (typeMeta.IsNonIdMessage || (!typeMeta.IsStandaloneMessage && !typeMeta.IsGroupMessage))
+            {
+                return false;
+            }
+
+            messageId = typeMeta.GetMessageId();
+            return MessageWireFormat.HasEmbeddedMessageId((byte)(messageId >> 24));
         }
 
         internal static bool IsPartial(INamedTypeSymbol typeSymbol)
@@ -424,6 +482,25 @@ namespace MessageProtocol.CodeGenerator
             }
 
             var conflicts = new ConstructionConflicts();
+
+            // 비제네릭 메시지의 와이어 MessageId 소유자 — 동일 id 를 조립하는 두 타입은 모듈 로드 시
+            // `_registeredMessageIds` 등록 충돌로 어셈블리 로드가 실패하므로 컴파일에서 잡는다 (Known-Issues KI-31).
+            foreach (var type in types)
+            {
+                if (!TryGetRegisteredWireMessageId(type, attributeReferences, out uint wireMessageId))
+                {
+                    continue;
+                }
+
+                if (!conflicts.MessageIdOwners.TryGetValue(wireMessageId, out var owners))
+                {
+                    owners = new List<INamedTypeSymbol>();
+                    conflicts.MessageIdOwners[wireMessageId] = owners;
+                }
+
+                owners.Add(type);
+            }
+
             foreach (var pair in constructionCounts)
             {
                 if (pair.Value > 1)
@@ -562,10 +639,30 @@ namespace MessageProtocol.CodeGenerator
             public HashSet<INamedTypeSymbol> DuplicateConstructions { get; } = new(SymbolEqualityComparer.Default);
             public HashSet<(INamedTypeSymbol Declaration, uint ClassId)> CollidedIds { get; } = new(DeclarationClassIdComparer.Instance);
 
+            /// <summary>와이어 MessageId → 그 id 를 조립하는 타입들(모듈 로드 시 실제 등록될 형태만).</summary>
+            public Dictionary<uint, List<INamedTypeSymbol>> MessageIdOwners { get; } = new();
+
             public bool IsConflicting(INamedTypeSymbol construction, uint classId)
             {
                 return DuplicateConstructions.Contains(construction)
                     || CollidedIds.Contains((construction.OriginalDefinition, classId));
+            }
+
+            /// <summary>자신을 제외한 같은 와이어 MessageId 소유자가 있으면 그 이름들을 반환한다 (Known-Issues KI-31).</summary>
+            public bool TryGetMessageIdPeers(uint messageId, INamedTypeSymbol self, out string peers)
+            {
+                peers = string.Empty;
+                if (!MessageIdOwners.TryGetValue(messageId, out var owners) || owners.Count < 2)
+                {
+                    return false;
+                }
+
+                peers = string.Join(
+                    ", ",
+                    owners
+                        .Where(owner => !SymbolEqualityComparer.Default.Equals(owner, self))
+                        .Select(owner => $"'{owner.ToDisplayString()}'"));
+                return true;
             }
         }
 

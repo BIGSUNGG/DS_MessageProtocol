@@ -1051,6 +1051,93 @@ public class GeneratorDiagnosticTests
         Assert.Empty(compileErrors);
     }
 
+    [Fact]
+    public void MSGPROT014_동일_와이어_MessageId_두_메시지는_컴파일에서_거부된다()
+    {
+        // KI-31 회귀: id 충돌은 모듈 이니셜라이저의 `_registeredMessageIds` 에서만 발견되어
+        // `InvalidOperationException: Message type with ID … is already registered by '…'` → TypeInitializationException
+        // (어셈블리 로드 실패)이 되고, 오류 메시지는 상대 타입만 지목해 원인을 가리키지 않았다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            public partial class FirstMessage { public int X { get; set; } }
+
+            [StandaloneMessage(7)]
+            public partial class SecondMessage { public int Y { get; set; } }
+            """ + Footer);
+
+        // 두 타입 모두 자기 관점에서 상대를 지목받는다.
+        var reported = diagnostics.Where(d => d.Id == "MSGPROT014").ToArray();
+        Assert.Equal(2, reported.Length);
+        Assert.All(reported, d => Assert.Equal(DiagnosticSeverity.Error, d.Severity));
+        Assert.Contains("SecondMessage", reported[0].GetMessage());
+        Assert.Contains("FirstMessage", reported[1].GetMessage());
+        Assert.Contains("0x", reported[0].GetMessage());   // 충돌한 와이어 ID(16진)를 함께 알려준다
+
+        // 둘 다 생성되지 않는다(등록될 수 없으므로).
+        Assert.DoesNotContain("partial class FirstMessage", generated);
+        Assert.DoesNotContain("partial class SecondMessage", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT014_카테고리가_다르면_같은_id_값도_충돌하지_않는다()
+    {
+        // 역방향 가드: 충돌 키는 속성 원값이 아니라 **조립된 와이어 MessageId**(flags+category+24비트 값)다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            [MessageCategory(MessageCategory.Category1)]
+            public partial class CategoryOneMessage { public int X { get; set; } }
+
+            [StandaloneMessage(7)]
+            [MessageCategory(MessageCategory.Category2)]
+            public partial class CategoryTwoMessage { public int Y { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT014");
+        Assert.Contains("partial class CategoryOneMessage", generated);
+        Assert.Contains("partial class CategoryTwoMessage", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT014_제네릭_선언은_같은_id_값이어도_충돌로_보지_않는다()
+    {
+        // 역방향 가드: 제네릭 구성의 런타임 키는 (MessageId, ClassId) 라 선언 id 값이 같아도 ClassId 가 다르면 공존한다.
+        // (구성 간 충돌은 기존 `CollectConstructionConflicts` 가 담당한다.)
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenA<int>), ClassId = 1)]
+            public partial class GenA<T> { public T? Value { get; set; } }
+
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenB<int>), ClassId = 2)]
+            public partial class GenB<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT014");
+        Assert.Contains("GenA", generated);
+        Assert.Contains("GenB", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT014_추상_그룹_루트는_충돌_판정에서_제외된다()
+    {
+        // 역방향 가드: abstract 그룹 루트는 상속 전용이라 생성·등록되지 않으므로(생성기가 의도적으로 건너뜀)
+        // 같은 id 값의 구체 루트와 충돌하지 않는다 — 등록될 타입만 세야 거짓 양성이 안 난다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [GroupRootMessage(9)]
+            public abstract partial class AbstractRoot { public long Timestamp { get; set; } }
+
+            [GroupRootMessage(9)]
+            public partial class ConcreteRoot { public long Timestamp { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT014");
+        Assert.Contains("partial class ConcreteRoot", generated);
+        Assert.Empty(compileErrors);
+    }
+
     /// <summary>생성 코드에서 `writer.Write*(message.멤버)` 호출의 멤버 이름을 나온 순서대로 뽑는다 = 와이어 기록 순서.</summary>
     static IReadOnlyList<string> ExtractWriteOrder(string generated)
     {

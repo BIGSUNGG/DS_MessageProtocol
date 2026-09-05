@@ -8,7 +8,7 @@ updated: 2026-09-05
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26·KI-27·KI-28·KI-29·KI-30 추가·해결(KI-29 는 부분 해결), KI-25·KI-11·KI-4·KI-3·KI-7·KI-8 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26·KI-27·KI-28·KI-29·KI-30·KI-31 추가·해결(KI-29 는 부분 해결), KI-25·KI-11·KI-4·KI-3·KI-7·KI-8 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -313,6 +313,16 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 `ReadMessageCategoryOrDefault` 가 `(byte)(value & 0x0F)` 로 **조용히 마스킹**하고 `MessageCategoryAttribute` 는 아무 검증이 없었다(`GenericMessageAttribute.ClassId` 에는 있는 검증이 여기엔 없었다). 저장소 밖 소비자 프로젝트에서 확인한 실제 형태: `[StandaloneMessage(7)] [MessageCategory((MessageCategory)99)] MaskedCategory` 와 `[StandaloneMessage(7)] [MessageCategory(Category3)] RealCategory3` 는 99 & 0x0F = 3 이라 **동일한 와이어 MessageId 0x23000007(587202567)** 을 만들고, 모듈 로드 시 `InvalidOperationException: Message type with ID 587202567 is already registered by '…'` 로 **어셈블리 로드 자체가 실패**했다(TypeInitializationException). 오류 메시지는 상대 타입 이름만 말할 뿐 원인(카테고리 99)을 가리키지 않는다. 충돌이 없는 경우엔 더 조용해서, 피어는 개발자가 의도하지 않은 카테고리로 라우팅한다. 부수 확인: `MessageCategory` 는 `[Flags]` 라 `Category1 | Category4`(= 5) 처럼 **조합이 다른 단일 카테고리로 조용히 해석**되고, `CategoryMask`(0x0F)가 열거 멤버로 존재해 `Category15` 와 구분되지 않는다 — 값 자체는 0..15 라 범위 검사로는 못 잡으므로 `Feature-Spec` 에 함정으로 명문화했다(열거 형태 변경은 공개 API 결정 사항).
 
 조치 방향: 컴파일 진단 승격 → 완료. 남은 꼬리(별도 추적): **동일 와이어 MessageId 를 가진 두 메시지 타입**에 대한 컴파일 진단은 여전히 없다 — 이번 실험의 충돌은 마스킹이 원인이라 MSGPROT013 으로 막히지만, id 를 그냥 복사해 붙여도 같은 모듈 로드 실패가 난다(런타임 `_registeredMessageIds` 만 검사). 감사 원장에 신규 등록.
+
+### KI-31. 동일 와이어 MessageId 충돌이 모듈 로드 실패로만 드러남 (해결)
+
+**상태: 해결 (2026-09-05).** 컴파일 전체에서 **모듈 로드 시 실제로 등록될 형태**의 메시지 타입만 골라(`TryGetRegisteredWireMessageId`: 제네릭 선언·NonId·partial 아님·기본 생성 불가·abstract 그룹 루트·MSGPROT005/013 거부 대상 제외) 조립된 와이어 MessageId 별로 소유자를 모으고(`ConstructionConflicts.MessageIdOwners`), 2개 이상이면 새 진단 **`MSGPROT014`(Error)** 를 각 타입에 보고하고 생성을 건너뜀다. 메시지에는 16진 와이어 ID 와 **상대 타입의 정규 이름**이 함께 실려 "어떤 값이 충돌했는지"를 가리킨다(런타임 오류는 상대 타입 이름만 말하고 flags·category·24비트 값 분해를 알려주지 않았다). 부수적으로 `TypeMetadata.Members` 를 **지연 계산**으로 바꿨다 — 이 패스처럼 속성만 필요한 컴파일 전체 순회에서 후보 타입 전부의 멤버를 순회·`MemberMetadata` 생성하지 않도록(KI-10 측정에서 남은 비용으로 지목된 생성기 CPU 에도 유리). 회귀 테스트 4개 — 동일 id 두 메시지(양쪽에 진단 2건·둘 다 생성 안 함·메시지에 상대 이름과 0x ID 포함·컴파일 오류 0), 역방향 가드 3개(**카테고리가 다르면 같은 id 값도 무충돌** = 충돌 키가 속성 원값이 아니라 조립된 와이어 ID 임을 고정, 제네릭 선언은 ClassId 가 다르면 공존, abstract 그룹 루트는 판정 제외). **이빨 확인**: 충돌 게이트를 무력화하는 돌연변이에서 1/4 실패(역방향 가드 3개는 양쪽 통과). 테스트 193→197(net8.0·net9.0), 프로젝트별 클린 리빌드 6/6 경고 0·오류 0, Sandbox 전체 통과. `AnalyzerReleases.Unshipped.md` MSGPROT014 행 추가(sed 편집 후 구분 행 무결성 확인 — 마크다운 자동 서식이 이번에도 구분 행을 망가뜨려 RS2007 함정이 재발했고 복구했다). `Feature-Spec` F2 MessageId 유일성·F5 MSGPROT014 명문화.
+
+원본 발견 내용 (실험 검증, KI-8 작업 중 발견):
+
+KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[StandaloneMessage(7)]` 두 개처럼 **id 를 그냥 복사해 붙여도** 두 타입이 같은 와이어 MessageId 를 조립하고, 충돌은 모듈 이니셜라이저의 `_registeredMessageIds`(`RegisterCore`)에서만 발견되어 `InvalidOperationException: Message type with ID 587202567 is already registered by '…'` → CLR 이 `TypeInitializationException` 으로 감싸 **어셈블리 로드가 실패**했다. 제네릭 구성의 (MessageId, ClassId) 충돌은 `CollectConstructionConflicts` 가 이미 컴파일 진단(MSGPROT008)으로 승격하고 있었으므로, **비제네릭 메시지 id 충돌만** 진단 없이 런타임 크래시로 남는 비대칭이었다.
+
+조치 방향: 컴파일 진단 승격 → 완료. 연쇄 오탐 방지: MSGPROT005·MSGPROT013 으로 이미 거부될 타입은 소유자에서 뺀다 — 그렇게 하지 않으면 지난 턴 KI-8 테스트가 실제로 깨졌다(문제없는 상대 타입까지 MSGPROT014 를 맞아 생성이 막힘). **내 기존 테스트가 새 기능의 설계 결함을 잡아낸 사례**라 그 테스트를 약화시키지 않고 게이트를 고쳤다. 남은 꼬리(별도 추적): **서로 다른 두 제네릭 선언**이 같은 MessageId 값 + 같은 ClassId 를 쓰면 런타임 키 (MessageId, ClassId) 가 같아지는데, `CollectConstructionConflicts` 의 키는 (선언, ClassId) 라 이 충돌을 잡지 못한다 → 모듈 로드 실패가 남는다(감사 원장 등록).
 
 ## 관련
 

@@ -94,6 +94,14 @@ namespace MessageProtocol.CodeGenerator
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
+        public static readonly DiagnosticDescriptor DuplicateWireMessageId = new(
+            id: "MSGPROT014",
+            title: "Duplicate wire MessageId",
+            messageFormat: "Message type '{0}' composes wire MessageId 0x{1}, which is also composed by {2}. MessageIds must be unique per protocol because the header flags, category and 24-bit id value all contribute, and a duplicate makes registration fail at module load with a type initialization error.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
         public static readonly DiagnosticDescriptor PolymorphicMemberSerializesByDeclaredType = new(
             id: "MSGPROT012",
             title: "Message member serializes by declared type",
