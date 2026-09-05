@@ -58,6 +58,8 @@ ID 값 범위: `0 .. 2^24-1`.
 
 생성기가 partial에 구현을 붙이거나, 수동으로 동일 형태를 노출한 뒤 등록한다. 수동 구현 시 헤더는 와이어 순서(헤더 바이트 → ID 3바이트)로 직접 기록해야 한다.
 
+참조 추적 계약(수동 구현 시 필수): 중첩 객체 그래프의 공유·순환 참조는 `MessageSerializer.SerializeContext`·`DeserializeContext` 와 `ReferenceKind`(Null=0 · NewObject=1 · BackReference=2)로 복원한다. 쓰기는 참조 타입 멤버마다 ① null → `ReferenceKind.Null` 1바이트, ② `TryGetObjectId` 가 id 를 주면 `BackReference` + int32 id, ③ 처음이면 `RegisterObject` 후 `NewObject` + 페이로드 순서로 기록하고, 읽기는 같은 순서로 `RegisterNewObject`·`GetObject` 을 호출해야 한다(**양쪽 등록 순서가 동일해야 id 가 맞는다**). **null 은 컨텍스트에 등록·조회하면 안 된다** — `_firstObject is null` 이 빈 슬롯 sentinel 이라 null 등록 시 슬롯이 차지되지 않아 **id 1 이 중복 발급**되고 백레퍼런스가 다른 인스턴스로 해석된다(예외 없는 객체 그래프 손상 — Known-Issues KI-30). 세 메서드(`RegisterObject`·`TryGetObjectId`·`RegisterNewObject`)는 null 을 `ArgumentNullException` 으로 거부한다. 재귀 지점에서 중첩 깊이 계상(`EnterNestedObject`·`LeaveNestedObject`)도 호출해야 한다(KI-14·KI-25).
+
 ## MessageSerializer
 
 | 메서드 | 설명 |
