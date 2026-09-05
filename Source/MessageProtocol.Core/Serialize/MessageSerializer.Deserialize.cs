@@ -122,12 +122,17 @@ namespace MessageProtocol.Serialize
         }
 
         /// <summary>중첩 object dispatch: 현재 reader 위치의 헤더로 등록된 타입에 라우팅한다. 제네릭 헤더는 (MessageId, ClassId) 라우팅.</summary>
+        /// <remarks>
+        /// 중첩 객체 한 수준으로 계산된다(<see cref="MessageBufferReader.EnterNestedObject"/>) — 타입 매개변수 멤버·외부 호출자의
+        /// 재귀가 reader 깊이 카운터에 연결되어 작은 적대 프레임의 무한 재귀(스택 오버플로)를 막는다 (Known-Issues KI-14).
+        /// </remarks>
         public static object DeserializeFromReader(ref MessageBufferReader reader)
         {
             var unread = reader.UnreadSpan;
             if (unread.Length == 0) throw new ArgumentException("Reader has no data to deserialize.");
 
             uint messageId = ReadMessageIdFromHeader(unread);
+            BufferReaderFunc? invoker;
 
             if (MessageWireFormat.IsGenericMessage(unread[0]))
             {
@@ -137,18 +142,26 @@ namespace MessageProtocol.Serialize
                 }
 
                 uint classId = (uint)unread[4] << 16 | (uint)unread[5] << 8 | unread[6];
-                if (!_genericReaderDispatch.TryGetValue(GenericDispatchKey(messageId, classId), out var genericInvoker))
+                if (!_genericReaderDispatch.TryGetValue(GenericDispatchKey(messageId, classId), out invoker))
                 {
                     throw new KeyNotFoundException($"Generic message type with ID {messageId} and ClassId {classId} is not registered.");
                 }
-                return genericInvoker(ref reader);
             }
-
-            if (!_readerDispatch.TryGetValue(messageId, out var invoker))
+            else if (!_readerDispatch.TryGetValue(messageId, out invoker))
             {
                 throw new KeyNotFoundException($"Message type with ID {messageId} is not registered.");
             }
-            return invoker(ref reader);
+
+            // 공개 경유 지점이라 수동 구현이 예외 후 같은 reader 를 계속 쓸 수 있다 — finally 로 짝을 맞춘다.
+            reader.EnterNestedObject();
+            try
+            {
+                return invoker!(ref reader);
+            }
+            finally
+            {
+                reader.LeaveNestedObject();
+            }
         }
 
         static uint ReadMessageIdFromHeader(ReadOnlySpan<byte> data)

@@ -12,18 +12,68 @@ namespace MessageProtocol.Serialize
     /// </summary>
     public ref struct MessageBufferReader
     {
+        /// <summary>
+        /// 기본 중첩 객체 역직렬화 깊이 상한. 불신 피어가 작은 프레임에 깊은 중첩을 담아
+        /// 재귀 스택을 소진시키는 것(스택 오버플로 — catch 불가, 프로세스 즉시 종료)을 막는다 (Known-Issues KI-14).
+        /// <see cref="MessageBufferReader(ReadOnlySpan{byte}, int)"/> 로 reader 단위로 올릴 수 있다.
+        /// </summary>
+        public const int DefaultMaxNestingDepth = 64;
+
         ReadOnlySpan<byte> _buffer;
         int _position;
+        int _depth;
+        int _maxNestingDepth;
 
         public MessageBufferReader(ReadOnlySpan<byte> buffer)
+            : this(buffer, DefaultMaxNestingDepth)
         {
+        }
+
+        /// <param name="buffer">읽을 페이로드 버퍼.</param>
+        /// <param name="maxNestingDepth">
+        /// 중첩 객체 역직렬화 깊이 상한. 합법적으로 깊은 객체 그래프를 다루는 호출자가 상한을 올리는 탈출구이며,
+        /// 값은 스레드 스택 크기(수준당 스택 프레임)보다 작아야 한다. 0 이하 거부.
+        /// </param>
+        public MessageBufferReader(ReadOnlySpan<byte> buffer, int maxNestingDepth)
+        {
+            if (maxNestingDepth <= 0) ThrowInvalidMaxNestingDepth(maxNestingDepth);
             _buffer = buffer;
             _position = 0;
+            _depth = 0;
+            _maxNestingDepth = maxNestingDepth;
         }
 
         public int Position => _position;
         public int Remaining => _buffer.Length - _position;
         public ReadOnlySpan<byte> UnreadSpan => _buffer.Slice(_position);
+
+        /// <summary>이 reader 가 허용하는 중첩 객체 깊이 상한.</summary>
+        public int MaxNestingDepth => _maxNestingDepth;
+
+        /// <summary>현재 중첩 깊이 — <see cref="EnterNestedObject"/>·<see cref="LeaveNestedObject"/> 가 관리한다.</summary>
+        public int NestingDepth => _depth;
+
+        /// <summary>
+        /// 중첩 객체 판독 시작을 알린다. 상한 도달 시 <see cref="InvalidDataException"/> (와이어 내용 불법 —
+        /// 경계 위반 <see cref="EndOfStreamException"/> 과 구분). 생성 코드·<c>DeserializeFromReader</c> 가 재귀 지점에서 호출한다.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void EnterNestedObject()
+        {
+            if (_depth >= _maxNestingDepth) ThrowNestingTooDeep(_maxNestingDepth);
+            _depth++;
+        }
+
+        /// <summary>
+        /// 중첩 객체 판독 종료를 알린다. 짝이 맞지 않는 호출(판독 중 예외)은 깊이를 부풀리기만 하므로
+        /// 가드는 실패 방향으로 안전하다 — 예외가 난 reader 는 위치가 객체 중간이라 재사용해서는 안 된다.
+        /// 음수로 내려가지 않도록 0 에서 클램프(음수 깊이가 상한을 무력화하는 것 차단).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LeaveNestedObject()
+        {
+            if (_depth > 0) _depth--;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public byte ReadByte()
@@ -202,6 +252,22 @@ namespace MessageProtocol.Serialize
         static void ThrowNegativeCount(int count)
         {
             throw new ArgumentOutOfRangeException(nameof(count), count, "Count must not be negative.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowNestingTooDeep(int maxNestingDepth)
+        {
+            throw new InvalidDataException(
+                $"Nested object depth exceeds the maximum of {maxNestingDepth}. " +
+                $"The payload is corrupt or hostile; construct the reader with " +
+                $"'new MessageBufferReader(buffer, maxNestingDepth)' if this graph is legitimately deeper.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowInvalidMaxNestingDepth(int maxNestingDepth)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxNestingDepth), maxNestingDepth, "Max nesting depth must be positive.");
         }
     }
 }

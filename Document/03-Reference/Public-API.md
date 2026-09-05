@@ -24,6 +24,8 @@ updated: 2026-09-05
 
 버퍼 I/O 계약: 위치는 forward-only — `Skip`·`Advance` 는 음수 `count` 를 `ArgumentOutOfRangeException` 으로 거부하고(되돌려 이미 소비·기록한 구간을 다시 읽거나 덮어쓰는 것 차단), 범위를 넘는 전진은 reader `EndOfStreamException` / writer `InvalidOperationException` 을 던진다. 문자열 길이 접두사는 `-1` 만 null 이고 그 외 음수는 `InvalidDataException` 으로 거부된다. 버퍼는 단일 `byte[]` 이라 페이로드 상한은 배열 상한(`0X7FEFFFFF` 바이트)이며, 이를 넘는 문자열은 `WriteString` 이 `ArgumentException` 으로 거부한다(용량 산술은 `long` — int 오버플로로 증설이 건너뛰어지지 않음).
 
+중첩 깊이 계약: `MessageBufferReader` 는 중첩 객체 역직렬화 깊이를 reader 단위로 센다 — `EnterNestedObject()` 는 상한(`MaxNestingDepth`, 기본 `MessageBufferReader.DefaultMaxNestingDepth = 64`)에 도달하면 `InvalidDataException` 을 던지고(와이어 내용 불법 — 경계 `EndOfStreamException` 과 구분), `LeaveNestedObject()` 는 깊이를 1 낮춘다(0 아래로 클램프 — 짝이 맞지 않는 호출이 가드를 무력화하지 못함). 현재 깊이는 `NestingDepth` 로 관찰한다. 생성 코드(그래프 내부 중첩 객체·그래프 밖 메시지 위임)와 `MessageSerializer.DeserializeFromReader`(타입 매개변수 멤버·외부 호출자)가 재귀 지점에서 이 쌍을 호출하므로, 불신 피어가 작은 프레임에 `ReferenceKind.NewObject` 만 늘어놓아 재귀 스택을 소진시키는 것(스택 오버플로 — catch 불가, 프로세스 사망)이 차단된다. **수동 구현도 중첩 객체를 재귀로 판독할 때 같은 쌍을 호출해야 한다.** 합법적으로 깊은 객체 그래프는 `new MessageBufferReader(buffer, maxNestingDepth)` 로 상한을 올려 처리하며(0 이하 `ArgumentOutOfRangeException`), 상한은 스레드 스택 크기보다 작아야 한다.
+
 ## 메시지 타입 속성
 
 | 속성 | 역할 |

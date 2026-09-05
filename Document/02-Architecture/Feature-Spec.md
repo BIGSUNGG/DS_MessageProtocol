@@ -65,6 +65,8 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 
 문자열 길이 접두사는 int32 이며 `-1` 만 null, `0` 은 빈 문자열이다 — 그 외 음수(`-2`…`int.MinValue`)는 규약 위반이므로 읽기에서 `InvalidDataException` 으로 거부한다 (손상 프레임이 null 문자열로 조용히 복호되는 것 차단).
 
+중첩 객체 역직렬화 깊이는 reader 단위 상한으로 제한한다 — 기본 `MessageBufferReader.DefaultMaxNestingDepth = 64`, 생성 코드(그래프 내부 중첩 객체·그래프 밖 메시지 위임)와 `DeserializeFromReader`(타입 매개변수 멤버)가 재귀 지점에서 `EnterNestedObject`·`LeaveNestedObject` 쌍을 호출하고 상한 초과 시 `InvalidDataException` 으로 거부한다 (자기참조 메시지를 `ReferenceKind.NewObject` 1바이트씩만 늘어놓은 20KB 남짓한 적대 프레임이 재귀 스택을 소진시켜 **catch 불가한 스택 오버플로(프로세스 사망)** 를 일으키던 경로 차단 — Known-Issues KI-14). 합법적으로 깊은 객체 그래프는 `new MessageBufferReader(buffer, maxNestingDepth)` 로 reader 단위 상한을 올려 처리한다.
+
 ## F4. 멤버 제어
 
 | 속성 | 역할 |
@@ -115,6 +117,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 - Span 기반 읽기·쓰기, 문자열은 중간 `ToArray` 없이 디코딩.
 - `decimal`은 무할당 경로.
 - 생성 코드는 고정 크기 프리미티브 구간을 일괄 `EnsureCapacity`.
+- 중첩 깊이 가드는 중첩 객체당 인라인 증감 2회뿐 — 할당·딕셔너리 조회 없음, 중첩 없는 flat 메시지 비용 0, 값 타입(구조체) 중첩은 계상하지 않음.
 - flat 메시지(멤버 1~2개)는 Dictionary 할당 없음.
 
 ## F8. 호환성

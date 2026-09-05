@@ -244,9 +244,11 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
+{indent}        reader.EnterNestedObject();
 {indent}        var __tmp{uid} = {model.CreateInstanceMethodName}();
 {indent}        context.RegisterNewObject(__tmp{uid});
 {indent}        {model.PopulatePayloadMethodName}(ref reader, __tmp{uid}, ref context);
+{indent}        reader.LeaveNestedObject();
 {indent}        {targetExpression} = __tmp{uid};
 {indent}    }}
 {indent}}}
@@ -289,7 +291,9 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    }}
 {indent}    else
 {indent}    {{
+{indent}        reader.EnterNestedObject();
 {indent}        {targetExpression} = {typeName}.Deserialize(ref reader);
+{indent}        reader.LeaveNestedObject();
 {indent}    }}
 {indent}}}
 ";

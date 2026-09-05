@@ -208,3 +208,20 @@ public partial class UnregisteredGeneric<T>
 // 선언부를 수정하지 않고 별도 캐리어 타입으로 GenericEnvelope 의 추가 구성을 선언한다.
 [GenericMessage(typeof(GenericEnvelope<PointMessage>), ClassId = 3)]
 static class GenericEnvelopeExtraConstructions { }
+
+// ---------- 중첩 깊이 가드 (KI-14) ----------
+
+// 자기참조 체인 — 작은 프레임에 깊은 중첩을 담아 재귀 스택을 소진시키는 적대 페이로드의 최소 형태.
+// 와이어: 헤더 4바이트 + 수준당 ReferenceKind.NewObject 1바이트 + 종단 Null 1바이트.
+[StandaloneMessage(124)]
+public partial class ChainMessage
+{
+    public ChainMessage? Next { get; set; }
+}
+
+// 깊이가 아니라 *개수*로 중첩 객체를 많이 담는 픽스처 — 깊이 카운터가 짝 맞게 감소(Leave)하는지 검증한다.
+[StandaloneMessage(125)]
+public partial class WideChainMessage
+{
+    public List<ChainMessage>? Items { get; set; }
+}
