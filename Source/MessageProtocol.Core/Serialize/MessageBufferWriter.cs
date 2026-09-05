@@ -112,7 +112,9 @@ namespace MessageProtocol.Serialize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void EnsureCapacity(int additional)
         {
-            if (_position + additional > _buffer.Length)
+            // long 비교 — `_position + additional` 을 int 로 더하면 GB 급 요구에서 음수로 오버플로해
+            // 증설 가드가 거짓으로 통과하고 이은 `AsSpan`·`CopyTo` 가 원인을 가리는 예외를 던진다 (Known-Issues KI-7).
+            if ((long)_position + additional > _buffer.Length)
             {
                 Grow(additional);
             }
@@ -121,8 +123,13 @@ namespace MessageProtocol.Serialize
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Grow(int additional)
         {
-            int required = checked(_position + additional);
-            int newCapacity = Math.Max(_buffer.Length == 0 ? 256 : _buffer.Length * 2, required);
+            long required = (long)_position + additional;
+            if (required < 0 || required > MaxBufferLength)
+            {
+                ThrowGrowBeyondMaxBuffer(required);
+            }
+
+            int newCapacity = ComputeGrowCapacity(_buffer.Length, required);
             var newBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
             if (_position > 0)
             {
@@ -133,6 +140,25 @@ namespace MessageProtocol.Serialize
                 ArrayPool<byte>.Shared.Return(_buffer);
             }
             _buffer = newBuffer;
+        }
+
+        /// <summary>빈 버퍼의 첫 증설 용량(<see cref="MessageWireFormat.DefaultStreamCapacity"/> 와 동일).</summary>
+        const int DefaultGrowCapacity = 256;
+
+        /// <summary>
+        /// 증설 용량 산정 — **long 산술** + 배열 상한 clamp (Known-Issues KI-7).
+        /// 이전 공식 `Math.Max(_buffer.Length * 2, required)` 는 버퍼가 1GB 를 넘는 순간 `Length * 2` 가 음수로
+        /// 오버플로해 `Math.Max` 가 항상 `required` 를 고르고, 그래서 매 증설이 **여유 없는 정확 용량** 대여 +
+        /// 전체 복사가 되어 성장 비용이 제곱이 됐다(게다가 그 크기면 풀링도 안 된다). 페이로드 상한
+        /// <see cref="MaxBufferLength"/>(약 2.1GB)은 이 라이브러리가 지원하는 범위라 그 구간에서도 배증이 유지돼야 한다.
+        /// </summary>
+        /// <param name="currentCapacity">현재 대여 배열 길이(0 = 빈 버퍼).</param>
+        /// <param name="required">필요 총용량(위치 + 추가) — 호출자가 <see cref="MaxBufferLength"/> 이하임을 보장한다.</param>
+        internal static int ComputeGrowCapacity(int currentCapacity, long required)
+        {
+            long doubled = currentCapacity <= 0 ? DefaultGrowCapacity : (long)currentCapacity * 2;
+            long capacity = doubled > required ? doubled : required;
+            return capacity > MaxBufferLength ? (int)MaxBufferLength : (int)capacity;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -286,10 +312,21 @@ namespace MessageProtocol.Serialize
         // 인코딩 실패를 있는 그대로 표면화하는 엄격 폴백을 쓴다 (와이어 무결성 정책 — Known-Issues KI-20).
         static readonly Encoding StrictUtf8 = Encoding.GetEncoding(65001, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
-        /// <summary>지정 오프셋에 int32 를 다시 쓴다 (외부 프레이밍 등 드문 용도).</summary>
+        /// <summary>
+        /// 지정 오프셋에 int32 를 다시 쓴다 (외부 프레이밍 등 드문 용도).
+        /// 오프셋은 **이미 기록된 구간**(`0 .. Length - 4`) 안이어야 한다 — 밖이면 대여 배열의 미기록 바이트를
+        /// 건드리고, 그 배열은 나중에 풀로 돌아가므로 다른 대여자에게 보이는 쓰기가 된다 (Known-Issues KI-7).
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void PatchInt32(int offset, int value)
         {
+            // `_position - 4` 는 음수가 될 수 있으므로 uint 트릭이 아니라 두 비교로 한다
+            // (uint 로 감싸면 Length < 4 일 때 음수가 거대한 양수가 되어 모든 오프셋이 통과한다).
+            if (offset < 0 || offset > _position - 4)
+            {
+                ThrowPatchOutOfRange(offset);
+            }
+
             BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(offset), value);
         }
 
@@ -359,6 +396,22 @@ namespace MessageProtocol.Serialize
         {
             throw new ArgumentOutOfRangeException(
                 nameof(maxNestingDepth), maxNestingDepth, "Max nesting depth must be positive.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowGrowBeyondMaxBuffer(long required)
+        {
+            throw new InvalidOperationException(
+                $"Message payload requires {required} bytes, which exceeds the maximum buffer size " +
+                $"({MaxBufferLength} bytes) — a single byte[] cannot hold it.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void ThrowPatchOutOfRange(int offset)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(offset), offset,
+                $"Offset must point at a 4-byte range inside the written payload (0 .. {_position - 4}); Length is {_position}.");
         }
     }
 }

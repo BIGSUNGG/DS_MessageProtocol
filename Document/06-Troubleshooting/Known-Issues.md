@@ -8,7 +8,7 @@ updated: 2026-09-05
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26·KI-27·KI-28·KI-29·KI-30 추가·해결(KI-29 는 부분 해결), KI-25·KI-11·KI-4·KI-3 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-26·KI-27·KI-28·KI-29·KI-30 추가·해결(KI-29 는 부분 해결), KI-25·KI-11·KI-4·KI-3·KI-7 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -281,7 +281,6 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | 번호 | 위치 | 내용 |
 | ---- | ---- | ---- |
 | KI-5 | 생성 `Deserialize(ref reader)` | 헤더·MessageId 를 검증하지 않고 건너뜀 — 다른 타입 바이트를 먹이면 조용히 재해석 (성능 트레이드오프, 문서화 필요) |
-| KI-7 | `MessageBufferWriter.PatchInt32` | 오프셋 경계 검증 없음. `Grow`의 `Length * 2`는 1GB 부근 int 오버플로 가능 |
 | KI-8 | `MessageCategoryAttribute` | 범위 밖 카테고리 값이 `& 0x0F` 로 조용히 마스킹 |
 | KI-9 | 그래프 밖 메시지 위임·런타임 디스패치 멤버 (`EmitOutOfGraphMessage*`·`EmitRuntimeDispatch*`) | 위임·디스패치 시 새 `SerializeContext` — 경계 넘는 공유 참조 복원 불가(중복 기록). 경계 넘는 순환 참조는 KI-25 writer 깊이 가드가 `InvalidOperationException` 으로 막는다(스택 오버플로 아님). 남은 제약 문서화 필요 |
 | KI-10 | 증분 파이프라인 | **측정 완료(2026-09-05, 아래 기록)** — 출력 스텝은 매 편집마다 재실행되지만(`Compilation` 스텝 항상 Modified + `ForAttributeWithMetadataName` transform 출력이 컴파일별 심볼 인스턴스) 생성 텍스트는 동일해서 다운스트림 재컴파일은 이미 차단됨. 남은 비용은 편집당 생성기 CPU(메시지 타입 수에 비례)뿐이며, 근본 해결은 value-equatable 모델 재작성(대규모)이라 측정 근거로 연기 |
@@ -299,6 +298,12 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | `CompilationOptions`·global aliases 계열 | `Cached`/`Unchanged` (무관한 입력은 정상 캐싱됨 — 파이프라인 자체가 깨진 것은 아님) |
 
 해석: 비싼 쪽(생성 파일 재컴파일·재분석)은 **이미 차단**돼 있다 — Roslyn 은 출력 스텝이 내놓은 `SourceText` 를 비교하므로 텍스트가 같으면 생성 트리를 교체하지 않는다. 그 성질을 보장하는 것이 KI-3(전역 카운터 제거)이었고, 회귀 시 이 방어막이 사라진다(드라이버 수준 테스트 `무관한_편집에도_생성_파일별_텍스트는_변하지_않는다` 가 고정 — KI-3 를 되돌리면 이 테스트가 실패함을 확인). 남은 비용은 편집당 생성기 CPU(후보 타입 전부에 대한 `TypeMetadata`·`SerializationGraph`·문자열 방출)이며, 이를 없애려면 transform 출력을 값 동등 스냅샷 모델로 바꾸고 출력 스텝에서 `Compilation` 의존을 제거해야 한다 — 이미터 전부가 `ISymbol` 을 소비하므로 대규모 재작성이다. 측정상 비용이 "생성기 CPU"로 한정됐으므로(재컴파일 아님) 지금 시점에서는 연기가 맞다고 판단한다.
+
+### KI-7. writer 증설 산술 int 오버플로 + `PatchInt32` 무경계 (해결)
+
+**상태: 해결 (2026-09-05).** 세 곳을 함께 손봤다. ① `EnsureCapacity` 의 `_position + additional` 을 **long 비교**로 — int 합산이 GB 급 요구에서 음수로 오버플로해 증설 가드가 거짓으로 통과하고 이은 `AsSpan`·`CopyTo` 가 원인을 가리는 예외를 던지던 것 차단(감사 원장 LOW 동일 항목). ② `Grow` 의 용량 산정을 long 산술 + 배열 상한 clamp 로 바꾸고 internal 헬퍼 `ComputeGrowCapacity(currentCapacity, required)` 로 분리 — 이전 공식 `Math.Max(_buffer.Length * 2, required)` 는 버퍼가 1GB 를 넘는 순간 배증값이 음수가 되어 `Math.Max` 가 항상 **정확 요구량**을 골랐고, 그래서 매 증설이 여유 없는 대여 + 전체 복사가 되어 성장 비용이 제곱이 됐다(그 크기면 `ArrayPool` 버킷도 아니라 매번 새 배열). 페이로드 상한 `0X7FEFFFFF`(약 2.1GB)는 `WriteString` 이 명시적으로 지원하는 범위라(KI-22) 이 구간은 실제 회귀다. 요구량이 상한을 넘으면 `InvalidOperationException`(정확한 바이트 수 안내)으로 **할당을 시도하지 않고** 거부한다. ③ `PatchInt32` 가 오프셋을 **기록된 구간**(`0 .. Length-4`)으로 검증(`ArgumentOutOfRangeException`) — 이전에는 대여 배열의 미기록 바이트에 쓸 수 있었고 그 배열은 나중에 풀로 돌아간다. 회귀 테스트 15개(케이스, `WriterGrowthTests`) — 증설 용량 산정 Theory(빈 버퍼·배증 우선·요구량 우선·배증=요구량), 1GB 너머에서 음수 아님 + 여유 유지, 상한 불초과·요구량 미달 없음(8×4 조합), 상한 초과 요구의 명확한 예외, 정상 증설과 여유 용량, `PatchInt32` 정상 동작(경계 오프셋 포함)·기록 구간 밖 거부 4케이스·빈 writer 거부. **이빨 확인**: `ComputeGrowCapacity` 를 수정 전 int 산술로 되돌리는 돌연변이에서 1GB 여유 테스트 실패(1/15), 복원 후 187/187. 소비자 프로세스 실험(수정 전 → 후): `EnsureCapacity(int.MaxValue)` `OutOfMemoryException`("Array dimensions exceeded supported range") → `InvalidOperationException`(정확한 바이트 수 안내), `PatchInt32(60)` with `Length=4` **수용** → `ArgumentOutOfRangeException`, `1_500_000_000 * 2 = -1_294_967_296` 확인. 테스트 172→187(net8.0·net9.0), 프로젝트별 클린 리빌드 6/6 경고 0·오류 0, Sandbox 전체 통과. `Public-API` writer 버퍼 계약, `Feature-Spec` F7 성장 계약 명문화.
+
+조치 방향: long 산술 + 상한 clamp + 경계 검증 → 완료. `MessageBufferWriter` 는 `ref struct` 라 `Assert.Throws` 람다 포획이 안 되어 `ref` 인자 헬퍼(`CatchEnsureCapacity`·`CatchPatchInt32`)로 예외를 관찰했다(KI-14 의 reader 테스트와 같은 함정). 남은 꼬리: `GetSpan(size)` 는 증설 후 대여 배열이 바뀌므로 **이전에 받아 간 span 이 무효**가 된다(풀 배열 별칭 위험) — 죽은 공개 API 정리 항목과 함께 별도 추적.
 
 ## 관련
 
