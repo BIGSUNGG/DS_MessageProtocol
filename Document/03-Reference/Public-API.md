@@ -73,6 +73,8 @@ ID 값 범위: `0 .. 2^24-1`.
 
 핫 경로 권장: `Serialize(T, ref MessageBufferWriter)` / `SerializePooled<T>` / `Deserialize<T>(Span)`.
 
+예외 계약: 미등록·계약 미구현 타입의 `Serialize<T>`·`Deserialize<T>` 는 필요한 멤버를 안내하는 `InvalidOperationException` 을 던진다 — CLR 이 타입별로 영구 캐싱하는 `TypeInitializationException` 이 아니며, 등록 전에 캐시를 먼저 건드렸더라도 이후 델리게이트 등록(`RegisterHasIdMessage<T>(…)`, `RegisterNonIdMessage<T>(…)`)으로 복구된다. 리플렉션 등록 경로(`RegisterHasIdMessage<T>()`·`RegisterNonIdMessage<T>()`·`RegisterGenericConstruction<T>`)는 직렬화 델리게이트 부재를 나중 NRE 가 아니라 **등록 시점**에 같은 예외로 알린다.
+
 흐름·스펙: [Feature-Spec](../02-Architecture/Feature-Spec.md). 구조: [Overview](../02-Architecture/Overview.md).
 
 ## 관련

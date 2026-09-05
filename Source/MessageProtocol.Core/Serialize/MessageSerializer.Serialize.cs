@@ -20,7 +20,9 @@ namespace MessageProtocol.Serialize
         public static void Serialize<T>(T message, ref MessageBufferWriter writer) where T : IMessageSerializable<T>
         {
             if (message is null) throw new ArgumentNullException(nameof(message));
-            SerializerCache<T>.Serialize(message, ref writer);
+            var serialize = SerializerCache<T>.Serialize;
+            if (serialize is null) ThrowMissingSerialize<T>();
+            serialize!(message, ref writer);
         }
 
         /// <summary>제네릭 경로: 호환용 byte[] 반환.</summary>
@@ -28,17 +30,21 @@ namespace MessageProtocol.Serialize
         public static byte[] Serialize<T>(T message) where T : IMessageSerializable<T>
         {
             if (message is null) throw new ArgumentNullException(nameof(message));
-            return SerializerCache<T>.SerializeBytes(message);
+            var serializeBytes = SerializerCache<T>.SerializeBytes;
+            if (serializeBytes is null) ThrowMissingSerialize<T>();
+            return serializeBytes!(message);
         }
 
         /// <summary>제네릭 경로: ArrayPool 기반 <see cref="PooledBuffer"/> 반환. 호출자가 Dispose 해야 한다.</summary>
         public static PooledBuffer SerializePooled<T>(T message) where T : IMessageSerializable<T>
         {
             if (message is null) throw new ArgumentNullException(nameof(message));
+            var serialize = SerializerCache<T>.Serialize;
+            if (serialize is null) ThrowMissingSerialize<T>();
             var writer = MessageBufferWriter.Create();
             try
             {
-                SerializerCache<T>.Serialize(message, ref writer);
+                serialize!(message, ref writer);
                 return writer.ToPooledBuffer();
             }
             catch
@@ -46,6 +52,20 @@ namespace MessageProtocol.Serialize
                 writer.Dispose();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// 캐시에 직렬화 델리게이트가 없을 때 보고한다. <see cref="SerializerCache{T}"/> cctor 가 던지는 대신 여기서 보고하므로
+        /// CLR 이 초기화 실패를 타입별로 영구 캐싱하지 않고, 이후 델리게이트 등록으로 복구할 수 있다 (Known-Issues KI-11).
+        /// </summary>
+        static void ThrowMissingSerialize<T>()
+        {
+            throw new InvalidOperationException(
+                $"Type '{typeof(T).FullName}' has no serialize method. " +
+                $"Ensure the type is generated via MessageProtocol.CodeGenerator or defines " +
+                $"'public static void Serialize({typeof(T).Name}, ref MessageBufferWriter)' and " +
+                $"'public static byte[] Serialize({typeof(T).Name})', and that it is registered " +
+                $"(MessageSerializer.RegisterNonIdMessage / RegisterHasIdMessage) before first use.");
         }
 
         /// <summary>object dispatch 경로: 런타임 타입으로 직렬화 (다형성). 호환용 byte[] 반환.</summary>

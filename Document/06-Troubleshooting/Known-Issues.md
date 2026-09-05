@@ -8,7 +8,7 @@ updated: 2026-09-05
 
 # Known Issues
 
-v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24·KI-25 추가·해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
+v2 코드 리뷰(2026-08-31)에서 확인된 문제점. KI-13·KI-15는 2026-09-01 프로덕션 적합성·공격 표면 검토 중 추가·같은 날 해결, KI-14는 미해결로 남았다가 2026-09-05 해결. 2026-09-04 감사에서 KI-16·KI-17·KI-18·KI-19·KI-20 추가·같은 날 해결, KI-21~KI-22 추가. 2026-09-05 감사 루프에서 KI-6·KI-12·KI-14·KI-21·KI-22 해결, 같은 날 백로그 소진 후 감사 패스에서 KI-23 추가·해결, 이어서 개선 루프에서 KI-24 추가·해결, KI-25·KI-11 해결(그 외 신규 항목은 감사 루프 원장 `.pi-glla/audit-loop/findings.md` 에서 추적). 빌드·테스트 56개·Sandbox 28 시나리오는 전부 통과하는 상태에서 발견한 것들이다.
 
 ## 확인된 버그 (실험 검증)
 
@@ -194,6 +194,16 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 
 조치 방향: reader 와 대칭인 writer 깊이 카운터 + 생성 코드·런타임 경유 지점 계상 → 완료. 생성 코드 쪽은 읽기 측과 동일하게 `try/finally` 없이 짝만 맞춘다(기록 중 예외 시 깊이는 부풀기만 하므로 실패 방향 안전, 부분 기록된 writer 는 재사용 대상 아님). 남은 꼬리: 디스패치 멤버의 백레퍼런스 미추적 자체는 여전하므로 **공유 참조**(순환이 아닌 동일 인스턴스 두 번 등장)는 디스패치 멤버를 통과하면 중복 기록되고 참조 동일성이 복원되지 않는다 — KI-9 제약으로 문서화됨, 가드는 그 경로가 프로세스를 죽이지 못하게 막는 것까지가 범위.
 
+### KI-11. 등록 캐시 경쟁·조기 접근 → 영구 `TypeInitializationException` (해결)
+
+**상태: 해결 (2026-09-05).** `SerializerCache<T>` 가 **영구 상태를 남기지 않도록** 세 가지를 바꿨다. ① cctor 는 더 이상 던지지 않는다 — 리플렉션으로 계약 멤버를 못 찾으면 null 로 남기고(`ResolveSerialize*` → `TryResolveSerialize*`, 공용 `TryCreateDelegate<TDelegate>`), 사용 지점(`Serialize<T>` 3개 오버로드)과 등록 지점(리플렉션 등록 3경로)이 `ThrowMissingSerialize<T>()` 로 명확히 보고한다(기존 `ThrowMissingDeserialize<T>` 와 대칭). ② 캐시 필드에서 `readonly` 를 벗기고 `PrefillSerializerCache` 가 `RunClassConstructor` 뒤 **캐시가 비어 있으면 직접 채워 복구**한다(CLR 은 cctor 를 다시 돌리지 않으므로 이 단계가 없으면 등록 전 조기 접근이 그 타입을 영구히 unusable 하게 만든다). ③ Prefill 홀더의 `IsSet` 을 `volatile`(release store)로 바꿔 델리게이트 6개 쓰기의 publication 을 플래그에 묶고, 복구 경로도 핫 경로가 먼저 읽는 `Serialize` 를 `Volatile.Write` 로 마지막에 발행한다 — 동시 cctor 가 `IsSet=true` 만 보고 델리게이트는 null 인 찢어진 상태를 고정하는 것 차단(x86 에선 관찰이 어렵지만 **Unity ARM 은 store-store 재배열이 가능**). 부수적으로 object dispatch 델리게이트가 캐시 필드를 `!` 로 직접 호출하던 것을 공용 `Serialize<T>`·`Deserialize<T>` 경유로 바꿔 null 델리게이트 NRE 대신 같은 안내 예외를 타게 했다. 회귀 테스트 4개(`SerializerCacheTests`) — 수정 전 **3개 실패 확인**(`System.TypeInitializationException` 16건 관측): 조기 접근이 영구 초기화 실패가 아니라 안내 예외를 던지고 두 번째 접근도 동일, 조기 접근 후 델리게이트 등록으로 제네릭·object dispatch 양쪽 복구, 계약 멤버 없는 타입의 리플렉션 등록은 등록 시점에 보고, + 역방향 가드(수동 구현 타입 리플렉션 등록·왕복 불변). 테스트 138→142(net8.0·net9.0), Sandbox 전체 통과, Release 빌드 경고 0·오류 0. `Feature-Spec` F6 등록 캐시 규약, `Public-API` 예외 형식 명문화.
+
+원본 발견 내용:
+
+`PrefillSerializerCache` 가 정적 필드 6개를 fence 없이 쓰고 `IsSet = true` 를 일반 쓰기로 발행해, 다른 스레드의 캐시 cctor 가 찢어진 상태(null·혼합 델리게이트)를 `readonly` 필드에 영구 고정할 수 있었다. 더 쉽게 밟히는 제2형태는 순서 문제였다 — 등록 전에 누군가 `SerializerCache<T>` 를 건드리면(예: 미등록 타입을 `Serialize<T>` 하려다 실패) cctor 가 리플렉션 경로로 돌고, 계약 멤버가 없는 타입에서는 `ResolveSerializeRefMethod` 가 **cctor 안에서** 던진다. CLR 은 정적 생성자 실패를 타입별로 영구 캐싱하므로 이후 델리게이트 등록이 성공해도 그 타입은 영원히 `TypeInitializationException` 이었다(실험: 수정 전 회귀 테스트에서 16건 관측). 즉 **일시적 순서 실수가 영구 고장으로 고정**되는 형태였고, 오류 메시지도 진짜 원인(등록 누락)이 아니라 CLR 내부 예외로 가려졌다.
+
+조치 방향: 캐시를 오염 불가능하게 만들기 → 완료. 남은 꼬리(별도 추적): 첫 등록 시도가 `RegisterCore` 검증에서 거부되면 롤백이 Prefill·cctor 를 되돌리지 않아 `MessageId`·`HasId` 가 잔류한다(감사 원장 MEDIUM). 이번 복구 경로는 `Serialize is null` 일 때만 채우므로 **이미 등록된 타입의 중복 등록이 델리게이트를 조용히 갈아끼우는 불일치는 만들지 않는다**(중복 등록은 거부되지만 캐시·디스패치가 서로 다른 델리게이트를 가리키는 상태가 되지 않음).
+
 ## 잠재 결함 (코드 리뷰)
 
 | 번호 | 위치 | 내용 |
@@ -203,9 +213,8 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | KI-5 | 생성 `Deserialize(ref reader)` | 헤더·MessageId 를 검증하지 않고 건너뜀 — 다른 타입 바이트를 먹이면 조용히 재해석 (성능 트레이드오프, 문서화 필요) |
 | KI-7 | `MessageBufferWriter.PatchInt32` | 오프셋 경계 검증 없음. `Grow`의 `Length * 2`는 1GB 부근 int 오버플로 가능 |
 | KI-8 | `MessageCategoryAttribute` | 범위 밖 카테고리 값이 `& 0x0F` 로 조용히 마스킹 |
-| KI-9 | 그래프 밖 메시지 위임 (`EmitOutOfGraphMessage*`) | 위임 시 새 `SerializeContext` — 어셈블리 경계 넘는 공유 참조 복원 불가, 경계 넘는 순환 참조는 스택 오버플로. 제약 문서화 필요 |
+| KI-9 | 그래프 밖 메시지 위임·런타임 디스패치 멤버 (`EmitOutOfGraphMessage*`·`EmitRuntimeDispatch*`) | 위임·디스패치 시 새 `SerializeContext` — 경계 넘는 공유 참조 복원 불가(중복 기록). 경계 넘는 순환 참조는 KI-25 writer 깊이 가드가 `InvalidOperationException` 으로 막는다(스택 오버플로 아님). 남은 제약 문서화 필요 |
 | KI-10 | 증분 파이프라인 | `Collect` 결과 `ImmutableArray`는 참조 동등성이라 후보 캐시가 매번 무효 — 편집마다 전체 재방출 (성능) |
-| KI-11 | `SerializerCachePrefill` | 같은 타입 병렬 등록/재등록 시 경쟁·잔존 상태 가능 (엣지) |
 
 ## 관련
 

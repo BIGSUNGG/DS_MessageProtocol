@@ -263,3 +263,18 @@ public partial class WrapCommand : AbstractCommand
 {
     public CommandEnvelope? Inner { get; set; }
 }
+
+// ---------- 등록 캐시 강건성 (KI-11) ----------
+
+// 계약 마커만 구현하고 정적 계약 멤버가 없는 타입 — 리플렉션 경로가 아무것도 찾지 못한다.
+// 등록 전 조기 접근이 캐시를 영구히 망가뜨리지 않는지 검증하는 픽스처(두 테스트가 읽기만 하므로 순서 무관).
+public class UnregisteredContractMessage : MessageProtocol.Serialize.IMessageSerializable<UnregisteredContractMessage>
+{
+    public int Value { get; set; }
+}
+
+// 동일 형태이지만 테스트 안에서 조기 접근 → 델리게이트 등록 순서로 복구되는지 검증하는 픽스처.
+public class LateBoundMessage : MessageProtocol.Serialize.IMessageSerializable<LateBoundMessage>
+{
+    public int Value { get; set; }
+}

@@ -111,6 +111,8 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 
 계약 인터페이스: `IMessageSerializable<T>`, `IHasIdMessageSerializable<T>` (+`static uint MessageId`).
 
+등록 캐시(`SerializerCache<T>`)는 타입별 1회 채워지며 **영구 실패 상태를 남기지 않는다** — 리플렉션으로 계약 멤버를 못 찾아도 캐시 초기화는 던지지 않고 null 로 남긴 뒤 사용·등록 지점에서 `InvalidOperationException` 으로 알린다(CLR 이 타입별로 영구 캐싱하는 `TypeInitializationException` 이 아님). 등록 전에 캐시가 먼저 초기화됐더라도 이후 델리게이트 등록이 캐시를 채워 복구한다. Prefill 발행은 `volatile` 플래그 + `Volatile.Write` 로 찢어진 상태(null·혼합 델리게이트)가 캐시에 고정되지 않는다(Known-Issues KI-11).
+
 ## F7. 성능 계약
 
 핫 경로에서 다음 특성을 유지한다 (회귀 시 벤치마크로 확인):

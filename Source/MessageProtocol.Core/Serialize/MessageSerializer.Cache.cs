@@ -23,29 +23,39 @@ namespace MessageProtocol.Serialize
             public static Func<byte[], T>? DeserializeBytes;
             public static uint MessageId;
             public static bool HasId;
-            public static bool IsSet;
+
+            // volatile = release store. cctor 는 이 플래그만 보고 나머지 필드를 읽으므로 publication 을 여기에 묶어,
+            // 동시 cctor 가 IsSet=true 만 보고 델리게이트는 아직 null 인 **찢어진 상태**를 캐시에 고정하는 것을 막는다
+            // (x86 에서는 관찰이 어렵지만 Unity ARM 은 store-store 재배열이 가능 — Known-Issues KI-11).
+            public static volatile bool IsSet;
         }
 
         /// <summary>
         /// 타입 인자 전용 정적 캐시. 등록 시 Prefill 되면 리플렉션 없이 채워지고,
         /// 그렇지 않으면 첫 접근 시 1회 리플렉션으로 채워진다.
+        /// <para>
+        /// 필드는 <c>readonly</c> 가 아니고 cctor 는 **절대 던지지 않는다** — 둘 다 같은 이유다. cctor 가 던지면 CLR 이
+        /// 그 실패를 타입별로 영구 캐싱해 이후 성공적인 델리게이트 등록으로도 복구할 수 없고(`TypeInitializationException`),
+        /// readonly 면 등록 전 조기 접근으로 cctor 가 먼저 돌았을 때 Prefill 이 영원히 무시된다 (Known-Issues KI-11).
+        /// 미해결 멤버는 null 로 남고 사용 지점에서 명확한 메시지로 보고한다.
+        /// </para>
         /// </summary>
         internal static class SerializerCache<T>
         {
-            public static readonly TypedSerializeRefAction<T> Serialize;
-            public static readonly TypedDeserializeRefFunc<T>? Deserialize;
-            public static readonly Func<T, byte[]> SerializeBytes;
-            public static readonly Func<byte[], T>? DeserializeBytes;
-            public static readonly uint MessageId;
-            public static readonly bool HasId;
+            public static TypedSerializeRefAction<T>? Serialize;
+            public static TypedDeserializeRefFunc<T>? Deserialize;
+            public static Func<T, byte[]>? SerializeBytes;
+            public static Func<byte[], T>? DeserializeBytes;
+            public static uint MessageId;
+            public static bool HasId;
 
             static SerializerCache()
             {
                 if (SerializerCachePrefill<T>.IsSet)
                 {
-                    Serialize = SerializerCachePrefill<T>.Serialize!;
+                    Serialize = SerializerCachePrefill<T>.Serialize;
                     Deserialize = SerializerCachePrefill<T>.Deserialize;
-                    SerializeBytes = SerializerCachePrefill<T>.SerializeBytes!;
+                    SerializeBytes = SerializerCachePrefill<T>.SerializeBytes;
                     DeserializeBytes = SerializerCachePrefill<T>.DeserializeBytes;
                     MessageId = SerializerCachePrefill<T>.MessageId;
                     HasId = SerializerCachePrefill<T>.HasId;
@@ -54,23 +64,12 @@ namespace MessageProtocol.Serialize
 
                 Type type = typeof(T);
 
-                MethodInfo serializeRef = ResolveSerializeRefMethod(type);
-                Serialize = (TypedSerializeRefAction<T>)serializeRef.CreateDelegate(typeof(TypedSerializeRefAction<T>));
-
-                MethodInfo serializeBytes = ResolveSerializeBytesMethod(type);
-                SerializeBytes = (Func<T, byte[]>)serializeBytes.CreateDelegate(typeof(Func<T, byte[]>));
-
-                MethodInfo? deserializeRef = TryResolveDeserializeRefMethod(type);
-                if (deserializeRef != null)
-                {
-                    Deserialize = (TypedDeserializeRefFunc<T>)deserializeRef.CreateDelegate(typeof(TypedDeserializeRefFunc<T>));
-                }
-
-                MethodInfo? deserializeBytes = TryResolveDeserializeBytesMethod(type);
-                if (deserializeBytes != null)
-                {
-                    DeserializeBytes = (Func<byte[], T>)deserializeBytes.CreateDelegate(typeof(Func<byte[], T>));
-                }
+                // 찾지 못한 멤버는 null 로 남긴다 — 여기서 던지면 CLR 이 타입별 초기화 실패를 영구 캐싱해
+                // 이후 델리게이트 등록으로도 복구 불가능한 TypeInitializationException 이 된다 (KI-11).
+                Serialize = TryCreateDelegate<TypedSerializeRefAction<T>>(TryResolveSerializeRefMethod(type));
+                SerializeBytes = TryCreateDelegate<Func<T, byte[]>>(TryResolveSerializeBytesMethod(type));
+                Deserialize = TryCreateDelegate<TypedDeserializeRefFunc<T>>(TryResolveDeserializeRefMethod(type));
+                DeserializeBytes = TryCreateDelegate<Func<byte[], T>>(TryResolveDeserializeBytesMethod(type));
 
                 if (TryResolveMessageIdGetter(type, out uint id))
                 {
@@ -80,10 +79,17 @@ namespace MessageProtocol.Serialize
             }
         }
 
+        /// <summary>리플렉션으로 찾은 static 멤버를 델리게이트로 만든다. 멤버가 없으면 null (cctor 비던짐 규약).</summary>
+        static TDelegate? TryCreateDelegate<TDelegate>(MethodInfo? method) where TDelegate : class
+        {
+            return method is null ? null : (TDelegate)(object)method.CreateDelegate(typeof(TDelegate));
+        }
+
         static readonly Type ByRefBufferWriterType = typeof(MessageBufferWriter).MakeByRefType();
         static readonly Type ByRefBufferReaderType = typeof(MessageBufferReader).MakeByRefType();
 
-        static MethodInfo ResolveSerializeRefMethod(Type type)
+        /// <summary>`static void Serialize(T, ref MessageBufferWriter)` 를 찾는다. 없으면 null — cctor 가 던지면 CLR 이 실패를 영구 캐싱한다 (KI-11).</summary>
+        static MethodInfo? TryResolveSerializeRefMethod(Type type)
         {
             foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
             {
@@ -97,9 +103,7 @@ namespace MessageProtocol.Serialize
                 if (parameters[1].ParameterType != ByRefBufferWriterType) continue;
                 return method;
             }
-            throw new InvalidOperationException(
-                $"Type '{type.FullName}' must define 'public static void Serialize({type.Name}, ref MessageBufferWriter)'. " +
-                $"Ensure the type is generated via MessageProtocol.CodeGenerator or implements the message contract manually.");
+            return null;
         }
 
         static MethodInfo? TryResolveDeserializeRefMethod(Type type)
@@ -118,7 +122,8 @@ namespace MessageProtocol.Serialize
             return null;
         }
 
-        static MethodInfo ResolveSerializeBytesMethod(Type type)
+        /// <summary>`static byte[] Serialize(T)` 를 찾는다. 없으면 null (사유는 <see cref="TryResolveSerializeRefMethod"/> 와 동일).</summary>
+        static MethodInfo? TryResolveSerializeBytesMethod(Type type)
         {
             foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
             {
@@ -131,8 +136,7 @@ namespace MessageProtocol.Serialize
                 if (parameters[0].ParameterType != type) continue;
                 return method;
             }
-            throw new InvalidOperationException(
-                $"Type '{type.FullName}' must define 'public static byte[] Serialize({type.Name})'.");
+            return null;
         }
 
         static MethodInfo? TryResolveDeserializeBytesMethod(Type type)
