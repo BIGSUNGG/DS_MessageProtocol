@@ -294,6 +294,44 @@ public class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void 추상_그룹_루트의_파생_요소는_new_수식어_없이_생성된다()
+    {
+        // KI-28 회귀: abstract [GroupRootMessage] 는 상속 전용이라 정적 계약을 방출하지 않는데,
+        // 파생 요소에 `new` 를 붙이니 가릴 멤버가 없어 소비자 빌드에 CS0109 가 떴다
+        // (클린 리빌드 기준 이 저장소에서만 64건 — 다형 그룹은 KI-24 이후 정상 사용 패턴이라 소비자도 동일하게 밟는다).
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [GroupRootMessage(500)]
+            public abstract partial class AbstractRoot { public long Timestamp { get; set; } }
+
+            [GroupElementMessage(501)]
+            public partial class ElementA : AbstractRoot { public string? User { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.DoesNotContain("new static", generated);
+        Assert.Contains("public static void Serialize(ElementA message, ref MessageBufferWriter writer)", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void 구체_그룹_루트의_파생_요소는_new_수식어를_유지한다()
+    {
+        // 역방향 가드: 베이스가 실제로 정적 계약(MessageId·Deserialize 등)을 방출하면 `new` 가 필요하므로
+        // (CS0108 방지) 유지해야 한다 — CS0109 를 없앤다고 `new` 를 일괄 제거하면 이쪽이 깨진다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [GroupRootMessage(510)]
+            public partial class ConcreteRoot { public long Timestamp { get; set; } }
+
+            [GroupElementMessage(511)]
+            public partial class ElementB : ConcreteRoot { public int Reason { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains("new static", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
     public void 분산_선언_캐리어는_구성_등록_코드를_생성한다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """

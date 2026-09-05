@@ -106,19 +106,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return " : " + string.Join(", ", parts);
             }
 
-            static string GetStaticHidingModifier(TypeMetadata typeMeta)
-            {
-                var baseType = typeMeta.BaseTypeMetadata;
-                if (baseType == null)
-                {
-                    return string.Empty;
-                }
-
-                return baseType.IsNonIdMessage || baseType.IsStandaloneMessage || baseType.IsGroupMessage
-                    ? "new "
-                    : string.Empty;
-            }
-
             static bool IsGeneratedSerializationInterface(
                 INamedTypeSymbol interfaceType,
                 INamedTypeSymbol? expectedDefinition,

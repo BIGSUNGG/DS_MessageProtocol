@@ -254,19 +254,6 @@ namespace MessageProtocol.CodeGenerator.Generate
                     sb.Append(Member.EmitSerialize(member, "message", indent, graph, state));
                 }
             }
-
-            static string GetStaticHidingModifier(TypeMetadata typeMeta)
-            {
-                var baseType = typeMeta.BaseTypeMetadata;
-                if (baseType == null)
-                {
-                    return string.Empty;
-                }
-
-                return baseType.IsNonIdMessage || baseType.IsStandaloneMessage || baseType.IsGroupMessage
-                    ? "new "
-                    : string.Empty;
-            }
         }
     }
 }

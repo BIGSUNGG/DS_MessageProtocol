@@ -165,7 +165,7 @@ namespace MessageProtocol.CodeGenerator
         }
 
         /// <summary>매개변수 없는 생성자로 만들 수 있는 구체 타입인지 확인한다. 생성 partial 은 타입 내부라 비공개 생성자도 호출 가능하다.</summary>
-        static bool IsConstructibleMessageType(INamedTypeSymbol typeSymbol)
+        internal static bool IsConstructibleMessageType(INamedTypeSymbol typeSymbol)
         {
             if (typeSymbol.IsAbstract)
             {
@@ -188,7 +188,7 @@ namespace MessageProtocol.CodeGenerator
                 || typeSymbol.ContainAttribute(attributeReferences.GroupElementMessageAttributeType);
         }
 
-        static bool IsPartial(INamedTypeSymbol typeSymbol)
+        internal static bool IsPartial(INamedTypeSymbol typeSymbol)
         {
             return typeSymbol.DeclaringSyntaxReferences
                 .Select(static reference => reference.GetSyntax())
