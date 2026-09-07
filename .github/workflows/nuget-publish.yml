@@ -18,7 +18,9 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "9.0.x"
+          dotnet-version: |
+            8.0.x
+            9.0.x
 
       - name: Compute package version from tag
         id: ver
@@ -31,16 +33,25 @@ jobs:
       - name: Build solution (Release)
         run: dotnet build MessageProtocol.sln -c Release
 
+      # 게이트: 태그가 테스트에 실패하는 트리를 가리키면 패키지가 나가지 않아야 한다 —
+      # 로컬 게이트는 절차 준수를 보장하지만 파이프라인 자체도 스스로 검증해야 한다(2026-09-08).
+      - name: Run unit tests (Release, both TFMs)
+        run: dotnet test MessageProtocol.sln -c Release --no-build
+
+      - name: Run acceptance scenarios (Sandbox)
+        run: dotnet run --project Sandbox/MessageProtocol.Sandbox -c Release
+
       - name: Pack library projects (Release)
         run: |
           set -euo pipefail
           V="${{ steps.ver.outputs.version }}"
-          dotnet pack "Source/MessageProtocol.Core/MessageProtocol.Core.csproj" \
-            -c Release -p:Version="$V" -o "${{ github.workspace }}/artifacts"
-          dotnet pack "Source/MessageProtocol.CodeGenerator/MessageProtocol.CodeGenerator.csproj" \
-            -c Release -p:Version="$V" -o "${{ github.workspace }}/artifacts"
-          dotnet pack "Source/MessageProtocol/MessageProtocol.csproj" \
-            -c Release -p:Version="$V" -o "${{ github.workspace }}/artifacts"
+          OUT="${{ github.workspace }}/artifacts"
+          dotnet pack "Source/MessageProtocol.Core" \
+            -c Release -p:Version="$V" -o "$OUT"
+          dotnet pack "Source/MessageProtocol.CodeGenerator" \
+            -c Release -p:Version="$V" -o "$OUT"
+          dotnet pack "Source/MessageProtocol" \
+            -c Release -p:Version="$V" -o "$OUT"
 
       - name: Upload NuGet artifacts
         uses: actions/upload-artifact@v4
@@ -54,7 +65,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${NUGET_API_KEY}" ]; then
-            echo "::error::NUGET_API_KEY secret is not set. Add it in repository Settings → Secrets and variables → Actions."
+            echo "::error::NUGET_API_KEY secret is not set."
+            echo "::error::Add the secret in repository Settings, Actions."
             exit 1
           fi
           shopt -s nullglob
