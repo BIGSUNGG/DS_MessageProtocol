@@ -246,7 +246,12 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    else if (__refKind{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
 {indent}    {{
 {indent}        int __objId{uid} = reader.ReadInt32();
-{indent}        {targetExpression} = ({model.TypeName})context.GetObject(__objId{uid});
+{indent}        var __back{uid} = context.GetObject(__objId{uid});
+{indent}        if (!(__back{uid} is {model.TypeName}))
+{indent}        {{
+{indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({model.TypeName}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
+{indent}        }}
+{indent}        {targetExpression} = ({model.TypeName})__back{uid};
 {indent}    }}
 {indent}    else
 {indent}    {{
@@ -307,7 +312,12 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    else if (__nk{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
 {indent}    {{
 {indent}        int __objId{uid} = reader.ReadInt32();
-{indent}        {targetExpression} = ({typeName})context.GetObject(__objId{uid});
+{indent}        var __back{uid} = context.GetObject(__objId{uid});
+{indent}        if (!(__back{uid} is {typeName}))
+{indent}        {{
+{indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({typeName}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
+{indent}        }}
+{indent}        {targetExpression} = ({typeName})__back{uid};
 {indent}    }}
 {indent}    else
 {indent}    {{
@@ -371,7 +381,12 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    else if (__pk{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
 {indent}    {{
 {indent}        int __objId{uid} = reader.ReadInt32();
-{indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})context.GetObject(__objId{uid});
+{indent}        var __back{uid} = context.GetObject(__objId{uid});
+{indent}        if (!(__back{uid} is {GetTypeDisplayName(typeSymbol)}))
+{indent}        {{
+{indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({GetTypeDisplayName(typeSymbol)}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
+{indent}        }}
+{indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})__back{uid};
 {indent}    }}
 {indent}    else
 {indent}    {{

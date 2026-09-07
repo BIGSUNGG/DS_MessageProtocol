@@ -1,4 +1,5 @@
 using MessageProtocol.Serialize;
+using MessageProtocol.Tests.Fixtures;
 using Xunit;
 
 namespace MessageProtocol.Tests;
@@ -77,3 +78,60 @@ public class ReferenceContextTests
         Assert.Same(third, read.GetObject(3));
     }
 }
+
+// ---------- 베이스 타입 멤버 공유 백레퍼런스 판독 (감사 원장 HIGH — 2026-09-07 실험·완화 고정) ----------
+
+public class SharedBaseBackReferenceTests
+{
+    [Fact]
+    public void 베이스_파생_멤버로_같은_인스턴스를_공유하면_안내_InvalidDataException으로_거부된다()
+    {
+        // 실험(2026-09-07, 2.2.0 생성 코드): 구체 베이스 멤버(EventBase)가 먼저 베이스 필드만 기록하고 인스턴스를
+        // 등록하면, 파생 멤버(LoginEvent)의 백레퍼런스 판독은 등록된 EventBase 인스턴스를 LoginEvent 로 캐스트한다.
+        // 수정 전은 원인을 알려주지 않는 InvalidCastException — 이제 상황과 해법을 안내하는 InvalidDataException.
+        var login = new LoginEvent { Timestamp = 5, User = "kim" };
+        var host = new SharedBaseDerivedHost { First = login, Second = login };
+
+        var bytes = MessageSerializer.Serialize(host);
+        var exception = Assert.Throws<System.IO.InvalidDataException>(
+            () => MessageSerializer.Deserialize<SharedBaseDerivedHost>(bytes));
+
+        Assert.Contains("EventBase", exception.Message);
+        Assert.Contains("LoginEvent", exception.Message);
+        Assert.Contains(nameof(SharedBaseDerivedHost.Second), exception.Message);
+        Assert.Contains("less derived", exception.Message);
+    }
+
+    [Fact]
+    public void 베이스_멤버_2곳_공유는_조용한_타입_좁힘으로_복원된다_현재_동작_고정()
+    {
+        // KI-34 제약 고정: 두 멤버가 모두 베이스 타입이면 예외 없이 왕복하지만 파생 필드(User)는 유실되고
+        // 두 멤버가 같은 **베이스** 인스턴스를 공유한다. 전체 해결은 와이어 변경(중첩 메시지 디스패치)이 필요해
+        // 정책 결정 사항 — 다형이 필요하면 루트를 abstract 로 선언해 런타임 디스패치로 보낸다(MSGPROT012 안내).
+        var login = new LoginEvent { Timestamp = 5, User = "kim" };
+        var host = new SharedBaseBaseHost { First = login, Second = login };
+
+        var back = MessageSerializer.Deserialize<SharedBaseBaseHost>(MessageSerializer.Serialize(host));
+
+        Assert.Equal(5L, back.First!.Timestamp);          // 베이스 필드는 유지
+        Assert.IsType<EventBase>(back.First);             // 파생이 아니라 베이스 인스턴스로 복원 = User 유실
+        Assert.Same(back.First, back.Second);             // 참조 동일성은 유지(2.2.0, KI-9)
+    }
+
+    [Fact]
+    public void 디스패치_멤버와_구체_멤버로_같은_인스턴스를_공유하면_파생_필드까지_복원된다()
+    {
+        // 대조군: 첫 등장이 런타임 디스패치(추상 멤버)면 구체 타입이 헤더째 기록되므로, 이후 어떤 멤버의
+        // 백레퍼런스도 온전한 구체 인스턴스를 받는다 — KI-24 디스패치와 KI-9 참조 추적의 정상 조합.
+        var start = new StartCommand { Seq = 9, Target = "t" };
+        var host = new SharedDispatchConcreteHost { Command = start, Concrete = start };
+
+        var back = MessageSerializer.Deserialize<SharedDispatchConcreteHost>(MessageSerializer.Serialize(host));
+
+        var command = Assert.IsType<StartCommand>(back.Command);
+        Assert.Equal(9L, command.Seq);
+        Assert.Equal("t", command.Target);
+        Assert.Same(back.Command, back.Concrete);
+    }
+}
+

@@ -426,3 +426,34 @@ public class ManualFlagProbeMessage : MessageProtocol.Serialize.IHasIdMessageSer
         return Deserialize(ref reader);
     }
 }
+
+// ---------- 베이스 타입 멤버 공유 백레퍼런스 판독 (감사 원장 HIGH — 실험 고정) ----------
+
+// 같은 파생 인스턴스를 구체 베이스 멤버(EventBase)와 파생 멤버(LoginEvent) 양쪽에 공유한다.
+// 쓰기는 First(베이스)가 베이스 필드만 기록하고 인스턴스를 등록 → Second(파생)는 백레퍼런스.
+// 읽기는 First 가 EventBase 인스턴스를 만들어 등록하므로 Second 의 파생 캐스트가 실패한다(KI-35).
+#pragma warning disable MSGPROT012
+[StandaloneMessage(134)]
+public partial class SharedBaseDerivedHost
+{
+    public EventBase? First { get; set; }
+    public LoginEvent? Second { get; set; }
+}
+
+// 베이스 멤버 2곳 — 예외 없이 파생 필드가 유실되고 두 멤버가 같은 베이스 인스턴스를 공유한다(조용한 타입 좁힘).
+[StandaloneMessage(135)]
+public partial class SharedBaseBaseHost
+{
+    public EventBase? First { get; set; }
+    public EventBase? Second { get; set; }
+}
+#pragma warning restore MSGPROT012
+
+// 대조군: 같은 인스턴스를 추상 멤버(런타임 디스패치 — 구체 타입이 헤더째 기록)와 구체 멤버로 공유하면
+// 파생 필드까지 온전히 복원된다. 베이스 *구체* 멤버의 선언 타입 기록(KI-29)과의 차이를 고정한다.
+[StandaloneMessage(136)]
+public partial class SharedDispatchConcreteHost
+{
+    public AbstractCommand? Command { get; set; }
+    public StartCommand? Concrete { get; set; }
+}
