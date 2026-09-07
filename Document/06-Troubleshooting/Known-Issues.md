@@ -283,6 +283,7 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | KI-5 | 생성 `Deserialize(ref reader)` | **해결 (2026-09-08)** — 헤더 4바이트(NonId 는 1바이트)를 타입의 MessageId 와 비교해 불일치 시 `InvalidDataException` 으로 거부(아래 항목). 와이어 불변 — 합법 프레임 그대로 복호 |
 | KI-9 | 그래프 밖 메시지 위임·런타임 디스패치 멤버 (`EmitOutOfGraphMessage*`·`EmitRuntimeDispatch*`) | **해결 (2026-09-07)** — 호출측 `SerializeContext` 의 오브젝트 id 추적이 위임·디스패치 쓰기로 전파되어 두 번째 등장부터 백레퍼런스로 기록·참조 동일성이 복원된다(와이어는 기존 참조 인코딩 재사용). 잔존 제약: **프레임 경계를 넘는 공유**는 별개 인스턴스로 남는다(각 프레임이 자체 컨텍스트를 쓴다 — 아래 KI-9 상세). 혼합 버전 피어(구버전 수신측)는 디스패치 멤버 위치의 백레퍼런스를 해석하지 못하므로 함께 업그레이드 필요 |
 | KI-37 | `PooledBuffer`(struct) | **해결 (2026-09-08)** — 소유 상태를 참조형 홀더로 공유해 사본 이중 반납 원천 차단(아래 항목). 빈 대여 `Array.Empty` 는 풀 반납 대상에서 제외, `GetSpan(음수)` 는 계약 예외로 명문화 |
+| KI-39 | `SerializerCache<T>` 복구 블록 | **감사 등록(2026-09-08, LOW)** — 복구 경로의 평문 필드 쓰기는 `Volatile.Write(Serialize)` 로 release 되지만 `Deserialize` 만 읽는 핫 경로는 acquire 짝이 없어 ARM(Unity)에서 지연 가시성 false `ThrowMissingDeserialize` 가능. 해법 후보: 캐시 필드 volatile 화 또는 읽기 지점 `Volatile.Read`(핫 경로 비용 검토 필요) |
 | KI-10 | 증분 파이프라인 | **측정 완료(2026-09-05, 아래 기록)** — 출력 스텝은 매 편집마다 재실행되지만(`Compilation` 스텝 항상 Modified + `ForAttributeWithMetadataName` transform 출력이 컴파일별 심볼 인스턴스) 생성 텍스트는 동일해서 다운스트림 재컴파일은 이미 차단됨. 남은 비용은 편집당 생성기 CPU(메시지 타입 수에 비례)뿐이며, 근본 해결은 value-equatable 모델 재작성(대규모)이라 측정 근거로 연기 |
 
 ### KI-9 해소 상세 (2026-09-07)
@@ -367,6 +368,10 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 ### KI-5. 생성 Deserialize 헤더 무검증 건너뛰기 → 다른 타입 바이트의 조용한 재해석 (해결)
 
 **상태: 해결 (2026-09-08).** 원장 최초 등록 항목. 생성 `Deserialize(ref reader)` 는 헤더를 읽어 버리기만 했다(1 또는 4바이트 무비교 skip) — 다른 타입의 바이트를 먹이면 프레임 역동기화 없이 페이로드를 그 타입 문법으로 **조용히 재해석**해, 엉뚱한 필드 값·혼란스러운 깊은 예외 또는 조용한 상태 오염으로 이어졌다. 서버에서 메시지 타입 착오는 전형적인 프로덕션 결함 클래스라 진입에서 차단한다. 해법: `EmitDeserialize` 가 `EmitSerialize` 와 같은 MessageId 4바이트 상수를 바이크해 프레임 바이트와 비교 — 불일치 시 실제 헤더(16진)·기대 MessageId·타입명을 안내하는 `InvalidDataException`. **분기는 프레임 바이트(런타임) 기준**을 유지한다: 불신 바이트가 NonId 플래그를 주장하면 4바이트 읽기를 건너뛰되 1바이트 비교에서 거부된다(위조 우회 불가). 호출 경로 전수 확인(2026-09-08 스카우트 감사): 제네릭 진입·object 디스패치·제네릭 디스패치·그래프 밖 위임·런타임 디스패치 모두 reader 가 정확히 헤더에 위치하고 생성 Serialize 는 header==MessageId 를 구성상 보장 — 검증은 모든 합법 경로에 안전(NonId 1바이트 경로 포함). 수동 구현(`IHasIdMessageSerializable`)은 검증 외부(스스로 헤더를 기록/소비) — 계약 문서에 권장으로 명시. DS_RPC 로컬 팩(`2.3.1-ki5`) 회귀: 빌드 0 오류·58/58 통과 — 합법 프레임은 전부 검증을 통과한다. 회귀 테스트 4개(타입 착오 거부·NonId 위조 헤더 거부·id 변조 거부·정상 왕복), 테스트 224→228.
+
+### KI-38. 등록 TOCTOU — 검증과 클레임 사이에 prefill 이 캐시를 덮어쓴다 (해결)
+
+**상태: 해결 (2026-09-08).** 2026-09-08 스레드 안전성 감사(병렬 스카우트) FINDING 1·3. 델리게이트 등록 경로(`RegisterHasIdMessage<T>`·`RegisterNonIdMessage<T>` fast path)는 검증(부수효과 없음)→prefill→클레임(`RegisterCore` 의 `_registeredTypes.TryAdd`) 순서였다. 같은 타입을 **다른 델리게이트로** 동시 등록하면 두 스레드 모두 검증을 통과하고 각자 prefill 이 권위적인 `SerializerCache<T>` 를 덮어쓴 뒤, 클레임 패자만 "already registered" 로 실패한다 — 패자의 델리게이트(A/B 혼합 포함)가 캐시에 잔류하고 디스패치 invoker 는 캐시를 경유하므로 **거부된 등록의 직렬화기가 조용히 실행**된다(KI-11 무오염 클래스의 TOCTOU 재발. ModuleInitializer 경로는 단일 스레드·동일 델리게이트라 도달하지 않고, 공개 API 의 수동 등록 경로에서 실재). 해법: `RegisterGenericConstruction` 가 이미 쓰던 올바른 형태 — **클레임 선점 후 prefill**. 델리게이트 경로는 검증 전에 `TryAdd` 로 타입을 원자적으로 선점하고(패자는 prefill 전에 예외), 실패 시 클레임을 롤백한다. `ValidateRegistration`·`RegisterCore` 는 `typeClaimed` 매개변수로 이중 선점을 피한다. 함께(같은 감사 FINDING 3): `TryRemoveGenericReaderInvoker` 의 제거 순서를 등록 순서의 역순(dispatch→owner)으로 — 같은 순서면 롤백 찰나에 owner 만 사라져 같은 키의 재등록이 새 디스패치를 롤백에 뺏길 수 있었다. 회귀 테스트 2개(배리어 동기화 이중 델리게이트 등록 — 정확히 한쪽 실패·캐시는 승자만 / 검증 거부 후 클레임 롤백 재등록). 테스트 228→230, DS_RPC 로컬 팩(`2.3.3-ki38`) 빌드+테스트 통과.
 
 ## 관련
 

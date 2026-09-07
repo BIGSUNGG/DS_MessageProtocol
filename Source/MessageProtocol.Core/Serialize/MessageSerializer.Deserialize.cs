@@ -216,8 +216,12 @@ namespace MessageProtocol.Serialize
         internal static bool TryRemoveGenericReaderInvoker(uint messageId, uint classId)
         {
             ulong key = GenericDispatchKey(messageId, classId);
+            // 등록은 owner→dispatch 순서로 발행하므로 제거(롤백)는 역순 dispatch→owner 로 — 순서가 같으면
+            // 디스패치가 아직 살아있는 찰나에 owner 가 사라져, 같은 키의 재등록이 owner 를 선점하고 롤백이
+            // 새 등록의 디스패치를 지우는 창이 열린다(KI-38 감사 FINDING 3, 등록 실패 경로에서만 도달).
+            bool removed = _genericReaderDispatch.TryRemove(key, out _);
             _registeredGenericIds.TryRemove(key, out _);
-            return _genericReaderDispatch.TryRemove(key, out _);
+            return removed;
         }
     }
 }

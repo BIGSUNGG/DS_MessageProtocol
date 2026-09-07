@@ -172,3 +172,95 @@ public class SerializerCacheTests
         Assert.Equal(0u, MessageSerializer.GetGenericClassId<GenericEnvelope<MemberControlMessage>>());
     }
 }
+
+// ---------- 동시 등록 경쟁 (KI-38) ----------
+
+/// <summary>
+/// 등록은 검증→prefill→클레임 순서였을 때 같은 타입을 다른 델리게이트로 동시 등록하면 두 스레드 모두
+/// prefill 까지 도달해 권위적인 SerializerCache&lt;T&gt; 를 덮어쓴 뒤 TryAdd 패자만 실패했다 — 패자의
+/// 델리게이트(또는 A/B 혼합)가 잔류해 거부된 등록의 직렬화기가 조용히 실행된다. 클레임 선점(패자는
+/// prefill 전에 예외)으로 불가능해진다.
+/// </summary>
+public class RegistrationRaceTests
+{
+    [Fact]
+    public void 같은_타입을_다른_델리게이트로_동시_등록하면_정확히_한쪽만_실패하고_캐시는_승자만_담는다()
+    {
+        var barrier = new Barrier(2);
+        var failures = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+
+        void Register(int offset)
+        {
+            barrier.SignalAndWait(10_000);
+            try
+            {
+                MessageSerializer.RegisterHasIdMessage<ManualRaceMessage>(
+                    (message, ref writer) =>
+                    {
+                        uint id = ManualRaceMessage.MessageId;
+                        writer.WriteByte((byte)(id >> 24));
+                        writer.WriteByte((byte)(id >> 16));
+                        writer.WriteByte((byte)(id >> 8));
+                        writer.WriteByte((byte)id);
+                        writer.WriteInt32(message.Value + offset);
+                    },
+                    (ref MessageBufferReader reader) =>
+                    {
+                        reader.Skip(MessageProtocol.MessageWireFormat.IdHeaderSize);
+                        return new ManualRaceMessage { Value = reader.ReadInt32() - offset };
+                    },
+                    ManualRaceMessage.MessageId);
+            }
+            catch (Exception exception)
+            {
+                failures.Enqueue(exception);
+            }
+        }
+
+        var first = Task.Run(() => Register(0));
+        var second = Task.Run(() => Register(1_000));
+        Task.WaitAll(first, second);
+
+        // 정확히 한쪽만 "already registered" — 다른 예외 유형이 관찰되면 등록 자체가 부패한 것이다.
+        var failure = Assert.Single(failures);
+        var invalid = Assert.IsType<InvalidOperationException>(failure);
+        Assert.Contains("already registered", invalid.Message);
+
+        // 캐시는 승자의 델리게이트 쌍만 담는다 — A(직렬화)+B(역직렬화) 혼합이면 값이 어긋난다.
+        var back = MessageSerializer.Deserialize<ManualRaceMessage>(
+            MessageSerializer.Serialize(new ManualRaceMessage { Value = 77 }));
+        Assert.Equal(77, back.Value);
+    }
+
+    [Fact]
+    public void 검증_거부로_실패한_등록은_클레임을_롤백해_재등록이_가능하다()
+    {
+        uint flatMessageId = Fixtures.FlatMessage.MessageId; // 이미 등록된 타입이 점유한 와이어 id
+
+        // 클레임은 검증보다 먼저 일어난다 — 거부되면 클레임도 롤백되어야 잔류가 없다.
+        var rejected = Assert.Throws<InvalidOperationException>(() =>
+            MessageSerializer.RegisterHasIdMessage<ManualRollbackMessage>(
+                (message, ref writer) => { },
+                (ref reader) => new ManualRollbackMessage(),
+                flatMessageId));
+        Assert.Contains("already registered", rejected.Message);
+
+        // 거부 시도의 클레임이 잔류하면 이 재등록은 "already registered" 로 막힌다.
+        uint ownId = ManualRollbackMessage.MessageId;
+        MessageSerializer.RegisterHasIdMessage<ManualRollbackMessage>(
+            (message, ref writer) =>
+            {
+                uint id = ownId;
+                writer.WriteByte((byte)(id >> 24));
+                writer.WriteByte((byte)(id >> 16));
+                writer.WriteByte((byte)(id >> 8));
+                writer.WriteByte((byte)id);
+            },
+            (ref reader) =>
+            {
+                reader.Skip(MessageProtocol.MessageWireFormat.IdHeaderSize);
+                return new ManualRollbackMessage();
+            },
+            ownId);
+    }
+}

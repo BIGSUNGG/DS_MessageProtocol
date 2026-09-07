@@ -457,3 +457,67 @@ public partial class SharedDispatchConcreteHost
     public AbstractCommand? Command { get; set; }
     public StartCommand? Concrete { get; set; }
 }
+
+// ---------- 동시 등록 경쟁 (KI-38) ----------
+
+// 클레임 선점 등록 검증용 수동 메시지 — 어느 테스트에서도 먼저 등록하지 않는다(경쟁 테스트가 최초 등록).
+public class ManualRaceMessage : MessageProtocol.Serialize.IHasIdMessageSerializable<ManualRaceMessage>
+{
+    public int Value { get; set; }
+
+    public static uint MessageId => MessageProtocol.MessageWireFormat.ComposeMessageId(
+        MessageProtocol.MessageFlag.Standalone, (byte)MessageProtocol.MessageCategory.Category0, 150);
+
+    public static void Serialize(ManualRaceMessage message, ref MessageProtocol.Serialize.MessageBufferWriter writer)
+    {
+        uint id = MessageId;
+        writer.WriteByte((byte)(id >> 24));
+        writer.WriteByte((byte)(id >> 16));
+        writer.WriteByte((byte)(id >> 8));
+        writer.WriteByte((byte)id);
+        writer.WriteInt32(message.Value);
+    }
+
+    public static byte[] Serialize(ManualRaceMessage message)
+    {
+        var writer = MessageProtocol.Serialize.MessageBufferWriter.Create();
+        try
+        {
+            Serialize(message, ref writer);
+            return writer.ToArray();
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    public static ManualRaceMessage Deserialize(ref MessageProtocol.Serialize.MessageBufferReader reader)
+    {
+        reader.Skip(MessageProtocol.MessageWireFormat.IdHeaderSize);
+        return new ManualRaceMessage { Value = reader.ReadInt32() };
+    }
+
+    public static ManualRaceMessage Deserialize(byte[] data)
+    {
+        var reader = new MessageProtocol.Serialize.MessageBufferReader(data);
+        return Deserialize(ref reader);
+    }
+}
+
+// 클레임 롤백 잔류 검증용 — 첫 시도는 남의 MessageId 로 거부되고, 재시도는 자기 id 로 성공해야 한다.
+public class ManualRollbackMessage : MessageProtocol.Serialize.IHasIdMessageSerializable<ManualRollbackMessage>
+{
+    public int Value { get; set; }
+
+    public uint OwnId => MessageProtocol.MessageWireFormat.ComposeMessageId(
+        MessageProtocol.MessageFlag.Standalone, (byte)MessageProtocol.MessageCategory.Category0, 151);
+
+    public static uint MessageId => MessageProtocol.MessageWireFormat.ComposeMessageId(
+        MessageProtocol.MessageFlag.Standalone, (byte)MessageProtocol.MessageCategory.Category0, 151);
+
+    public static void Serialize(ManualRollbackMessage message, ref MessageProtocol.Serialize.MessageBufferWriter writer) { }
+    public static byte[] Serialize(ManualRollbackMessage message) => System.Array.Empty<byte>();
+    public static ManualRollbackMessage Deserialize(ref MessageProtocol.Serialize.MessageBufferReader reader) => new();
+    public static ManualRollbackMessage Deserialize(byte[] data) => new();
+}

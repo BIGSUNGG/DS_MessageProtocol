@@ -42,16 +42,36 @@ namespace MessageProtocol.Serialize
             serializeBytes ??= CreateSerializeBytesWrapper(serialize);
             deserializeBytes ??= CreateDeserializeBytesWrapper(deserialize);
 
-            // 등록 검증을 prefill 보다 먼저 — prefill 이 먼저 돌면 거부된 등록의 MessageId/HasId 가
-            // SerializerCache<T> 에 영구 잔류하고, 이후 올바른 등록의 prefill 은 복구 블록(Serialize is null)
-            // 을 건너뛰므로 잘못된 값이 남는다 (Known-Issues KI-11 잔존, 2026-09-07 해소).
-            ValidateRegistration(typeof(T), messageId, hasId: true);
+            // 클레임 우선(KI-38): 타입 클레임을 **prefill 보다 먼저** 원자적으로 선점한다. 검증→prefill→클레임 순서였을 때
+            // 같은 타입을 다른 델리게이트로 동시 등록하면 두 스레드 모두 검증을 통과하고 각자 prefill 이 캐시를
+            // 덮어쓴 뒤 TryAdd 의 패자만 "already registered" 로 실패했다 — 패자의 델리게이트(또는 A/B 혼합)가
+            // 권위적인 SerializerCache<T> 에 잔류하고, 디스패치 invoker 는 캐시를 경유하므로 **거부된 등록의
+            // 직렬화기가 조용히 실행**된다(KI-11 무오엄 클래스의 TOCTOU 재발). 클레임 선점으로 패자는 prefill
+            // 전에 예외를 받고 캐시는 승자의 값만 담는다. 실패 시 클레임은 롤백한다.
+            if (!_registeredTypes.TryAdd(typeof(T), 0))
+            {
+                throw new InvalidOperationException($"Message type '{typeof(T).FullName}' is already registered.");
+            }
 
-            PrefillSerializerCache(serialize, deserialize, serializeBytes, deserializeBytes, messageId, hasId: true);
+            try
+            {
+                // 등록 검증을 prefill 보다 먼저 — prefill 이 먼저 돌면 거부된 등록의 MessageId/HasId 가
+                // SerializerCache<T> 에 영구 잔류하고, 이후 올바른 등록의 prefill 은 복구 블록(Serialize is null)
+                // 을 건너뛰므로 잘못된 값이 남는다 (Known-Issues KI-11 잔존, 2026-09-07 해소).
+                ValidateRegistration(typeof(T), messageId, hasId: true, typeClaimed: true);
 
-            RegisterCore(typeof(T), messageId, hasId: true,
-                writer: static (object m, ref MessageBufferWriter w) => Serialize((T)m, ref w),
-                reader: static (ref MessageBufferReader r) => (object)Deserialize<T>(ref r));
+                PrefillSerializerCache(serialize, deserialize, serializeBytes, deserializeBytes, messageId, hasId: true);
+
+                RegisterCore(typeof(T), messageId, hasId: true,
+                    writer: static (object m, ref MessageBufferWriter w) => Serialize((T)m, ref w),
+                    reader: static (ref MessageBufferReader r) => (object)Deserialize<T>(ref r),
+                    typeClaimed: true);
+            }
+            catch
+            {
+                _registeredTypes.TryRemove(typeof(T), out _);
+                throw;
+            }
         }
 
         /// <summary>ID 메시지 등록 리플렉션 경로. 수동 구현 타입이거나 델리게이트를 넘기지 않을 때 사용한다.</summary>
@@ -92,13 +112,28 @@ namespace MessageProtocol.Serialize
             }
 
             // HasId 경로와 같은 이유로 검증이 prefill 보다 먼저 — 중복 등록 거부 시 캐시 오업 방지 (KI-11 잔존).
-            ValidateRegistration(typeof(T), 0u, hasId: false);
+            // 클레임 우선은 여기도 동일(KI-38): 검증·prefill 전에 원자적으로 선점해 패자가 prefill 전에 실패하게 한다.
+            if (!_registeredTypes.TryAdd(typeof(T), 0))
+            {
+                throw new InvalidOperationException($"Message type '{typeof(T).FullName}' is already registered.");
+            }
 
-            PrefillSerializerCache(serialize, deserialize, serializeBytes, deserializeBytes, messageId: 0u, hasId: false);
+            try
+            {
+                ValidateRegistration(typeof(T), 0u, hasId: false, typeClaimed: true);
 
-            RegisterCore(typeof(T), 0u, hasId: false,
-                writer: static (object m, ref MessageBufferWriter w) => Serialize((T)m, ref w),
-                reader: null);
+                PrefillSerializerCache(serialize, deserialize, serializeBytes, deserializeBytes, messageId: 0u, hasId: false);
+
+                RegisterCore(typeof(T), 0u, hasId: false,
+                    writer: static (object m, ref MessageBufferWriter w) => Serialize((T)m, ref w),
+                    reader: null,
+                    typeClaimed: true);
+            }
+            catch
+            {
+                _registeredTypes.TryRemove(typeof(T), out _);
+                throw;
+            }
         }
 
         /// <summary>
@@ -283,9 +318,10 @@ namespace MessageProtocol.Serialize
         /// 영구 잔류한다 (Known-Issues KI-11 잔존). RegisterCore 의 원자적 클레임(TryAdd/GetOrAdd) 은 그대로
         /// 남아 검증 통과 후 발행 직전의 동시 등록 경쟁을 담당한다.
         /// </summary>
-        static void ValidateRegistration(Type type, uint messageId, bool hasId)
+        static void ValidateRegistration(Type type, uint messageId, bool hasId, bool typeClaimed = false)
         {
-            if (_registeredTypes.ContainsKey(type))
+            // 클레임 선점 등록 경로(KI-38)에서는 이미 이 등록 시도가 타입을 선점했으므로 중복 검사를 건너뛴다.
+            if (!typeClaimed && _registeredTypes.ContainsKey(type))
             {
                 throw new InvalidOperationException($"Message type '{type.FullName}' is already registered.");
             }
@@ -320,9 +356,10 @@ namespace MessageProtocol.Serialize
                 $"Register NonId messages with '{nameof(RegisterNonIdMessage)}' instead, or compose the id with Standalone/Group flags.");
         }
 
-        static void RegisterCore(Type type, uint messageId, bool hasId, BufferWriterAction writer, BufferReaderFunc? reader)
+        static void RegisterCore(Type type, uint messageId, bool hasId, BufferWriterAction writer, BufferReaderFunc? reader, bool typeClaimed = false)
         {
-            if (!_registeredTypes.TryAdd(type, 0))
+            // 클레임은 호출부(델리게이트 경로, KI-38)가 prefill 전에 이미 선점했을 수 있다 — 그 경우 이중 선점은 실패하므로 건너뛴다.
+            if (!typeClaimed && !_registeredTypes.TryAdd(type, 0))
             {
                 throw new InvalidOperationException($"Message type '{type.FullName}' is already registered.");
             }
