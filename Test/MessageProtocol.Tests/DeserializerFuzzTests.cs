@@ -1,5 +1,6 @@
 using MessageProtocol;
 using MessageProtocol.Serialize;
+using System;
 using MessageProtocol.Tests.Fixtures;
 using System.Reflection;
 using Xunit;
@@ -85,7 +86,11 @@ public class DeserializerFuzzTests
     public void 변이_프레임은_깨끗하게_거부되거나_멱등하게_왕복한다()
     {
         const int seed = 20260908;
-        const int mutationsPerFrame = 2_000;
+        // 캠페인 노브: MSGPROT_FUZZ_SCALE=N 으로 로컬 심층 캠페인(예: 15) — CI 는 기본 1(속도 우선).
+        int scale = int.TryParse(Environment.GetEnvironmentVariable("MSGPROT_FUZZ_SCALE"), out var parsed) && parsed > 0
+            ? parsed
+            : 1;
+        int mutationsPerFrame = 2_000 * scale;
         var random = new Random(seed);
 
         int rejected = 0, accepted = 0;
