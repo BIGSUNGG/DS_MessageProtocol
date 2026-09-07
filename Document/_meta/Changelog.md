@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (2.3.4 릴리스)
+
+- **2.3.4 릴리스** (태그 `v2.3.4`) — 패치: 스레드 안전성 2건 + 계약 고정. 델리게이트 등록 경로의 TOCTOU(검증→prefill→클레임 순서)로 같은 타입 동시 등록 시 패자의 델리게이트가 캐시에 잔류하던 결함을 클레임 선점으로 차단(KI-38), `SerializerCache<T>` 필드 volatile 화로 ARM(Unity) 지연 가시성 해소(KI-39), 제네릭 reader 제거 순서 미러링. 진입점 계약 가드 테스트 13개(직렬화 null 가드·미등록 안내·`Create(<=0)`·`FromRented`). 커밋 `8b101f6`·`c3908b7`·`2bb2eaa`. 테스트 230→243, Sandbox 38 통과, DS_RPC 로컬 팩 빌드+테스트 통과 후 태그 푸시.
+
 ## 2026-09-08 (사이클 14) — 테스트 갭 폐쇄
 
 - **진입점 계약 가드 테스트 일괄 폐쇄(13개)** — 2026-09-08 감사 목록화 건: 직렬화 진입점 null 가드 6개(제네릭 ref-writer·byte[]·Pooled + object 3종, `ArgumentNullException`·ParamName 고정), `SerializeToWriter` 미등록 타입 안내 예외(실제 계약은 `RegisterType` 지연 경유의 `IMessageSerializable` 안내 — 테스트 작성 중 실제 메시지로 교정), `Create(0/-1/int.MinValue)` 빈 버퍼 시작→첫 쓰기 증설 왕복(3), `PooledBuffer.FromRented` 인자 검증 3개(null·길이 초과·음수). 구현은 이미 정상이라 코드 변화 없음 — 계약을 실행으로 고정. 테스트 230→243, Sandbox 38 통과. (도중 1건 오탐 메시지 가정으로 실패 — 실제 예외 경로 확인 후 교정, 전체 통과.)
