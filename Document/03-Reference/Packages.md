@@ -53,6 +53,7 @@ flowchart LR
 - 루트 `Directory.Build.props` → 기본 `IsPackable=false` (Test·Sandbox 등), `**/generated-out/**` 컴파일 제외 가드.
 - 솔루션 수준 `dotnet build -t:Rebuild` 는 간헐적으로 **CS0006 2건**(분석기 참조 DLL 을 Clean 이 지운 뒤 소비자 CSC 가 못 찾음)을 낸다 — 재현이 불안정한 도구 체인 특성이라 경고 센서스는 솔루션 Rebuild 대신 **프로젝트별로 의존 순서대로 `-t:Rebuild`** 를 도는 쪽을 쓴다.
 - 팩 검증: `dotnet pack MessageProtocol.sln -c Release -o artifacts/packages`.
+- **아티팩트 실물 검증(2026-09-08, 2.3.5)** — nupkg 압축 해제 확인: `MessageProtocol` — 런타임 DLL(`lib/netstandard2.1`)·분석기 DLL(`analyzers/dotnet/cs`)·README·XML 문서 포함, 의존성 `MessageProtocol.Core 2.3.5`. `MessageProtocol.Core` — `lib/netstandard2.1` + `lib/net6.0` 이중(유일한 `#if` 는 ModuleInitializer 폴백 — net6.0 에서 컴파일 아웃, 이중 TFM 의 존재 이유). 파사드가 NS2.1 단일인 것은 의도(Core net6.0 자산은 직접 참조 소비자용).
 - 분석기 릴리스 추적: `Source/MessageProtocol.CodeGenerator/AnalyzerReleases.Shipped.md`(릴리스된 규칙) · `AnalyzerReleases.Unshipped.md`(차기 릴리스 대기 규칙). SDK 가 두 파일을 자동으로 `AdditionalFiles` 에 포함하므로 csproj 에 중복 선언하지 않는다. **새 진단 규칙을 추가하면 반드시 `AnalyzerReleases.Unshipped.md` 에 `Rule ID | Category | Severity | Notes` 행을 추가** — 누락 시 RS2008 경고(증분 빌드에서는 가려지고 클린 빌드에서만 노출). 파일 형식은 엄격하다: 구분 행은 `--------|----------|----------|-------` 처럼 파이프 주변 공백 없이 써야 하며, 공백이 섞이면 RS2007(잘못된 릴리스 헤더) 경고가 난다.
 
 ## 관련
