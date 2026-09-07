@@ -10,3 +10,4 @@ MSGPROT011 | MessageProtocol | Error | Message member must be assignable
 MSGPROT012 | MessageProtocol | Warning | Message member serializes by declared type
 MSGPROT013 | MessageProtocol | Error | Message category value is out of range
 MSGPROT014 | MessageProtocol | Error | Duplicate wire MessageId
+MSGPROT015 | MessageProtocol | Error | Duplicate generic construction runtime key

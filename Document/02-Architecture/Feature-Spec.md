@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: architecture
 status: approved
 tags: [feature-spec, rewrite, parity]
-updated: 2026-09-05
+updated: 2026-09-07
 ---
 
 # Feature Spec — 재작성 프로젝트 지원 기능
@@ -40,7 +40,7 @@ updated: 2026-09-05
 
 - 메시지 타입은 `partial` 선언이 필수.
 - 그룹 계층 규칙 위반은 컴파일 진단으로 거부 (F5).
-- **와이어 MessageId 는 프로토콜 내에서 유일**해야 한다 — 조립된 ID(헤더 flags + category + 24비트 값)가 같은 두 메시지 타입은 `MSGPROT014` 로 컴파일 거부된다(방치하면 모듈 로드 시 등록 충돌로 어셈블리 로드가 실패한다). 판정 대상은 실제로 등록될 형태뿐이며, 제네릭 선언은 런타임 키가 (MessageId, ClassId) 라 이 검사 대신 구성 충돌 검사(MSGPROT008)가 담당한다.
+- **와이어 MessageId 는 프로토콜 내에서 유일**해야 한다 — 조립된 ID(헤더 flags + category + 24비트 값)가 같은 두 메시지 타입은 `MSGPROT014` 로 컴파일 거부된다(방치하면 모듈 로드 시 등록 충돌로 어셈블리 로드가 실패한다). 판정 대상은 실제로 등록될 형태뿐이다. 제네릭 선언은 런타임 키가 (MessageId, ClassId) 이다 — 같은 선언의 중복 선언은 구성 충돌 검사(`MSGPROT008`)가, 서로 다른 두 선언이 같은 (MessageId, ClassId) 조립 키를 쓰는 경우는 `MSGPROT015` 가 담당한다.
 
 ## F3. 멤버 타입 지원
 
@@ -104,6 +104,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
   - `MSGPROT012` 멤버가 선언 타입으로 직렬화됨 (**경고** — 파생 메시지 타입이 있는 *구체* 메시지 베이스를 멤버 정적 타입으로 쓰면 파생 인스턴스의 추가 멤버가 예외 없이 유실. Legacy에 없는 신규 진단)
   - `MSGPROT013` `MessageCategory` 값 범위 초과(0..15) — 방치하면 `& 0x0F` 마스킹으로 와이어 MessageId 가 달라져 다른 메시지와 ID 충돌(모듈 로드 실패) 또는 피어 오라우팅. Legacy에 없는 신규 진단
   - `MSGPROT014` 와이어 MessageId 중복 — 조립된 ID(flags+category+24비트 값)가 같은 두 메시지 타입. 방치하면 모듈 이니셜라이저 등록 충돌로 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단
+  - `MSGPROT015` 제네릭 구성 런타임 키 중복 — 서로 다른 두 제네릭 선언이 같은 (MessageId, ClassId) 조합을 쓰면 `RegisterGenericReaderInvoker` 가 모듈 이니셜라이저에서 충돌해 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단
 
 ## F6. 런타임 `MessageSerializer`
 

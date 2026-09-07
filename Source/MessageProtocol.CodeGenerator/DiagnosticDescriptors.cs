@@ -102,6 +102,14 @@ namespace MessageProtocol.CodeGenerator
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
+        public static readonly DiagnosticDescriptor DuplicateGenericRuntimeKey = new(
+            id: "MSGPROT015",
+            title: "Duplicate generic construction runtime key",
+            messageFormat: "Type '{0}' declares generic construction '{1}', whose runtime key (MessageId 0x{2}, ClassId {3}) is also declared by {4}. Generic constructions register under (MessageId, ClassId) at module load; a duplicate key makes registration fail with a type initialization error — use a different ClassId or a different MessageId value per generic declaration.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
         public static readonly DiagnosticDescriptor PolymorphicMemberSerializesByDeclaredType = new(
             id: "MSGPROT012",
             title: "Message member serializes by declared type",

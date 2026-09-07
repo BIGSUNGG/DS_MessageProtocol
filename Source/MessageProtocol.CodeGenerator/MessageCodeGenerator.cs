@@ -297,6 +297,47 @@ namespace MessageProtocol.CodeGenerator
         /// abstract 그룹 루트(상속 전용이라 생성 건너뜀). 이 게이트를 통과한 타입만 충돌 판정에 센다 —
         /// 어차피 생성되지 않을 타입을 세면 거짓 양성이 난다.
         /// </summary>
+        /// <summary>
+        /// 모듈 로드 시 구성 등록이 **실제로 조립할** 제네릭 와이어 MessageId. 등록되지 않는 선언은 false —
+        /// 제네릭이 아니거나 [StandaloneMessage] 가 없거나, partial 아님·기본 생성 불가(MSGPROT001·MSGPROT010),
+        /// ID·카테고리 범위 위반(MSGPROT005·MSGPROT013), 메시지 속성 중복(MSGPROT007) 으로 이미 거부될 선언은
+        /// 생성·등록되지 않으므로 충돌 판정에서 뺀다 — 연쇄 오탐 방지 규약은 <see cref="TryGetRegisteredWireMessageId"/>
+        /// (KI-31) 와 같다.
+        /// </summary>
+        static bool TryGetRegisteredGenericWireMessageId(
+            INamedTypeSymbol declaration,
+            AttributeReferences attributeReferences,
+            out uint messageId)
+        {
+            messageId = 0;
+
+            if (!declaration.IsGenericType
+                || !declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType))
+            {
+                return false;
+            }
+
+            if (!IsPartial(declaration) || !IsConstructibleMessageType(declaration))
+            {
+                return false;
+            }
+
+            if (!TypeMetadataValidator.TryValidateMessageIdRange(declaration, attributeReferences, out _, out _) ||
+                !TypeMetadataValidator.TryValidateCategoryRange(declaration, attributeReferences, out _))
+            {
+                return false;
+            }
+
+            var typeMeta = new TypeMetadata(declaration, attributeReferences);
+            if (HasMultipleMessageAttributes(typeMeta) || !typeMeta.IsGenericWireMessage)
+            {
+                return false;
+            }
+
+            messageId = typeMeta.GetMessageId();
+            return true;
+        }
+
         static bool TryGetRegisteredWireMessageId(
             INamedTypeSymbol typeSymbol,
             AttributeReferences attributeReferences,
@@ -393,16 +434,16 @@ namespace MessageProtocol.CodeGenerator
         /// </summary>
         static bool TryReportDuplicateMessageAttributes(TypeMetadata typeMeta, SourceProductionContext context, Location location)
         {
+            if (!HasMultipleMessageAttributes(typeMeta))
+            {
+                return false;
+            }
+
             var names = new List<string>(4);
             if (typeMeta.IsNonIdMessage) names.Add("NonIdMessage");
             if (typeMeta.IsStandaloneMessage) names.Add("StandaloneMessage");
             if (typeMeta.IsGroupRootMessage) names.Add("GroupRootMessage");
             if (typeMeta.IsGroupElementMessage) names.Add("GroupElementMessage");
-
-            if (names.Count < 2)
-            {
-                return false;
-            }
 
             context.ReportDiagnostic(Diagnostic.Create(
                 DiagnosticDescriptors.DuplicateMessageAttributes,
@@ -410,6 +451,17 @@ namespace MessageProtocol.CodeGenerator
                 typeMeta.Symbol.Name,
                 string.Join(", ", names)));
             return true;
+        }
+
+        /// <summary>메시지 속성이 2개 이상인지 — 중복 선언은 MSGPROT007 로 생성이 건너뛰어지므로 등록되지 않는다.</summary>
+        static bool HasMultipleMessageAttributes(TypeMetadata typeMeta)
+        {
+            int count = 0;
+            if (typeMeta.IsNonIdMessage) count++;
+            if (typeMeta.IsStandaloneMessage) count++;
+            if (typeMeta.IsGroupRootMessage) count++;
+            if (typeMeta.IsGroupElementMessage) count++;
+            return count > 1;
         }
 
         /// <summary>
@@ -465,6 +517,7 @@ namespace MessageProtocol.CodeGenerator
         {
             var constructionCounts = new Dictionary<INamedTypeSymbol, int>(SymbolEqualityComparer.Default);
             var idCounts = new Dictionary<(INamedTypeSymbol Declaration, uint ClassId), int>(DeclarationClassIdComparer.Instance);
+            var conflicts = new ConstructionConflicts();
 
             foreach (var type in types)
             {
@@ -478,10 +531,28 @@ namespace MessageProtocol.CodeGenerator
                     constructionCounts[construction] = constructionCounts.TryGetValue(construction, out int c) ? c + 1 : 1;
                     var idKey = (construction.OriginalDefinition, classId);
                     idCounts[idKey] = idCounts.TryGetValue(idKey, out int n) ? n + 1 : 1;
+
+                    // 조립된 런타임 키 (제네릭 와이어 MessageId, ClassId) 별 선언 소유자 — 서로 다른 두 선언이
+                    // 같은 키를 쓰면 `RegisterGenericReaderInvoker` 가 모듈 이니셜라이저에서 충돌해
+                    // TypeInitializationException(어셈블리 로드 실패)이 된다. (Declaration, ClassId) 키로는
+                    // 선언이 다르면 다른 키로 봐서 이 형태를 못 잡는다 (감사 원장 MEDIUM, 2026-09-06 패스).
+                    if (classId != 0 && classId <= TypeMetadata.MaxMessageAttributeValue
+                        && TryGetRegisteredGenericWireMessageId(construction.OriginalDefinition, attributeReferences, out uint genericWireId))
+                    {
+                        var runtimeKey = (genericWireId, classId);
+                        if (!conflicts.GenericRuntimeKeyOwners.TryGetValue(runtimeKey, out var declarations))
+                        {
+                            declarations = new List<INamedTypeSymbol>();
+                            conflicts.GenericRuntimeKeyOwners[runtimeKey] = declarations;
+                        }
+
+                        if (!declarations.Any(d => SymbolEqualityComparer.Default.Equals(d, construction.OriginalDefinition)))
+                        {
+                            declarations.Add(construction.OriginalDefinition);
+                        }
+                    }
                 }
             }
-
-            var conflicts = new ConstructionConflicts();
 
             // 비제네릭 메시지의 와이어 MessageId 소유자 — 동일 id 를 조립하는 두 타입은 모듈 로드 시
             // `_registeredMessageIds` 등록 충돌로 어셈블리 로드가 실패하므로 컴파일에서 잡는다 (Known-Issues KI-31).
@@ -585,6 +656,23 @@ namespace MessageProtocol.CodeGenerator
                     ReportInvalidConstruction(context, location, host, $"construction '{construction.ToDisplayString()}' (or its ClassId) is declared more than once in this compilation");
                     return false;
                 }
+
+                // 서로 다른 제네릭 선언이 같은 (MessageId, ClassId) 런타임 키를 조립하는지 — 같은 선언의 중복은
+                // 위 IsConflicting 이 잡는다. 방치하면 모듈 이니셜라이저의 RegisterGenericReaderInvoker 가
+                // 충돌해 어셈블리 로드가 실패한다 (MSGPROT015).
+                if (TryGetRegisteredGenericWireMessageId(declaration, attributeReferences, out uint genericWireId)
+                    && conflicts.TryGetGenericRuntimeKeyPeers(genericWireId, classId, declaration, out string genericPeers))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.DuplicateGenericRuntimeKey,
+                        location,
+                        host.Name,
+                        construction.ToDisplayString(),
+                        genericWireId.ToString("X8"),
+                        classId.ToString(),
+                        genericPeers));
+                    return false;
+                }
             }
 
             return true;
@@ -642,6 +730,9 @@ namespace MessageProtocol.CodeGenerator
             /// <summary>와이어 MessageId → 그 id 를 조립하는 타입들(모듈 로드 시 실제 등록될 형태만).</summary>
             public Dictionary<uint, List<INamedTypeSymbol>> MessageIdOwners { get; } = new();
 
+            /// <summary>조립된 제네릭 런타임 키 (MessageId, ClassId) → 그 키를 쓰는 제네릭 선언들(등록될 형태만).</summary>
+            public Dictionary<(uint MessageId, uint ClassId), List<INamedTypeSymbol>> GenericRuntimeKeyOwners { get; } = new();
+
             public bool IsConflicting(INamedTypeSymbol construction, uint classId)
             {
                 return DuplicateConstructions.Contains(construction)
@@ -663,6 +754,23 @@ namespace MessageProtocol.CodeGenerator
                         .Where(owner => !SymbolEqualityComparer.Default.Equals(owner, self))
                         .Select(owner => $"'{owner.ToDisplayString()}'"));
                 return true;
+            }
+
+            /// <summary>자신의 선언을 제외한 같은 런타임 키 (MessageId, ClassId) 소유자가 있으면 그 이름들을 반환한다 (MSGPROT015).</summary>
+            public bool TryGetGenericRuntimeKeyPeers(uint messageId, uint classId, INamedTypeSymbol selfDeclaration, out string peers)
+            {
+                peers = string.Empty;
+                if (!GenericRuntimeKeyOwners.TryGetValue((messageId, classId), out var owners) || owners.Count < 2)
+                {
+                    return false;
+                }
+
+                peers = string.Join(
+                    ", ",
+                    owners
+                        .Where(owner => !SymbolEqualityComparer.Default.Equals(owner, selfDeclaration))
+                        .Select(owner => $"'{owner.ToDisplayString()}'"));
+                return peers.Length > 0;
             }
         }
 

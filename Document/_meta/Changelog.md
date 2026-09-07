@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-07 (추가)
+
+- `Known-Issues` KI-32 신규·해결 — 서로 다른 제네릭 선언의 (MessageId, ClassId) 런타임 키 충돌을 `MSGPROT015` 로 컴파일 승격(모듈 로드 `TypeInitializationException` 예방). `Feature-Spec` F2 유일성 규칙(제네릭 런타임 키 담당 진단 분리)·F5 진단 목록(MSGPROT015) 갱신.
+
 ## 2026-09-07
 
 - **2.1.0 릴리스** (태그 `v2.1.0`) — v2.0.0 이후 26 커밋의 수정을 반영한 유지보수 릴리스. 코드 변경 없음, `Source/Directory.Build.props` 버전만 승격. 주요 포함 내용: 제네릭 구성 관련 수정(ClassId 범위 컴파일 타임 검증 `c60e0df`, 제네릭 구성 헬퍼 이름 충돌(CS0111) 방지 `6629f54`, 고유 접미사 공유 `88d78cd`, 직렬화기 캐시 회복 가능화 `76dc232`), 와이어 안전(중첩 깊이 상한 `01deafd`·`d6bd38a`, UTF-8 엄격 검증 `86859e1`, 음수 접두사·Skip/Advance 거부 `85c9e31`·`d8b75ef`, WriteString 버퍼 long 산술 `93831a8`), 생성기 진단(MSGPROT010/011 `98947ce`, 파생 멤버 유실 경고 MSGPROT012 `09155d9`, 중복 와이어 MessageId MSGPROT013·014 승격 `eb80aa9`·`7341873`), 참조 추적 null 거부(KI-30 `42ed369`), List 선할당 가드 `db86d60`, 인덱서 제외 `dffc137`, abstract 멤버 런타임 디스패치 `6cffea3`, 결정론적 생성(이름 스코핑 `a5e1da2`, 멤버 순서 고정 `b1b6e6f`, 컬렉션 스냅샷 `13dc4af`), netstandard2.1 폴백 경로 테스트 `6292ef9`, 생성 텍스트 안정성 고정 `36ebda9`. 테스트 197(net8.0·net9.0) 전체 통과 확인 후 태그 푸시 → CI(`nuget-publish.yml`)가 2.1.0 패키지 세 개를 게시. 소비 측 동기: DS_RPC 제네릭 프로시저 기능이 GenericMessage 다중 구성 선언에 직접 의존.

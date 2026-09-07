@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: troubleshoot
 status: draft
 tags: [known-issues, generator, runtime]
-updated: 2026-09-05
+updated: 2026-09-07
 ---
 
 # Known Issues
@@ -322,7 +322,15 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 
 KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[StandaloneMessage(7)]` 두 개처럼 **id 를 그냥 복사해 붙여도** 두 타입이 같은 와이어 MessageId 를 조립하고, 충돌은 모듈 이니셜라이저의 `_registeredMessageIds`(`RegisterCore`)에서만 발견되어 `InvalidOperationException: Message type with ID 587202567 is already registered by '…'` → CLR 이 `TypeInitializationException` 으로 감싸 **어셈블리 로드가 실패**했다. 제네릭 구성의 (MessageId, ClassId) 충돌은 `CollectConstructionConflicts` 가 이미 컴파일 진단(MSGPROT008)으로 승격하고 있었으므로, **비제네릭 메시지 id 충돌만** 진단 없이 런타임 크래시로 남는 비대칭이었다.
 
-조치 방향: 컴파일 진단 승격 → 완료. 연쇄 오탐 방지: MSGPROT005·MSGPROT013 으로 이미 거부될 타입은 소유자에서 뺀다 — 그렇게 하지 않으면 지난 턴 KI-8 테스트가 실제로 깨졌다(문제없는 상대 타입까지 MSGPROT014 를 맞아 생성이 막힘). **내 기존 테스트가 새 기능의 설계 결함을 잡아낸 사례**라 그 테스트를 약화시키지 않고 게이트를 고쳤다. 남은 꼬리(별도 추적): **서로 다른 두 제네릭 선언**이 같은 MessageId 값 + 같은 ClassId 를 쓰면 런타임 키 (MessageId, ClassId) 가 같아지는데, `CollectConstructionConflicts` 의 키는 (선언, ClassId) 라 이 충돌을 잡지 못한다 → 모듈 로드 실패가 남는다(감사 원장 등록).
+조치 방향: 컴파일 진단 승격 → 완료. 연쇄 오탐 방지: MSGPROT005·MSGPROT013 으로 이미 거부될 타입은 소유자에서 뺀다 - 그렇게 하지 않으면 지난 턴 KI-8 테스트가 실제로 깨졌다(문제없는 상대 타입까지 MSGPROT014 를 맞아 생성이 막힘). **내 기존 테스트가 새 기능의 설계 결함을 잡아낸 사례**라 그 테스트를 약화시키지 않고 게이트를 고쳤다. 남은 꼬리(별도 추적): **서로 다른 두 제네릭 선언**이 같은 MessageId 값 + 같은 ClassId 를 쓰면 런타임 키 (MessageId, ClassId) 가 같아지는데, `CollectConstructionConflicts` 의 키는 (선언, ClassId) 라 이 충돌을 잡지 못한다 → 모듈 로드 실패가 남는다(감사 원장 등록) → **KI-32 로 해결**.
+
+### KI-32. 서로 다른 제네릭 선언의 (MessageId, ClassId) 런타임 키 충돌이 모듈 로드 실패로만 드러남 (해결)
+
+**상태: 해결 (2026-09-07).** 감사 원장 MEDIUM(2026-09-06 패스 · KI-31 남은 꼬리). 구성 등록의 실제 런타임 키는 **조립된 (제네릭 와이어 MessageId, ClassId)** 인데, 기존 충돌 검사의 키는 `(선언 원본 정의, ClassId)` 였다 - 같은 선언의 중복은 잡지만 서로 다른 두 선언이 우연히 같은 MessageId 값 + 같은 ClassId 를 쓰면 다른 키로 보고 지나쳤다. 이제 `CollectConstructionConflicts` 가 등록될 형태의 구성만 골라(`TryGetRegisteredGenericWireMessageId`: 제네릭+`[StandaloneMessage]`·partial·생성 가능·범위·속성 중복 검사 통과 선언만 - KI-31 과 같은 연쇄 오탐 방지 규약) 런타임 키별 선언 소유자를 모으고(`ConstructionConflicts.GenericRuntimeKeyOwners`), 같은 키에 선언이 2개 이상이면 새 진단 **`MSGPROT015`(Error)** 를 각 캐리어에 보고하고 등록 캐리어 생성을 건너뛴다. 메시지에는 16진 MessageId·ClassId·상대 선언 정규 이름을 실어 MSGPROT014 와 같은 형식으로 원인을 가리킨다. 소비자 프로젝트 실험: 수정 전 `[StandaloneMessage(7)] [GenericMessage(typeof(GenA<int>), ClassId=1)] class GenA<T>` + `[StandaloneMessage(7)] [GenericMessage(typeof(GenB<int>), ClassId=1)] class GenB<T>` → 첫 사용 시 `TypeInitializationException`(내부 `InvalidOperationException: Generic construction with MessageId 7 and ClassId 1 is already registered by 'GenA<int>'`) - 수정 후 컴파일에서 MSGPROT015 2건으로 거부. 회귀 테스트 4개(정방향 1 + 역방향 가드 3: ClassId 가 다르면 무충돌·MessageId 값이 다르면 무충돌·단일 선언의 여러 구성은 무충돌). **이빨 확인**: 게이트 무력화 돌연변이에서 1/4 실패. `AnalyzerReleases.Unshipped.md` MSGPROT015 행 추가(마크다운 자동 서식이 구분 행을 다시 망가뜨렸고 - RS2007 함정 재발 - 서식 훅이 닿지 않는 경로로 복구·무결성 확인). `Feature-Spec` F2 유일성 규칙·F5 진단 목록 갱신.
+
+원본 발견 내용 (소비자 프로젝트 실험 검증):
+
+같은 저장소 밖 소비자 프로젝트에서 두 제네릭 선언이 같은 `[StandaloneMessage(7)]` 값과 같은 `ClassId=1` 구성을 선언하면 빌드는 성공하고, 첫 직렬화 시점(모듈 이니셜라이저)에 `RegisterGenericReaderInvoker` 의 `TryAdd` 가 실패해 `InvalidOperationException` → CLR 이 `<Module>` cctor 실패로 캐싱 → **어셈블리 로드 실패**. 오류 메시지는 상대 구성 타입만 지목하고 (MessageId, ClassId) 분해를 알려주지 않는다.
 
 ## 관련
 

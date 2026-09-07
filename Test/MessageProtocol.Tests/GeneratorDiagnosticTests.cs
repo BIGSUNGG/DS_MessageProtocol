@@ -1138,6 +1138,90 @@ public class GeneratorDiagnosticTests
         Assert.Empty(compileErrors);
     }
 
+    [Fact]
+    public void MSGPROT015_다른_제네릭_선언이_같은_MessageId_ClassId를_쓰면_컴파일에서_거부된다()
+    {
+        // 감사 원장 MEDIUM(2026-09-06) 회귀: 서로 다른 두 제네릭 선언이 같은 MessageId 값 + 같은 ClassId 를 쓰면
+        // 런타임 키 (MessageId, ClassId) 가 같아져 RegisterGenericReaderInvoker 가 모듈 이니셜라이저에서 충돌,
+        // TypeInitializationException(어셈블리 로드 실패)이 된다. (Declaration, ClassId) 키 충돌 검사는 선언이
+        // 다르면 다른 키로 봐서 이 형태를 못 잡았다. 소비자 프로젝트 실험으로 수정 전 재생 확인.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenA<int>), ClassId = 1)]
+            public partial class GenA<T> { public T? Value { get; set; } }
+
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenB<int>), ClassId = 1)]
+            public partial class GenB<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        var reported = diagnostics.Where(d => d.Id == "MSGPROT015").ToArray();
+        Assert.Equal(2, reported.Length);
+        Assert.All(reported, d => Assert.Equal(DiagnosticSeverity.Error, d.Severity));
+        Assert.Contains("GenB<T>", reported[0].GetMessage());   // 상대 선언의 정규 이름
+        Assert.Contains("GenA<T>", reported[1].GetMessage());
+        Assert.Contains("0x00000007", reported[0].GetMessage()); // 조립된 런타임 키의 16진 MessageId
+
+        // 등록 캐리어가 생성되지 않는다(충돌 등록이 모듈 로드를 깨뜨리므로).
+        // ("RegisterGenericConstruction" 문자열 자체는 미등록 구성 안내 예외 메시지에도 등장하니 캐리어 클래스명으로 판별한다.)
+        Assert.DoesNotContain("__GenericConstructionRegistration", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT015_ClassId가_다르면_같은_MessageId_값도_충돌하지_않는다()
+    {
+        // 역방향 가드: 런타임 키는 (MessageId, ClassId) 조합 — ClassId 가 다르면 공존한다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenA<int>), ClassId = 1)]
+            public partial class GenA<T> { public T? Value { get; set; } }
+
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenB<int>), ClassId = 2)]
+            public partial class GenB<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT015");
+        Assert.Contains("RegisterGenericConstruction", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT015_MessageId_값이_다르면_같은_ClassId도_충돌하지_않는다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenA<int>), ClassId = 1)]
+            public partial class GenA<T> { public T? Value { get; set; } }
+
+            [StandaloneMessage(8)]
+            [GenericMessage(typeof(GenB<int>), ClassId = 1)]
+            public partial class GenB<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT015");
+        Assert.Contains("RegisterGenericConstruction", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT015_단일_선언의_여러_구성은_충돌하지_않는다()
+    {
+        // 역방향 가드: 한 선언의 여러 구성(서로 다른 타입 인자)은 같은 MessageId 를 공유하지만 ClassId 로
+        // 구분된다 — 정상적인 사용 형태. (같은 선언 + 같은 ClassId 중복은 기존 MSGPROT008 이 잡는다.)
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(7)]
+            [GenericMessage(typeof(GenA<int>), ClassId = 1)]
+            [GenericMessage(typeof(GenA<string>), ClassId = 2)]
+            public partial class GenA<T> { public T? Value { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT015");
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(generated, "RegisterGenericConstruction<").Count);
+        Assert.Empty(compileErrors);
+    }
+
     /// <summary>생성 코드에서 `writer.Write*(message.멤버)` 호출의 멤버 이름을 나온 순서대로 뽑는다 = 와이어 기록 순서.</summary>
     static IReadOnlyList<string> ExtractWriteOrder(string generated)
     {
