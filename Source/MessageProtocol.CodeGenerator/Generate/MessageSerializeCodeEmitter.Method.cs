@@ -34,14 +34,21 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return sb.ToString();
             }
 
+            /// <summary>
+            /// 와이어 MessageId 4바이트(빅엔디언) 분해 — EmitSerialize 가 바이크하는 값과 EmitDeserialize 가
+            /// 검증하는 값이 같은 분해에서 나와야 한다. 두 곳이 따로 분해하면 id 레이아웃 변경 시 한쪽만 고쳐
+            /// 쓰는 바이트를 읽는 쪽이 거부하는 자기부정 버그가 생긴다(2026-09-08 구조 감사 FINDING 5).
+            /// </summary>
+            static (byte Header, byte B1, byte B2, byte B3) DecomposeWireId(uint messageId)
+            {
+                return ((byte)(messageId >> 24), (byte)(messageId >> 16), (byte)(messageId >> 8), (byte)messageId);
+            }
+
             public static string EmitSerialize(TypeMetadata typeMeta, string indent, SerializationGraph graph)
             {
                 var rootModel = graph.RootType;
                 uint id = typeMeta.GetMessageId();
-                byte headerByte = (byte)(id >> 24);
-                byte idB1 = (byte)(id >> 16);
-                byte idB2 = (byte)(id >> 8);
-                byte idB3 = (byte)id;
+                var (headerByte, idB1, idB2, idB3) = DecomposeWireId(id);
                 bool hasEmbeddedId = typeMeta.IsStandaloneMessage || typeMeta.IsGroupMessage;
 
                 var sb = new StringBuilder();
@@ -108,10 +115,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 // 검증 상수 — EmitSerialize 가 바이크하는 것과 같은 MessageId 4바이트(빅엔디언).
                 // 다른 타입의 바이트를 먹이면 페이로드를 조용히 재해석하던 결함(KI-5)을 프레임 진입에서 차단한다.
                 uint expectedId = typeMeta.GetMessageId();
-                byte expectedHeader = (byte)(expectedId >> 24);
-                byte expectedB1 = (byte)(expectedId >> 16);
-                byte expectedB2 = (byte)(expectedId >> 8);
-                byte expectedB3 = (byte)expectedId;
+                var (expectedHeader, expectedB1, expectedB2, expectedB3) = DecomposeWireId(expectedId);
                 string typeName = typeMeta.DeclarationName;
 
                 var sb = new StringBuilder();
