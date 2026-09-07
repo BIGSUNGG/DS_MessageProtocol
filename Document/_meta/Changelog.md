@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (2.3.0 릴리스)
+
+- **2.3.0 릴리스** (태그 `v2.3.0`) — 마이너: `PooledBuffer.Empty`·`Memory`·`UnsafeArraySegment` 의 `[Obsolete(error:false)]` 마킹이 공개 API 표면 변화(경고 추가)라 patch 가 아닌 minor 로 승격. 함께 포함: 진단 중복제거 키 수식(사유·위치 포함), 생성 Deserialize 헤더 규칙 단일 사실원화(와이어 불변), 그래프 헬퍼 방출 순서 결정화, RS2007/RS2008 빌드 게이트. 커밋 `a1cad8a`·`f0353e4`·`b8971cc`·`2af21f8`·`515027c`. 테스트 212→214, Sandbox 38 통과, DS_RPC 를 로컬 2.3.0 팩으로 빌드+테스트(77/77, 경고 0) 통과 후 태그 푸시.
+
 ## 2026-09-08 (사이클 3)
 
 - 진단 품질·구조 LOW 클러스터 — `EmitState` 진단 중복제거 키에 사유(kind)·위치 포함(같은 멤버의 MSGPROT006+MSGPROT011 동시 보고), 생성 `Deserialize` 헤더 규칙을 `MessageWireFormat.HasEmbeddedMessageId` 호출로 통일(와이어 불변), 그래프 헬퍼 방출 순서를 타입 이름 정렬로 결정화(BCL Dictionary 열거 의존 제거), `AnalyzerReleases.*.md` 파손(RS2007)을 `WarningsAsErrors` 로 게이트(재발 이력 2회).
