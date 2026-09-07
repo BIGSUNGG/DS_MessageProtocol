@@ -110,14 +110,33 @@ namespace MessageProtocol.CodeGenerator
                     : null;
 
             uint classId = 0;
+            bool classIdIsError = false;
             foreach (var namedArgument in attribute.NamedArguments)
             {
-                if (namedArgument.Key == "ClassId"
-                    && namedArgument.Value.Kind == TypedConstantKind.Primitive
+                if (namedArgument.Key != "ClassId")
+                {
+                    continue;
+                }
+
+                // 오류형 인자(선언되지 않은 상수 등)는 컴파일러가 속성 사용 위치에서 이미 1차 오류(CS0103 등)를
+                // 보고한다 — 여기서 classId=0 을 그대로 흘려보내면 "missing 'ClassId'" 라는 2차 오안내가
+                // 원인을 가렸다(2026-09-08 메타데이터 감사 FINDING 2). 이 항목은 건너뛴다(등록 없음·진단 없음).
+                if (namedArgument.Value.Kind == TypedConstantKind.Error)
+                {
+                    classIdIsError = true;
+                    continue;
+                }
+
+                if (namedArgument.Value.Kind == TypedConstantKind.Primitive
                     && namedArgument.Value.Value is uint parsed)
                 {
                     classId = parsed;
                 }
+            }
+
+            if (classIdIsError)
+            {
+                continue;
             }
 
             entries.Add((construction, classId));

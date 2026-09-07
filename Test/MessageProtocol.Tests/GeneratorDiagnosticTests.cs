@@ -1382,4 +1382,39 @@ public class GeneratorDiagnosticTests
         Assert.Contains("Outer_Inner", generated);
         Assert.Empty(compileErrors);
     }
+
+    // ---------- 오류형 ClassId 진단 (메타데이터 감사 FINDING 2) ----------
+
+    // `ClassId = <error>`(선언되지 않은 상수 등)는 컴파일러가 속성 사용 위치에서 이미 1차 오류를 낸다 —
+    // 생성기가 classId=0 을 그대로 흘려보내 "missing 'ClassId'" 2차 오안내를 보태던 것을 건너뛰게 했다.
+    [Fact]
+    public void 오류형_ClassId_식은_missing_ClassId_오안내를_보태지_않는다()
+    {
+        const string source = """
+            using MessageProtocol;
+
+            [StandaloneMessage(210)]
+            [GenericMessage(typeof(Ns.ErrorCarrier.Box<int>), ClassId = UNDECLARED_CONSTANT)]
+            public partial class ErrorCarrier
+            {
+                public int Value { get; set; }
+            }
+
+            namespace Ns
+            {
+                [StandaloneMessage(211)]
+                public partial class Box<T>
+                {
+                    public T? Value { get; set; }
+                }
+            }
+            """;
+
+        var (diagnostics, _, compileErrors) = RunGeneratorWithCompilation(source);
+
+        // 컴파일러 1차 오류(CS0103)는 존재 — 원인은 거기에 있다.
+        Assert.Contains(compileErrors, d => d.Id == "CS0103");
+        // 생성기는 오안내를 보태지 않는다.
+        Assert.DoesNotContain(diagnostics, d => d.GetMessage().Contains("missing 'ClassId'"));
+    }
 }

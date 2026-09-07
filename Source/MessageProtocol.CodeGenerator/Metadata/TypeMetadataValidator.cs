@@ -80,7 +80,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
             var rawValue = attribute.ConstructorArguments[0].Value;
             if (!TypeMetadata.TryConvertToUInt32(rawValue, out uint value) || value > TypeMetadata.MaxMessageAttributeValue)
             {
-                attributeName = attribute.AttributeClass?.Name ?? "NonIdMessageAttribute";
+                attributeName = attribute.AttributeClass?.Name ?? "MessageAttribute"; // 폴백은 범용 명칭 — NonIdMessageAttribute 는 생성자 인자가 없어 이 경로의 원인일 수 없다(2026-09-08 감사 FINDING 3).
                 attributeValue = rawValue?.ToString() ?? "null";
                 return false;
             }
