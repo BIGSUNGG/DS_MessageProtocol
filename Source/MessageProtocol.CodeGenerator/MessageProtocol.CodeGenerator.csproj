@@ -6,6 +6,12 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
 
+    <!-- RS2007(잘못된 릴리스 헤더)·RS2008(추적 누락) 을 빌드 실패로 승격 - 마크다운 자동 서식 도구가
+         AnalyzerReleases.*.md 의 테이블 구분 행(파이프 주변 공백 없는 형태)을 공백 포함 형태로 바꾸면
+         릴리스 추적 파서가 읽지 못하는데, 이 형태의 파손이 이 저장소에서 실제 재발한 이력이 있다
+         (KI-12, 2026-09-07/09-08 두 차례). 경고로만 남으면 클린 빌드에서만 보이고 CI 를 통과하므로 게이트한다. -->
+    <WarningsAsErrors>$(WarningsAsErrors);RS2007;RS2008</WarningsAsErrors>
+
     <IsRoslynAnalyzer>true</IsRoslynAnalyzer>
     <DefineConstants>$(DefineConstants);MESSAGE_PROTOCOL_CODE_GENERATOR</DefineConstants>
     <IncludeBuildOutput>false</IncludeBuildOutput>
