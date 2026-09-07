@@ -1420,4 +1420,73 @@ public class GeneratorDiagnosticTests
         // 생성기는 오안내를 보태지 않는다.
         Assert.DoesNotContain(diagnostics, d => d.GetMessage().Contains("missing 'ClassId'"));
     }
+
+    // ---------- 이형(엑조틱) 소비자 형태 행렬 (2026-09-08) ----------
+    // 합법적이지만 희귀한 멤버/타입 모양 — 각각 깨끗한 진단(AD0001 아님) 또는 정상 생성이어야 한다.
+
+    [Theory]
+    [InlineData("public int[,] Grid { get; set; }", "MSGPROT006")]                       // 랭크-2 배열
+    [InlineData("public System.Span<int> Slice { get; set; }", "MSGPROT006")]            // ref struct 멤버
+    [InlineData("public (int A, string B)? Pair { get; set; }", "MSGPROT006")]           // 튜플
+    [InlineData("public System.IntPtr Handle { get; set; }", "MSGPROT006")]              // 포인터 대응 합법형
+    [InlineData("public System.Threading.Tasks.Task<int>? Task { get; set; }", "MSGPROT006")] // 미래형 멤버
+    public void 이형_멤버_모양은_깨끗한_진단으로_거부된다(string member, string expectedDiagnostic)
+    {
+        var (diagnostics, generated, _) = RunGeneratorWithCompilation(
+            Header
+            + """
+            [StandaloneMessage(221)]
+            public partial class ExoticMember
+            {
+            """
+            + member
+            + """
+            }
+            """
+            + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == expectedDiagnostic);
+        Assert.DoesNotContain(diagnostics, d => d.Id == "AD0001");
+    }
+
+    [Fact]
+    public void 가변_struct_메시지는_정상_생성된다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(222)]
+            public partial struct MutablePoint
+            {
+                public int X { get; set; }
+                public int Y { get; set; }
+            }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        Assert.Contains("MutablePoint", generated);
+    }
+
+    [Fact]
+    public void static_멤버와_const는_와이어에서_제외된다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [StandaloneMessage(223)]
+            public partial class WithStatics
+            {
+                public const int Const = 5;
+                public static int Static;
+                public static int StaticProp => 7;
+                public int Instance { get; set; }
+            }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        // 생성 페이로드는 인스턴스 멤버만 담는다 — static/const 가 등장하면 안 된다.
+        int payloadStart = generated.IndexOf("WritePayload", StringComparison.Ordinal);
+        string payload = payloadStart >= 0 ? generated[payloadStart..] : generated;
+        Assert.DoesNotContain(".Const", payload);      // 멤버 접근 한정 — 타입명 오검출 방지
+        Assert.DoesNotContain(".Static", payload);
+        Assert.Contains(".Instance", payload);
+    }
 }
