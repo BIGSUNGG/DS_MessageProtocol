@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: architecture
 status: approved
 tags: [feature-spec, rewrite, parity]
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Feature Spec — 재작성 프로젝트 지원 기능
@@ -101,7 +101,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
   - `MSGPROT009` (삭제됨 — `MSGPROT008` 로 흡수)
   - `MSGPROT010` 메시지 타입 생성 불가 (추상 클래스·매개변수 없는 생성자 없음 — 포지셔널 레코드 등. Legacy에 없는 신규 진단)
   - `MSGPROT011` 멤버 대입 불가 (읽기 전용·초기화 전용 프로퍼티·읽기전용 필드 — 역직렬화 불가. Legacy에 없는 신규 진단)
-  - `MSGPROT012` 멤버가 선언 타입으로 직렬화됨 (**경고** — 파생 메시지 타입이 있는 *구체* 메시지 베이스를 멤버 정적 타입으로 쓰면 파생 인스턴스의 추가 멤버가 예외 없이 유실. Legacy에 없는 신규 진단)
+  - `MSGPROT012` 멤버가 선언 타입으로 직렬화됨 (**경고** — 파생 메시지 타입이 있는 *구체* 메시지 베이스를 멤버 정적 타입으로 쓰면 파생 인스턴스의 추가 멤버가 예외 없이 유실. Legacy에 없는 신규 진단. **탐지 범위 제한**: 이 컴파일에 보이는 파생만 대상이라 파생이 다른 어셈블리에만 있는 베이스는 보고되지 않고, 메시지 루트의 와이어 멤버만 검사해 중첩 페이로드 클래스 내부의 베이스 멤버는 보지 않는다 — 분석기 한계로 Known-Issues KI-29 에 명문화)
   - `MSGPROT013` `MessageCategory` 값 범위 초과(0..15) — 방치하면 `& 0x0F` 마스킹으로 와이어 MessageId 가 달라져 다른 메시지와 ID 충돌(모듈 로드 실패) 또는 피어 오라우팅. Legacy에 없는 신규 진단
   - `MSGPROT014` 와이어 MessageId 중복 — 조립된 ID(flags+category+24비트 값)가 같은 두 메시지 타입. 방치하면 모듈 이니셜라이저 등록 충돌로 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단
   - `MSGPROT015` 제네릭 구성 런타임 키 중복 — 서로 다른 두 제네릭 선언이 같은 (MessageId, ClassId) 조합을 쓰면 `RegisterGenericReaderInvoker` 가 모듈 이니셜라이저에서 충돌해 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단

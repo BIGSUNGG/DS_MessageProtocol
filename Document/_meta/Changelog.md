@@ -2,6 +2,12 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (사이클 3)
+
+- 진단 품질·구조 LOW 클러스터 — `EmitState` 진단 중복제거 키에 사유(kind)·위치 포함(같은 멤버의 MSGPROT006+MSGPROT011 동시 보고), 생성 `Deserialize` 헤더 규칙을 `MessageWireFormat.HasEmbeddedMessageId` 호출로 통일(와이어 불변), 그래프 헬퍼 방출 순서를 타입 이름 정렬로 결정화(BCL Dictionary 열거 의존 제거), `AnalyzerReleases.*.md` 파손(RS2007)을 `WarningsAsErrors` 로 게이트(재발 이력 2회).
+- 죽은 API 감사 — `PooledBuffer.Empty`·`Memory`·`UnsafeArraySegment` [Obsolete] 마킹(무참조, 다음 major 제거 후보), `GetSpan` 은 DS_RPC 사용 중으로 유지(+증설 후 별칭 주의 문서화), `PatchInt32`·`Capacity` 는 테스트 사용 중으로 원장 주장 정정, `CategoryMask` 는 F2 함정 문서화로 보류.
+- 정책 게이트 종결 — KI-4 파셜 순서 잔여(Known-Issues 꼬리 명문화), KI-10 증분 파이프라인(측정 기반 연기), MSGPROT012 탐지 범위 제한(F5 명문화), 솔루션 Rebuild CS0006 회피법(Packages.md), [Flags] 카테고리 함정(F2) — 원장 5건 종결.
+
 ## 2026-09-08 (2.2.1 릴리스)
 
 - **2.2.1 릴리스** (태그 `v2.2.1`) — 모듈 로드 강건성 수정 3건을 담은 패치 릴리스: 등록 검증을 캐시 prefill 앞으로 재배치(거부된 등록의 `SerializerCache<T>` 잔류 차단, KI-11 잔존 해소), HasId id 의 NonId 플래그 조용한 반쪽 등록을 등록 시점 거부로 승격, `RegisterGenericConstruction` 발행 순서를 classId 먼저로 재배치(경쟁 시 ClassId 0 예외 제거, KI-33). 공유 백레퍼런스 판독의 블라인드 캐스트를 안내 `InvalidDataException` 으로 완화(KI-34, 와이어 무영향). 커밋 `765e30b`·`e80cb86`·`cfe7aa8`. 테스트 205→212(net8.0·net9.0), Sandbox 38 시나리오 통과, DS_RPC 를 로컬 2.2.1 팩으로 빌드+테스트(77/77) 통과 후 태그 푸시.

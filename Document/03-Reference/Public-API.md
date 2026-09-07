@@ -16,7 +16,7 @@ updated: 2026-09-08
 | ----- | ------ |
 | `MessageSerializer` | 등록·Serialize·Deserialize 정적 진입점 (`MessageProtocol.Serialize`) |
 | `MessageBufferWriter` / `MessageBufferReader` | 페이로드 버퍼 I/O (리틀엔디안, forward-only) |
-| `PooledBuffer` | 풀링된 직렬화 결과 (Dispose 멱등) |
+| `PooledBuffer` | 풀링된 직렬화 결과 (Dispose 멱등). `Empty`·`Memory`·`UnsafeArraySegment` 는 2.3.0 부터 [Obsolete(error:false)] — 이 저장소·테스트·Sandbox·DS_RPC 전체에서 무참조(2026-09-08 감사)로 다음 major 제거 후보다 |
 | `MessageWireFormat` | 헤더 크기·상수·MessageId 조립/분해 헬퍼 |
 | `MessageFlag` | 헤더 flags 니블 (`NonIdMessage` / `Standalone` / `GroupRoot` / `GroupElement`) |
 
@@ -80,6 +80,16 @@ ID 값 범위: `0 .. 2^24-1`.
 핫 경로 권장: `Serialize(T, ref MessageBufferWriter)` / `SerializePooled<T>` / `Deserialize<T>(Span)`.
 
 예외 계약: 등록(`RegisterHasIdMessage`·`RegisterGenericConstruction` 등)은 **캐시를 채우기 전에** 거부 조건(타입 중복·generic 플래그 오용·와이어 id 중복·HasId id 의 NonId 플래그)을 검증한다 — 거부되면 `InvalidOperationException` 이고 캐시는 오염되지 않는다(KI-11). 미등록·계약 미구현 타입의 `Serialize<T>`·`Deserialize<T>` 는 필요한 멤버를 안내하는 `InvalidOperationException` 을 던진다 — CLR 이 타입별로 영구 캐싱하는 `TypeInitializationException` 이 아니며, 등록 전에 캐시를 먼저 건드렸더라도 이후 델리게이트 등록(`RegisterHasIdMessage<T>(…)`, `RegisterNonIdMessage<T>(…)`)으로 복구된다. 리플렉션 등록 경로(`RegisterHasIdMessage<T>()`·`RegisterNonIdMessage<T>()`·`RegisterGenericConstruction<T>`)는 직렬화 델리게이트 부재를 나중 NRE 가 아니라 **등록 시점**에 같은 예외로 알린다. 백레퍼런스 판독은 컨텍스트가 복원한 인스턴스가 멤버 정적 타입과 호환되는지 검사해, 베이스 타입 멤버로 먼저 기록된 인스턴스를 파생 타입 멤버가 읽는 조합에서 블라인드 `InvalidCastException` 대신 원인과 해법을 안내하는 `InvalidDataException` 을 던진다(KI-34).
+
+
+## 죽은 API 감사 (2026-09-08)
+
+| 멤버 | 상태 |
+| ---- | ---- |
+| `PooledBuffer.Empty`·`Memory`·`UnsafeArraySegment` | 무참조(이 저장소·DS_RPC) — `[Obsolete]` 마킹, 다음 major 제거 후보 |
+| `MessageBufferWriter.GetSpan` | **DS_RPC 가 사용 중**(`HubSessionFactory` 프레임 버퍼 복사) — 제거 불가. 주의: 반환된 span 은 호출 시점 버퍼의 뷰라 이후 `EnsureCapacity`·증설이 일어나면 옛 배열을 가리킨다 — 쓰기 직후 증설 없이 사용해야 한다 |
+| `MessageBufferWriter.PatchInt32`·`Capacity` | 감사 원장의 '미참조' 주장과 달리 `WriterGrowthTests`(KI-7) 가 사용·검증 중 — 유지 |
+| `MessageCategory.CategoryMask` | 무참조이나 `[Flags]` 조합 해석 함정과 묶인 정책 결정 대기 항목 — F2 함정 문서화로 충분, 마킹 보류 |
 
 흐름·스펙: [Feature-Spec](../02-Architecture/Feature-Spec.md). 구조: [Overview](../02-Architecture/Overview.md).
 
