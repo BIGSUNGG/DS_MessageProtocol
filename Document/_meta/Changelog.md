@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (사이클 9) — 구조 영역
+
+- **원시형 와이어 표 단일 사실원화** — `Member.cs` 의 4개 독립 스위치(읽기 식·쓰기 호출·고정 크기·벌크 크기)를 `PrimitiveWireTable` 하나로 통합(구조 감사 FINDING 2). 프리미티브 추가·수정이 4곳 조율이 아닌 1행 편집이 되고, 읽기·쓰기 조용한 불일치(와이어 표류) 버그 클래스가 구조적으로 불가능해진다. 불리언(패킹 불가)·decimal(20바이트 표현)·문자열(가변)은 고정/벌크 열로 의미를 명문화. **골든 비교 29개 `.g.cs` 바이트 동일**(스태시 왕복 A/B). 잔여: FINDING 3(MessageCodeGenerator SRP 분리)·4(ConstructionConflicts 캡슐화)·5(MessageId 바이트 베이킹 공유).
+
 ## 2026-09-08 (사이클 8) — 구조 영역
 
 - **생성기 참조 추적 방출 단일 사실원화** — `Member.cs` 의 참조 추적 3경로(그래프 내부·밖 위임·런타임 디스패치) × 쓰기·판독 6곳 수작업 복제(~350줄, KI-34·KI-36 안내 메시지 문자열 3중 복제, 등록 문장 순서 이미 표류)를 골격 헬퍼 2개(`EmitTrackedReferenceWrite`·`EmitTrackedReferenceRead`) + 경로별 차이 전달 래퍼로 통합. **골든 비교로 생성 바이트 불변 검증**(Tests 27 + NetStandardFixtures 폴백 2 = 29개 `.g.cs` 바이트 동일 — 스태시 왕복 A/B 빌드). 향후 참조 프로토콜 변경(예: ReferenceKind 추가)은 6곳이 아닌 1곳 수정. 구조 감사(2026-09-08 스카우트) FINDING 1; 잔여 FINDING 2~5(원시형 스위치 표 4중 복제·MessageCodeGenerator SRP 분리·ConstructionConflicts 캡슐화·MessageId 바이트 베이킹 공유)는 다음 사이클 후보. Feature-Spec F1–F10 전수 대조: 불일치 없음(수 시나리오 개수 표기 마이너).

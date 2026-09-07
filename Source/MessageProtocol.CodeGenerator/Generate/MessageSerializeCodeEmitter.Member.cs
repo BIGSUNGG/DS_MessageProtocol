@@ -687,26 +687,41 @@ namespace MessageProtocol.CodeGenerator.Generate
                 return false;
             }
 
+            /// <summary>
+            /// 원시형 단일 사실원 표 — 읽기 식·쓰기 호출 포맷·고정 wire 크기·벌크 복사 크기를 한 곳에 둔다.
+            /// 과거 4개의 독립 스위치(읽기·쓰기·고정 크기·벌크 크기)는 프리미티브 하나 고칠 때 4곳을
+            /// 맞춰 고쳐야 했고, 하나라도 어긋나면 읽기·쓰기가 조용히 불일치하는 와이어 표류 버그 클래스였다
+            /// (2026-09-08 구조 감사 FINDING 2). 문자열은 가변 길이라 고정·벌크 모두 -1, 불리언(패킹 불가)과
+            /// decimal(20바이트 표현 가능 — 런타임 16바이트 GetBits 고정과 달라 안전하지 않음)은 고정 크기만 있다.
+            /// </summary>
+            static readonly System.Collections.Generic.Dictionary<SpecialType, (string Read, string WriteFormat, int FixedSize, int BulkSize)> PrimitiveWireTable =
+                new System.Collections.Generic.Dictionary<SpecialType, (string, string, int, int)>
+            {
+                [SpecialType.System_Boolean]  = ("reader.ReadBoolean()",  "writer.WriteBoolean({0})",  1, -1),
+                [SpecialType.System_Byte]     = ("reader.ReadByte()",     "writer.WriteByte({0})",     1,  1),
+                [SpecialType.System_SByte]    = ("reader.ReadSByte()",    "writer.WriteSByte({0})",    1,  1),
+                [SpecialType.System_Int16]    = ("reader.ReadInt16()",    "writer.WriteInt16({0})",    2,  2),
+                [SpecialType.System_UInt16]   = ("reader.ReadUInt16()",   "writer.WriteUInt16({0})",   2,  2),
+                [SpecialType.System_Char]     = ("reader.ReadChar()",     "writer.WriteChar({0})",     2,  2),
+                [SpecialType.System_Int32]    = ("reader.ReadInt32()",    "writer.WriteInt32({0})",    4,  4),
+                [SpecialType.System_UInt32]   = ("reader.ReadUInt32()",   "writer.WriteUInt32({0})",   4,  4),
+                [SpecialType.System_Single]   = ("reader.ReadSingle()",   "writer.WriteSingle({0})",   4,  4),
+                [SpecialType.System_Int64]    = ("reader.ReadInt64()",    "writer.WriteInt64({0})",    8,  8),
+                [SpecialType.System_UInt64]   = ("reader.ReadUInt64()",   "writer.WriteUInt64({0})",   8,  8),
+                [SpecialType.System_Double]   = ("reader.ReadDouble()",   "writer.WriteDouble({0})",   8,  8),
+                [SpecialType.System_Decimal]  = ("reader.ReadDecimal()",  "writer.WriteDecimal({0})", 16, -1),
+                [SpecialType.System_String]   = ("reader.ReadString()",   "writer.WriteString({0})",  -1, -1),
+            };
+
             static bool TryGetPrimitiveWriteCall(ITypeSymbol typeSymbol, string expression, out string call)
             {
-                switch (typeSymbol.SpecialType)
+                if (PrimitiveWireTable.TryGetValue(typeSymbol.SpecialType, out var info))
                 {
-                    case SpecialType.System_Boolean: call = $"writer.WriteBoolean({expression})"; return true;
-                    case SpecialType.System_Byte: call = $"writer.WriteByte({expression})"; return true;
-                    case SpecialType.System_SByte: call = $"writer.WriteSByte({expression})"; return true;
-                    case SpecialType.System_Int16: call = $"writer.WriteInt16({expression})"; return true;
-                    case SpecialType.System_UInt16: call = $"writer.WriteUInt16({expression})"; return true;
-                    case SpecialType.System_Int32: call = $"writer.WriteInt32({expression})"; return true;
-                    case SpecialType.System_UInt32: call = $"writer.WriteUInt32({expression})"; return true;
-                    case SpecialType.System_Int64: call = $"writer.WriteInt64({expression})"; return true;
-                    case SpecialType.System_UInt64: call = $"writer.WriteUInt64({expression})"; return true;
-                    case SpecialType.System_Single: call = $"writer.WriteSingle({expression})"; return true;
-                    case SpecialType.System_Double: call = $"writer.WriteDouble({expression})"; return true;
-                    case SpecialType.System_Decimal: call = $"writer.WriteDecimal({expression})"; return true;
-                    case SpecialType.System_Char: call = $"writer.WriteChar({expression})"; return true;
-                    case SpecialType.System_String: call = $"writer.WriteString({expression})"; return true;
-                    default: call = string.Empty; return false;
+                    call = string.Format(info.WriteFormat, expression);
+                    return true;
                 }
+                call = string.Empty;
+                return false;
             }
 
             static bool TryEmitPrimitiveRead(ITypeSymbol typeSymbol, string targetExpression, string indent, out string code)
@@ -733,24 +748,13 @@ namespace MessageProtocol.CodeGenerator.Generate
 
             static bool TryGetPrimitiveReadExpression(ITypeSymbol typeSymbol, out string expression)
             {
-                switch (typeSymbol.SpecialType)
+                if (PrimitiveWireTable.TryGetValue(typeSymbol.SpecialType, out var info))
                 {
-                    case SpecialType.System_Boolean: expression = "reader.ReadBoolean()"; return true;
-                    case SpecialType.System_Byte: expression = "reader.ReadByte()"; return true;
-                    case SpecialType.System_SByte: expression = "reader.ReadSByte()"; return true;
-                    case SpecialType.System_Int16: expression = "reader.ReadInt16()"; return true;
-                    case SpecialType.System_UInt16: expression = "reader.ReadUInt16()"; return true;
-                    case SpecialType.System_Int32: expression = "reader.ReadInt32()"; return true;
-                    case SpecialType.System_UInt32: expression = "reader.ReadUInt32()"; return true;
-                    case SpecialType.System_Int64: expression = "reader.ReadInt64()"; return true;
-                    case SpecialType.System_UInt64: expression = "reader.ReadUInt64()"; return true;
-                    case SpecialType.System_Single: expression = "reader.ReadSingle()"; return true;
-                    case SpecialType.System_Double: expression = "reader.ReadDouble()"; return true;
-                    case SpecialType.System_Decimal: expression = "reader.ReadDecimal()"; return true;
-                    case SpecialType.System_Char: expression = "reader.ReadChar()"; return true;
-                    case SpecialType.System_String: expression = "reader.ReadString()"; return true;
-                    default: expression = string.Empty; return false;
+                    expression = info.Read;
+                    return true;
                 }
+                expression = string.Empty;
+                return false;
             }
 
             /// <summary>고정 wire size 프리미티브(및 enum). EnsureCapacity 일괄 합산에 사용.</summary>
@@ -767,35 +771,13 @@ namespace MessageProtocol.CodeGenerator.Generate
                     return false;
                 }
 
-                switch (typeSymbol.SpecialType)
+                if (PrimitiveWireTable.TryGetValue(typeSymbol.SpecialType, out var info) && info.FixedSize > 0)
                 {
-                    case SpecialType.System_Boolean:
-                    case SpecialType.System_Byte:
-                    case SpecialType.System_SByte:
-                        size = 1;
-                        return true;
-                    case SpecialType.System_Int16:
-                    case SpecialType.System_UInt16:
-                    case SpecialType.System_Char:
-                        size = 2;
-                        return true;
-                    case SpecialType.System_Int32:
-                    case SpecialType.System_UInt32:
-                    case SpecialType.System_Single:
-                        size = 4;
-                        return true;
-                    case SpecialType.System_Int64:
-                    case SpecialType.System_UInt64:
-                    case SpecialType.System_Double:
-                        size = 8;
-                        return true;
-                    case SpecialType.System_Decimal:
-                        size = 16;
-                        return true;
-                    default:
-                        size = 0;
-                        return false;
+                    size = info.FixedSize;
+                    return true;
                 }
+                size = 0;
+                return false;
             }
 
             /// <summary>메모리 블록 복사 대상 요소 타입인지 여부 (불리언·문자열·가변 형식 제외).</summary>
@@ -816,26 +798,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                     return GetBulkElementSize(enumType.EnumUnderlyingType);
                 }
 
-                switch (typeSymbol.SpecialType)
-                {
-                    case SpecialType.System_Byte:
-                    case SpecialType.System_SByte:
-                        return 1;
-                    case SpecialType.System_Int16:
-                    case SpecialType.System_UInt16:
-                    case SpecialType.System_Char:
-                        return 2;
-                    case SpecialType.System_Int32:
-                    case SpecialType.System_UInt32:
-                    case SpecialType.System_Single:
-                        return 4;
-                    case SpecialType.System_Int64:
-                    case SpecialType.System_UInt64:
-                    case SpecialType.System_Double:
-                        return 8;
-                    default:
-                        return -1;
-                }
+                return PrimitiveWireTable.TryGetValue(typeSymbol.SpecialType, out var info) ? info.BulkSize : -1;
             }
         }
     }
