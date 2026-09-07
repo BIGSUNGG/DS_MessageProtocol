@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: reference
 status: stable
 tags: [api]
-updated: 2026-09-05
+updated: 2026-09-08
 ---
 
 # Public API
@@ -20,7 +20,7 @@ updated: 2026-09-05
 | `MessageWireFormat` | 헤더 크기·상수·MessageId 조립/분해 헬퍼 |
 | `MessageFlag` | 헤더 flags 니블 (`NonIdMessage` / `Standalone` / `GroupRoot` / `GroupElement`) |
 
-`MessageWireFormat` 상수: `NonIdHeaderSize=1`, `IdHeaderSize=4`, `NullSizedPayloadLength=-1`, `DefaultStreamCapacity=256`, `NibbleMask=0x0F`, `MessageIdValueMask=0x00FFFFFF`.
+`MessageWireFormat` 상수: `NonIdHeaderSize=1`, `IdHeaderSize=4`, `GenericIdHeaderSize=7`(제네릭 헤더 = 헤더 1바이트 + MessageId 3바이트 + 구성 ClassId 3바이트), `NullSizedPayloadLength=-1`, `DefaultStreamCapacity=256`, `NibbleMask=0x0F`, `MessageIdValueMask=0x00FFFFFF`. `MessageFlag` 니블은 `NonIdMessage`/`Standalone`/`GroupRoot`/`GroupElement` 외에 **`Generic`(플래그 니블 0 예약)** — 제네릭 와이어 메시지는 전용 플래그로 조립되고 `IsGenericMessage(header)` 로 판별한다.
 
 버퍼 I/O 계약: 위치는 forward-only — `Skip`·`Advance` 는 음수 `count` 를 `ArgumentOutOfRangeException` 으로 거부하고(되돌려 이미 소비·기록한 구간을 다시 읽거나 덮어쓰는 것 차단), 범위를 넘는 전진은 reader `EndOfStreamException` / writer `InvalidOperationException` 을 던진다. 문자열 길이 접두사는 `-1` 만 null 이고 그 외 음수는 `InvalidDataException` 으로 거부된다. 버퍼는 단일 `byte[]` 이라 페이로드 상한은 배열 상한(`0X7FEFFFFF` 바이트)이며, 이를 넘는 문자열은 `WriteString` 이 `ArgumentException` 으로 거부한다(용량 산술은 `long` — int 오버플로로 증설이 건너뛰어지지 않음). writer 증설도 `long` 산술 + 상한 clamp 라 1GB 너머에서도 **배증 여지를 유지**한다(정확 요구량 대여로 퇴보해 성장 비용이 제곱이 되지 않음 — Known-Issues KI-7), 상한을 넘는 용량 요구는 할당을 시도하지 않고 `InvalidOperationException` 으로 거부한다. `PatchInt32(offset, value)` 는 **기록된 구간**(`0 .. Length-4`) 안에서만 동작하고 밖이면 `ArgumentOutOfRangeException` — 대여 배열의 미기록 바이트(나중에 풀로 돌아감)에 쓰지 못한다.
 
@@ -36,6 +36,7 @@ updated: 2026-09-05
 | `GroupRootMessage(uint id)` | 그룹 루트 |
 | `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0) |
 | `NonIdMessage` | ID 없는 메시지 (헤더 1바이트) |
+| `GenericMessageAttribute(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 (`AllowMultiple`) — 선언부·캐리어 아무 타입에나 구성마다 부착. `ClassId` 범위 1..2^24-1. 구성 등록은 `[ModuleInitializer]` 의 `RegisterGenericConstruction<T>` 로 발행된다 |
 | `MessageCategory(MessageCategory)` | category 니블 0..15 |
 
 ID 값 범위: `0 .. 2^24-1`.
@@ -67,15 +68,18 @@ ID 값 범위: `0 .. 2^24-1`.
 | `RegisterHasIdMessage<T>()` / 델리게이트 오버로드 | ID 메시지 등록 |
 | `RegisterNonIdMessage<T>()` / 델리게이트 오버로드 | NonId 등록 |
 | `RegisterType(Type)` | 리플렉션 기반 등록 |
+| `RegisterGenericConstruction<T>(uint classId)` | 닫힌 제네릭 구성 등록 — (MessageId, ClassId) 런타임 키로 reader 디스패치에 올리고 `GetGenericClassId` 를 발행. 생성기가 구성 캐리어의 `[ModuleInitializer]` 에서 호출하지만 수동 시작 등록도 공개 경로다 |
+| `GetGenericClassId<T>()` | 닫힌 제네릭 구성의 ClassId 조회(미등록 0). 생성된 제네릭 `Serialize` 가 헤더 뒤 3바이트를 채우기 위해 호출한다 |
 | `Serialize<T>(T)` / `Serialize<T>(T, ref writer)` | 선언 타입 `T`의 제네릭 캐시 경로 — 런타임 타입 미참조 |
 | `Serialize(object)` / `SerializeToWriter` | 런타임 타입 dispatch — 다형성(베이스 변수 + 파생 인스턴스) |
 | `SerializePooled<T>` / `SerializePooled(object)` | ArrayPool 기반 결과 (`PooledBuffer`) |
 | `Deserialize<T>(...)` | 제네릭 역직렬화 (byte[]/Span/Memory/reader) |
 | `Deserialize(byte[]\|Span\|Memory)` | MessageId 기반 object 역직렬화 (Standalone/Group만) |
+| `DeserializeFromReader(ref MessageBufferReader)` | reader 현재 위치의 헤더로 등록 타입에 라우팅하는 중첩 object 디스패치 — 타입 매개변수·추상 메시지 멤버 판독과 수동 구현 재귀의 진입점. 중첩 깊이 한 수준을 계상한다(KI-14) |
 
 핫 경로 권장: `Serialize(T, ref MessageBufferWriter)` / `SerializePooled<T>` / `Deserialize<T>(Span)`.
 
-예외 계약: 미등록·계약 미구현 타입의 `Serialize<T>`·`Deserialize<T>` 는 필요한 멤버를 안내하는 `InvalidOperationException` 을 던진다 — CLR 이 타입별로 영구 캐싱하는 `TypeInitializationException` 이 아니며, 등록 전에 캐시를 먼저 건드렸더라도 이후 델리게이트 등록(`RegisterHasIdMessage<T>(…)`, `RegisterNonIdMessage<T>(…)`)으로 복구된다. 리플렉션 등록 경로(`RegisterHasIdMessage<T>()`·`RegisterNonIdMessage<T>()`·`RegisterGenericConstruction<T>`)는 직렬화 델리게이트 부재를 나중 NRE 가 아니라 **등록 시점**에 같은 예외로 알린다.
+예외 계약: 등록(`RegisterHasIdMessage`·`RegisterGenericConstruction` 등)은 **캐시를 채우기 전에** 거부 조건(타입 중복·generic 플래그 오용·와이어 id 중복·HasId id 의 NonId 플래그)을 검증한다 — 거부되면 `InvalidOperationException` 이고 캐시는 오염되지 않는다(KI-11). 미등록·계약 미구현 타입의 `Serialize<T>`·`Deserialize<T>` 는 필요한 멤버를 안내하는 `InvalidOperationException` 을 던진다 — CLR 이 타입별로 영구 캐싱하는 `TypeInitializationException` 이 아니며, 등록 전에 캐시를 먼저 건드렸더라도 이후 델리게이트 등록(`RegisterHasIdMessage<T>(…)`, `RegisterNonIdMessage<T>(…)`)으로 복구된다. 리플렉션 등록 경로(`RegisterHasIdMessage<T>()`·`RegisterNonIdMessage<T>()`·`RegisterGenericConstruction<T>`)는 직렬화 델리게이트 부재를 나중 NRE 가 아니라 **등록 시점**에 같은 예외로 알린다. 백레퍼런스 판독은 컨텍스트가 복원한 인스턴스가 멤버 정적 타입과 호환되는지 검사해, 베이스 타입 멤버로 먼저 기록된 인스턴스를 파생 타입 멤버가 읽는 조합에서 블라인드 `InvalidCastException` 대신 원인과 해법을 안내하는 `InvalidDataException` 을 던진다(KI-34).
 
 흐름·스펙: [Feature-Spec](../02-Architecture/Feature-Spec.md). 구조: [Overview](../02-Architecture/Overview.md).
 
