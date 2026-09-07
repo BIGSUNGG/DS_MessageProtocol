@@ -722,6 +722,41 @@ public class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void 같은_멤버가_두_규칙을_위반하면_두_진단이_모두_보고된다()
+    {
+        // 감사 원장 LOW(2026-09-08) 회귀: 진단 중복제거 키가 이름+타입만이라 미지원 타입(MSGPROT006)이면서
+        // 읽기 전용(MSGPROT011)인 멤버는 두 번째 규칙이 조용히 유실됐다 — 키에 사유(kind)·위치를 포함해
+        // 같은 멤버의 같은 규칙 반복만 제거되도록 수정했다.
+        var (diagnostics, _) = RunGenerator(Header + """
+            [NonIdMessage]
+            public partial class BothRulesMessage
+            {
+                public System.Collections.Generic.Dictionary<string, int>? Bad { get; }
+            }
+            """ + Footer);
+
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT006");
+        Assert.Contains(diagnostics, d => d.Id == "MSGPROT011");
+    }
+
+    [Fact]
+    public void 서로_다른_규칙_위반_멤버_2개는_진단_2건을_낸다()
+    {
+        // 역방향 가드: 멤버별로 각각 한 규칙씩 위반하면 두 위치 모두 보고된다.
+        var (diagnostics, _) = RunGenerator(Header + """
+            [NonIdMessage]
+            public partial class TwoMembersMessage
+            {
+                public System.Collections.Generic.Dictionary<string, int>? Unsupported { get; set; }
+                public int ReadOnly { get; }
+            }
+            """ + Footer);
+
+        Assert.Equal(1, diagnostics.Count(d => d.Id == "MSGPROT006"));
+        Assert.Equal(1, diagnostics.Count(d => d.Id == "MSGPROT011"));
+    }
+
+    [Fact]
     public void MSGPROT006_생성_불가_페이로드_멤버는_미지원_타입_진단()
     {
         // 추상 클래스·포지셔널 레코드 페이로드는 기본 생성자로 인스턴스를 만들 수 없어 멤버 단위 진단으로 거부한다.

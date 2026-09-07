@@ -38,7 +38,11 @@ namespace MessageProtocol.CodeGenerator.Generate
 
         void Report(Location location, string typeName, string memberOrTypeName, UnsupportedMemberKind kind)
         {
-            string key = memberOrTypeName + "\0" + typeName;
+            // 중복제거 키에는 사유(kind)와 위치도 포함한다 — 같은 멤버가 쓰기·읽기 양쪽 이미트에서 같은 규칙으로
+            // 두 번 보고되는 것만 합친다. 이름+타입만으로 키를 쓰면 같은 멤버가 미지원 타입(MSGPROT006)이면서
+            // 대입 불가(MSGPROT011)인 경우 두 번째 규칙이 조용히 유실됐고, 동명·동타입 멤버가 다른 중첩 타입에
+            // 있으면 두 번째 위치가 유실됐다 (감사 원장 LOW, 2026-09-08).
+            string key = kind + "\0" + memberOrTypeName + "\0" + typeName + "\0" + location.ToString();
             if (!_reportedKeys.Add(key))
             {
                 return;
