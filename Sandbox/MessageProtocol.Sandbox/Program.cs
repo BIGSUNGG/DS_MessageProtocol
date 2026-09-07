@@ -69,7 +69,7 @@ void Check(string name, bool condition)
 
     bool rejected = false;
     try { MessageSerializer.Deserialize(bytes); }
-    catch (InvalidCastException) { rejected = true; }
+    catch (System.IO.InvalidDataException) { rejected = true; }   // 와이어 내용 불법 → InvalidDataException(2026-09-08, 퍼저 계기 교정)
     Check("S2 object Deserialize는 NonId 거부", rejected);
 }
 

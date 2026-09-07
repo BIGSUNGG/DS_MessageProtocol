@@ -55,7 +55,9 @@ public class DispatchTests
     public void NonId는_object_역직렬화에서_거부된다()
     {
         byte[] bytes = MessageSerializer.Serialize(new NoIdMessage { Flag = 1 });
-        Assert.Throws<InvalidCastException>(() => MessageSerializer.Deserialize(bytes));
+        // 와이어 내용 불법(NonId 플래그)은 InvalidDataException — InvalidCastException 은 캐스트가
+        // 일어난 적 없는데 유형부터 오해를 줘 신뢰 경계 거부 분류에서 빠졌다(2026-09-08 퍼저, KI-41 계열).
+        Assert.Throws<System.IO.InvalidDataException>(() => MessageSerializer.Deserialize(bytes));
     }
 
     [Fact]

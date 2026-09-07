@@ -75,6 +75,7 @@ ID 값 범위: `0 .. 2^24-1`.
 | `SerializePooled<T>` / `SerializePooled(object)` | ArrayPool 기반 결과 (`PooledBuffer`) |
 | `Deserialize<T>(...)` | 제네릭 역직렬화 (byte[]/Span/Memory/reader) |
 | `Deserialize(byte[]\|Span\|Memory)` | MessageId 기반 object 역직렬화 (Standalone/Group만) |
+| `Deserialize(byte[])`·`Deserialize(ReadOnlySpan<byte>)` (object dispatch) | NonId 플래그 프레임 거부는 `InvalidDataException`(2026-09-08, KI-41 — 이전 `InvalidCastException` 폐지). 디스패치 판독의 신규 객체 분기도 타입 불일치 시 안내 `InvalidDataException` |
 | `DeserializeFromReader(ref MessageBufferReader)` | reader 현재 위치의 헤더로 등록 타입에 라우팅하는 중첩 object 디스패치 — 타입 매개변수·추상 메시지 멤버 판독과 수동 구현 재귀의 진입점. 중첩 깊이 한 수준을 계상한다(KI-14) |
 
 핫 경로 권장: `Serialize(T, ref MessageBufferWriter)` / `SerializePooled<T>` / `Deserialize<T>(Span)`.

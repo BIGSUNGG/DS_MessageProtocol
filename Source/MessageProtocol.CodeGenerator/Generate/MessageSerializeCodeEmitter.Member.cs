@@ -355,7 +355,15 @@ namespace MessageProtocol.CodeGenerator.Generate
             {
                 int uid = state.NextUniqueId();
                 string typeName = GetTypeDisplayName(typeSymbol);
-                string newObjectBody = $@"{indent}        {targetExpression} = ({typeName})MessageSerializer.DeserializeFromReader(ref reader);
+                // 디스패치 복원 객체를 선언 타입으로 블라인드 캐스트하지 않는다(KI-41, 2026-09-08 퍼저 발견):
+                // 불신 헤더가 다른 등록 타입으로 라우팅하면 InvalidCastException 이 원인 없이 터졌다 —
+                // 백레퍼런스 분기(KI-34)와 같은 계열의 안내 검사로 교정한다.
+                string newObjectBody = $@"{indent}        var __dispatched{uid} = MessageSerializer.DeserializeFromReader(ref reader);
+{indent}        if (!(__dispatched{uid} is {typeName}))
+{indent}        {{
+{indent}            throw new System.IO.InvalidDataException($""Dispatched wire element resolved to '{{__dispatched{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({typeName}).FullName}}'. The payload is corrupt or from an incompatible peer."");
+{indent}        }}
+{indent}        {targetExpression} = ({typeName})__dispatched{uid};
 {indent}        context.RegisterNewObject({targetExpression}!);
 ";
                 return EmitTrackedReferenceRead("__pk", typeName, targetExpression, uid, indent, $"{targetExpression} = default;", newObjectBody);

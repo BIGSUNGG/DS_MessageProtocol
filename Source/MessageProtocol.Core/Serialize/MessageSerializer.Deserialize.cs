@@ -90,7 +90,10 @@ namespace MessageProtocol.Serialize
             bool generic = MessageWireFormat.IsGenericMessage(header);
             if (!generic && (flags & MessageFlag.StandaloneOrGroup) == 0)
             {
-                throw new InvalidCastException("Message is not a standalone or group message.");
+                // 와이어 내용 불법(플래그 비트)은 InvalidDataException 이다 — 캐스트가 일어난 적이 없으므로
+                // InvalidCastException 은 유형부터 오해를 주었고 신뢰 경계 퍼저의 깨끗한 거부 목록에도
+                // 잡히지 않았다(2026-09-08 퍼저 발견, KI-41 괘련).
+                throw new System.IO.InvalidDataException("Message is not a standalone or group message; the header flag bits are invalid.");
             }
 
             uint messageId = ReadMessageIdFromHeader(data);

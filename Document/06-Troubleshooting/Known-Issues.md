@@ -381,6 +381,10 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 
 **상태: 해결 (2026-09-08).** 2026-09-08 메타데이터·속성 파싱 레이어 감사(스카우트) FINDING 1 — 유일한 크래시 클래스 결함. `SanitizeHintName` 이 중첩 구분자 `+` 를 `_` 로 치환해, `Ns.A+B`(중첩 메시지)와 실재하는 `Ns.A_B`(탑레벨 메시지)가 같은 힌트 이름을 만들었다. 둘 다 메시지 속성을 가지면 `AddSource` 가 중복 힌트 `ArgumentException` 을 던져 **AD0001 — 해당 컴파일의 생성 소스 전체 유실**(IDE 빌드·수정 제출 모두). 해법: `+` 를 허용 목록에 추가 — 식별자에는 `+` 가 절대 들어가지 못하므로 중첩 구분자로서 단사성이 구조적으로 보장된다. 중첩 메시지 타입의 힌트 파일명만 `Ns.A_B.g.cs` → `Ns.A+B.g.cs` 로 바뀐다(생성 내용·컴파일 결과 불변, IDE 표시만). 회귀 테스트 1개(중첩+밑줄 조인 이름 공존 — AD0001 없음·세 타입 모두 생성). 테스트 243→244, Sandbox 42 통과. 같은 감사의 진단 품질 LOW 2건도 해결(2026-09-08): 오류형 `ClassId = <error>` 항목은 건너뛰어 1차 컴파일 오류(CS0103)가 원인을 지목하게 하고(회귀 테스트 1개), MSGPROT005 폴백 속성명을 범용 "MessageAttribute" 로 수정(NonIdMessageAttribute 는 생성자 인자가 없어 해당 경로의 원인일 수 없었다).
 
+### KI-41. 역직렬화 신뢰 경계의 두 미검증 경로 — 디스패치 블라인드 캐스트·NonId 플래그 오유형 예외 (해결)
+
+**상태: 해결 (2026-09-08).** **차등 퍼저가 발견**(신규 `DeserializerFuzzTests` — 유효 프레임 3종×결정적 변이 1,500회: 비트 뒤집기·절단·극값 치환; 불변식 ①거부는 알려진 깨끗한 예외 유형만 ②성공 판독은 멱등 왕복). **발견 1(iter 116)**: 런타임 디스패치 판독의 신규 객체 분기가 `({typeName})MessageSerializer.DeserializeFromReader(...)` 로 **블라인드 캐스트** — 불신 헤더가 다른 등록 타입(FlatMessage)으로 라우팅하면 PointMessage 멤버 캐스트에서 원인 없는 `InvalidCastException`. KI-34 가 백레퍼런스 분기만 고쳤을 때 이 분기는 미커버였다. → KI-34 계열의 안내 타입 검사로 교정(안내 `InvalidDataException`). **발견 2(iter 291)**: 최상위 object dispatch 가 NonId 플래그 프레임을 `InvalidCastException("Message is not a standalone or group message")` 으로 거부 — 캐스트가 일어난 적 없는 와이어 내용 불법에 오유형 예외. → `InvalidDataException` 으로 교정(Sandbox S2·DispatchTests 계약 재고정). 두 발견 모두 예외 유형 교정 — 이미 실패는 났다, 안내·분류가 틀어져 신뢰 경계 모니터링에서 누락됐던 것. 계약 재고정: 테스트 2·Sandbox 1. 퍼저는 상주 회귀로 유지(시드 고정·재현 가능, 관측 하한 포함 — 죽은 퍼저 방지).
+
 ## 관련
 
 - [Feature-Spec](../02-Architecture/Feature-Spec.md)

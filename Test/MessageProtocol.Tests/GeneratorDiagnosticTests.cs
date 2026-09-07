@@ -869,7 +869,10 @@ public class GeneratorDiagnosticTests
         Assert.DoesNotContain("AbstractEvent.Serialize", generated);
         Assert.DoesNotContain("AbstractEvent.Deserialize", generated);
         Assert.Contains("MessageSerializer.SerializeToWriter(message.Payload, ref writer)", generated);
-        Assert.Contains("(global::TestNs.AbstractEvent)MessageSerializer.DeserializeFromReader(ref reader)", generated);
+        Assert.Contains("var __dispatched", generated);
+        Assert.Contains("MessageSerializer.DeserializeFromReader(ref reader)", generated);
+        Assert.Contains("if (!(__dispatched", generated); // KI-41: 디스패치 복원 객체의 안내 타입 검사
+        Assert.Contains("(global::TestNs.AbstractEvent)__dispatched", generated);
         Assert.Empty(compileErrors);
     }
 

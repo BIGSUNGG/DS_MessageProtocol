@@ -301,7 +301,7 @@ namespace MessageProtocol.CodeGenerator
         /// 모듈 로드 시 구성 등록이 **실제로 조립할** 제네릭 와이어 MessageId. 등록되지 않는 선언은 false —
         /// 제네릭이 아니거나 [StandaloneMessage] 가 없거나, partial 아님·기본 생성 불가(MSGPROT001·MSGPROT010),
         /// ID·카테고리 범위 위반(MSGPROT005·MSGPROT013), 메시지 속성 중복(MSGPROT007) 으로 이미 거부될 선언은
-        /// 생성·등록되지 않으므로 충돌 판정에서 뺀다 — 연쇄 오탐 방지 규약은 <see cref="TryGetRegisteredWireMessageId"/>
+        /// 생성·등록되지 않으므로 충돌 판정에서 뺀다 — 연쇄 오탐 방지 규약은 <see cref="GenericConstruction.TryGetRegisteredWireMessageId"/>
         /// (KI-31) 와 같다.
         /// </summary>
         internal static bool IsPartial(INamedTypeSymbol typeSymbol)
