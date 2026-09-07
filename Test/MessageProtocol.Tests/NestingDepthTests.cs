@@ -145,14 +145,48 @@ public class NestingDepthTests
     }
 
     [Fact]
-    public void 디스패치_멤버_순환_그래프는_스택오버플로_대신_InvalidOperationException으로_거부된다()
+    public void 디스패치_멤버_순환_그래프는_백레퍼런스로_유한하게_기록된다()
     {
-        // 추상 메시지 멤버는 런타임 디스패치로 기록되고 그 경로는 백레퍼런스를 추적하지 않는다 —
-        // 가드 없으면 이 순환은 쓰기 재귀를 무한히 깊게 만들어 프로세스를 죽인다.
+        // KI-9 해소 이전에는 디스패치 멤버가 백레퍼런스를 추적하지 않아 이 순환이 쓰기 재귀를 무한히 깊게
+        // 만들었고(프로세스 사망), KI-25 깊이 가드가 InvalidOperationException 으로 바꿔줄 뿐이었다.
+        // 이제 호출측 SerializeContext 의 오브젝트 id 추적이 디스패치 쓰기로 전파되어 순환 두 번째
+        // 방문부터 백레퍼런스로 종결된다 — 예외 대신 유한한 와이어로 참조 동일성이 복원된다.
         var envelope = new CommandEnvelope();
         envelope.Command = new WrapCommand { Seq = 1, Inner = envelope };
 
-        Assert.Throws<InvalidOperationException>(() => MessageSerializer.Serialize(envelope));
+        byte[] bytes = MessageSerializer.Serialize(envelope);
+        var back = MessageSerializer.Deserialize<CommandEnvelope>(bytes)!;
+
+        var wrap = Assert.IsType<WrapCommand>(back.Command);
+        Assert.Equal(1L, wrap.Seq);
+        // 두 경로(루트에서 직접·Inner.Command 로 한 바퀴 돌아)로 도달한 wrap 인스턴스는 동일하다.
+        Assert.Same(wrap, Assert.IsType<WrapCommand>(wrap.Inner!.Command));
+        // 순환이므로 되직렬화해도 동일한 형태다(유한·안정).
+        var again = MessageSerializer.Deserialize<CommandEnvelope>(MessageSerializer.Serialize(back));
+        Assert.IsType<WrapCommand>(again!.Command);
+    }
+
+    [Fact]
+    public void 깊은_디스패치_체인은_스택오버플로_대신_InvalidOperationException으로_거부된다()
+    {
+        // KI-25 가드는 유효: 백레퍼런스 종결은 "이미 등록된 인스턴스 재방문"에만 작동하므로,
+        // 매 수준이 새 인스턴스인 깊은 디스패치 체인(공유 없음)은 여전히 깊이 상한으로 거부된다.
+        var head = BuildDispatchChain(MessageBufferReader.DefaultMaxNestingDepth + 1);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => MessageSerializer.Serialize(head));
+
+        Assert.Contains(MessageBufferWriter.DefaultMaxNestingDepth.ToString(), exception.Message);
+    }
+
+    static CommandEnvelope BuildDispatchChain(int depth)
+    {
+        // envelope → wrap(디스패치) → envelope → … 수준마다 새 인스턴스 — 공유·순환이 없는 깊은 체인.
+        var tail = new CommandEnvelope();
+        for (int i = 0; i < depth; i++)
+        {
+            tail = new CommandEnvelope { Command = new WrapCommand { Seq = depth - i, Inner = tail } };
+        }
+        return tail;
     }
 
     [Fact]

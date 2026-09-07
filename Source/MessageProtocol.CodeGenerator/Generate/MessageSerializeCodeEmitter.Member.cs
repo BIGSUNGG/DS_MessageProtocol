@@ -268,13 +268,20 @@ namespace MessageProtocol.CodeGenerator.Generate
                 string typeName = GetTypeDisplayName(typeSymbol);
                 if (typeSymbol.IsReferenceType)
                 {
+                    int uid = state.NextUniqueId();
                     return $@"{indent}if ({valueExpression} is null)
 {indent}{{
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.Null);
 {indent}}}
+{indent}else if (context.TryGetObjectId({valueExpression}, out int __backId{uid}))
+{indent}{{
+{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.BackReference);
+{indent}    writer.WriteInt32(__backId{uid});
+{indent}}}
 {indent}else
 {indent}{{
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
+{indent}    context.RegisterObject({valueExpression});
 {indent}    writer.EnterNestedObject();
 {indent}    {typeName}.Serialize({valueExpression}, ref writer);
 {indent}    writer.LeaveNestedObject();
@@ -297,11 +304,17 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    {{
 {indent}        {targetExpression} = null;
 {indent}    }}
+{indent}    else if (__nk{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
+{indent}    {{
+{indent}        int __objId{uid} = reader.ReadInt32();
+{indent}        {targetExpression} = ({typeName})context.GetObject(__objId{uid});
+{indent}    }}
 {indent}    else
 {indent}    {{
 {indent}        reader.EnterNestedObject();
 {indent}        {targetExpression} = {typeName}.Deserialize(ref reader);
 {indent}        reader.LeaveNestedObject();
+{indent}        context.RegisterNewObject({targetExpression}!);
 {indent}    }}
 {indent}}}
 ";
@@ -314,23 +327,38 @@ namespace MessageProtocol.CodeGenerator.Generate
 
             /// <summary>
             /// 런타임 타입 디스패치 쓰기: 전체 메시지(헤더 포함)를 <c>SerializeToWriter</c> 로 쓴다.
-            /// 타입 매개변수 멤버와 추상 메시지 타입 멤버가 공유하며, 백레퍼런스 추적은 하지 않는다.
+            /// 타입 매개변수 멤버와 추상 메시지 타입 멤버가 공유한다. 호출측 SerializeContext 의
+            /// 오브젝트 id 추적을 그대로 쓴다 — 같은 인스턴스가 두 번 등장하면 두 번째부터 백레퍼런스로
+            /// 기록되어 참조 동일성이 복원된다(감사 원장 MEDIUM, 2026-09-05 패스 · KI-9). 프레임 내부는
+            /// 여전히 자체 컨텍스트를 쓰므로 프레임 경계를 넘는 공유는 별개 인스턴스로 남는다.
             /// </summary>
             static string EmitRuntimeDispatchWrite(string valueExpression, string indent, EmitState state)
             {
+                int uid = state.NextUniqueId();
                 return $@"{indent}if ({valueExpression} is null)
 {indent}{{
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.Null);
 {indent}}}
+{indent}else if (context.TryGetObjectId({valueExpression}, out int __backId{uid}))
+{indent}{{
+{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.BackReference);
+{indent}    writer.WriteInt32(__backId{uid});
+{indent}}}
 {indent}else
 {indent}{{
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
+{indent}    context.RegisterObject({valueExpression});
 {indent}    MessageSerializer.SerializeToWriter({valueExpression}, ref writer);
 {indent}}}
 ";
             }
 
-            /// <summary>런타임 타입 디스패치 읽기: 헤더의 MessageId 로 등록된 구체 타입을 복원하고 선언 타입으로 캐스트한다.</summary>
+            /// <summary>
+            /// 런타임 타입 디스패치 읽기: 헤더의 MessageId 로 등록된 구체 타입을 복원하고 선언 타입으로 캐스트한다.
+            /// 쓰기와 대칭으로 백레퍼런스를 역참조하고, 복원된 인스턴스를 호출측 컨텍스트에 등록한다 —
+            /// 쓰기는 프레임 앞에서·읽기는 프레임 뒤에서 등록하지만 그 사이 외부 컨텍스트 등록은 없으므로
+            /// id 순서는 양측이 일치한다(KI-9 해소).
+            /// </summary>
             static string EmitRuntimeDispatchRead(ITypeSymbol typeSymbol, string targetExpression, string indent, EmitState state)
             {
                 int uid = state.NextUniqueId();
@@ -340,9 +368,15 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}    {{
 {indent}        {targetExpression} = default;
 {indent}    }}
+{indent}    else if (__pk{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
+{indent}    {{
+{indent}        int __objId{uid} = reader.ReadInt32();
+{indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})context.GetObject(__objId{uid});
+{indent}    }}
 {indent}    else
 {indent}    {{
 {indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})MessageSerializer.DeserializeFromReader(ref reader);
+{indent}        context.RegisterNewObject({targetExpression}!);
 {indent}    }}
 {indent}}}
 ";

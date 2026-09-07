@@ -1,4 +1,5 @@
 using MessageProtocol;
+using MessageProtocol.NetStandardFixtures;
 
 namespace MessageProtocol.Tests.Fixtures;
 
@@ -321,3 +322,14 @@ public partial class EventHost
     public EventBase? Event { get; set; }
 }
 #pragma warning restore MSGPROT012
+
+// ---------- 디스패치 멤버 공유 참조 (KI-9 해소) ----------
+
+// 그래프 밖(다른 어셈블리) 구체 메시지를 두 멤버에 걸쳐 공유하는 픽스처 — NetStandardFixtures 의
+// 메시지 타입이라 Tests 어셈블리 그래프 밖 위임 경로(EmitOutOfGraphMessage*)를 탄다.
+[StandaloneMessage(133)]
+public partial class SharedOutOfGraphHost
+{
+    public FallbackCollections? First { get; set; }
+    public FallbackCollections? Second { get; set; }
+}

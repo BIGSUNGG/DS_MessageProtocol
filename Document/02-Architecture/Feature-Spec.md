@@ -71,7 +71,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 
 중첩 객체 깊이는 **쓰기·읽기 양쪽**에서 버퍼 단위 상한으로 제한한다 — 기본 상한은 `MessageBufferReader.DefaultMaxNestingDepth = MessageBufferWriter.DefaultMaxNestingDepth = 64`(writer 쪽 상수는 reader 쪽을 참조해 **구조적으로 동일**하게 고정 — 써서 보낼 수 있는 그래프는 상대가 기본 설정으로 읽을 수 있어야 한다). 생성 코드(그래프 내부 중첩 객체·그래프 밖 메시지 위임)와 런타임 경유 지점(`SerializeToWriter`·`DeserializeFromReader` — 타입 매개변수·추상 메시지 멤버와 수동 구현의 재귀)이 재귀 지점에서 `EnterNestedObject`·`LeaveNestedObject` 쌍을 호출하고, 상한 초과 시 읽기는 `InvalidDataException`(와이어 내용 불법 — 경계 `EndOfStreamException` 과 구분), 쓰기는 `InvalidOperationException`(호출자 그래프가 너무 깊음)으로 거부한다. 이 가드가 막는 것은 두 방향 모두에서 **catch 불가한 스택 오버플로(프로세스 즉시 사망)** 다 — 수신: 자기참조 메시지에 `ReferenceKind.NewObject` 1바이트씩만 늘어놓은 20KB 남짓한 적대 프레임(KI-14), 송신: 수만 노드 연결 리스트·깊은 트리, 또는 백레퍼런스가 추적되지 않는 런타임 디스패치 멤버로 돌아가는 **순환 그래프**(KI-25). 합법적으로 깊은 객체 그래프는 `new MessageBufferReader(buffer, maxNestingDepth)` · `MessageBufferWriter.Create(initialCapacity, maxNestingDepth)` 로 **양쪽 상한을 함께** 올려 처리한다.
 
-메시지 타입 멤버는 세 경로로 나뉜다 — (1) 그래프 내부 타입(같은 컴파일의 구체 타입)은 백레퍼런스 추적 페이로드로, (2) 그래프 밖 **구체** 메시지(다른 어셈블리 등)는 그 타입의 생성 정적 `Serialize`/`Deserialize` 위임으로, (3) **추상 메시지 타입**(예: `abstract [GroupRootMessage]` — 상속 전용이라 생성 정적 멤버가 존재하지 않는다)은 런타임 메시지 디스패치(`SerializeToWriter`·`DeserializeFromReader`)로 기록한다. (3) 은 와이어에 구체 요소의 헤더(MessageId)를 포함하므로 수신 측이 **등록된 구체 요소 타입과 파생 멤버를 그대로 복원**한다(다형 멤버 — 베이스 타입 페이로드로 써서 파생 필드를 잃는 일이 없다). (3) 경로는 타입 매개변수(`T`) 멤버와 동일하게 백레퍼런스를 추적하지 않으므로, 그 멤버를 통한 공유 참조·순환 참조는 지원하지 않는다(Known-Issues KI-24·KI-9).
+메시지 타입 멤버는 세 경로로 나뉜다 — (1) 그래프 내부 타입(같은 컴파일의 구체 타입)은 백레퍼런스 추적 페이로드로, (2) 그래프 밖 **구체** 메시지(다른 어셈블리 등)는 그 타입의 생성 정적 `Serialize`/`Deserialize` 위임으로, (3) **추상 메시지 타입**(예: `abstract [GroupRootMessage]` — 상속 전용이라 생성 정적 멤버가 존재하지 않는다)은 런타임 메시지 디스패치(`SerializeToWriter`·`DeserializeFromReader`)로 기록한다. (3) 은 와이어에 구체 요소의 헤더(MessageId)를 포함하므로 수신 측이 **등록된 구체 요소 타입과 파생 멤버를 그대로 복원**한다(다형 멤버 — 베이스 타입 페이로드로 써서 파생 필드를 잃는 일이 없다). (2)·(3) 경로(타입 매개변수 `T` 멤버 포함)도 **호출측 참조 추적 컨텍스트**를 공유한다 — 같은 인스턴스가 두 번 등장하면 두 번째부터 백레퍼런스로 기록되어 참조 동일성이 복원되고, 순환도 해당 프레임 안에서 백레퍼런스로 유한하게 종결된다(Known-Issues KI-9 해소). 잔존 제약 두 가지: 디스패치된 프레임 **내부**는 자체 컨텍스트를 써서 프레임 경계를 넘는 공유는 경계마다 1회 중복 기록되고(KI-25 깊이 가드가 무한 재귀는 차단), 디스패치 멤버 위치의 백레퍼런스는 2.2.0 부터 발생하므로 구버전 수신측(2.1.x)과 공유 참조 그래프를 주고받으려면 양측 모두 재생성이 필요하다.
 
 **구체** 베이스(파생 메시지 타입이 존재하는 non-abstract 메시지 타입)를 멤버 정적 타입으로 쓰면 (1) 경로라 선언 타입 기준으로 기록되어 파생 인스턴스의 추가 멤버가 **조용히 유실**되고 복원 타입도 베이스가 된다 — 생성기가 `MSGPROT012` **경고**로 알린다(생성은 막지 않음: 베이스 필드만 보내는 것은 유효한 설계일 수 있고 `#pragma warning disable MSGPROT012` 로 억제 가능). 다형이 필요하면 베이스를 `abstract` 로 선언해 (3) 경로(런타임 디스패치)를 쓴다 (Known-Issues KI-29).
 
@@ -163,7 +163,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 - 네트워크 전송 → DS_Communication
 - RPC 디스패치·원격 호출 → DS_RPC
 - Legacy에서 미지원이던 멤버 타입 추가 (`Dictionary`, nullable 값 타입 등) — 스펙 동결, 필요 시 별도 결정(05-ADR)으로 확장.
-- 제네릭 메시지 `T` 의 비메시지(원시) 타입 인스턴스화, `T` 경계 넘는 공유·순환 참조 복원 — [ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md) 제약 참고.
+- 제네릭 메시지 `T` 의 비메시지(원시) 타입 인스턴스화, 디스패치 프레임 **경계를 넘는** 공유·순환 참조의 완전한 단일 인스턴스 복원(프레임 내부 공유·순환은 2.2.0 부터 복원 — [ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)·Known-Issues KI-9 참고).
 
 ## Legacy 대비 재작성 변경점 (2026-08-31)
 

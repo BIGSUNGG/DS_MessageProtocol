@@ -208,4 +208,47 @@ public class RegistrationTests
         Assert.Equal(5, roundTrip.Event!.Timestamp);   // 베이스 멤버는 유지
         Assert.IsType<EventBase>(roundTrip.Event);     // 파생이 아니라 베이스 인스턴스로 복원 = User 는 와이어에 없다
     }
+
+    // ---------- 디스패치 멤버 공유 참조 (KI-9 해소) ----------
+
+    [Fact]
+    public void 추상_디스패치_멤버를_통한_공유_참조는_참조_동일성을_복원한다()
+    {
+        // 같은 인스턴스가 두 추상 멤버에 등장하면 두 번째부터 백레퍼런스로 기록된다 — 수정 전에는
+        // 매 디스패치마다 새 SerializeContext 로 풀 프레임이 중복 기록되어 수신 측에서 별개 인스턴스 2개가 되었다.
+        var shared = new StartCommand { Seq = 42, Target = "t" };
+        var envelope = new CommandEnvelope { Command = shared, History = new List<AbstractCommand> { shared } };
+
+        var back = MessageSerializer.Deserialize<CommandEnvelope>(MessageSerializer.Serialize(envelope));
+
+        var command = Assert.IsType<StartCommand>(back!.Command);
+        Assert.Equal(42L, command.Seq);
+        Assert.Same(back.Command, back.History![0]);
+    }
+
+    [Fact]
+    public void 타입_매개변수_디스패치_멤버를_통한_공유_참조도_참조_동일성을_복원한다()
+    {
+        var shared = new FlatMessage { Value = 7 };
+        var envelope = new GenericEnvelope<FlatMessage> { Value = shared, Items = new List<FlatMessage?> { shared, null } };
+
+        var back = MessageSerializer.Deserialize<GenericEnvelope<FlatMessage>>(MessageSerializer.Serialize(envelope));
+
+        Assert.Equal(7, back!.Value!.Value);
+        Assert.Same(back.Value, back.Items![0]);
+        Assert.Null(back.Items[1]);   // 공유가 없는 원소는 여전히 그대로
+    }
+
+    [Fact]
+    public void 그래프_밖_위임_멤버를_통한_공유_참조도_참조_동일성을_복원한다()
+    {
+        // 다른 어셈블리의 구체 메시지 멤버(EmitOutOfGraphMessage*)도 같은 계약 — KI-9 의 나머지 절반.
+        var shared = new MessageProtocol.NetStandardFixtures.FallbackCollections { Bulk = new List<int> { 1, 2 } };
+        var host = new SharedOutOfGraphHost { First = shared, Second = shared };
+
+        var back = MessageSerializer.Deserialize<SharedOutOfGraphHost>(MessageSerializer.Serialize(host));
+
+        Assert.Equal(new[] { 1, 2 }, back!.Second!.Bulk!);
+        Assert.Same(back.First, back.Second);
+    }
 }
