@@ -57,6 +57,18 @@ public class DeserializerFuzzTests
         ChainMessage deep = new ChainMessage();
         for (int i = 0; i < 60; i++) deep = new ChainMessage { Next = deep };
 
+        // netstandard2.1 폴백 프로파일(Unity — CollectionsMarshal 없음)로 생성된 타입: 인덱서 루프
+        // 판독기·폴백 벌크 가드를 변이 하에 검증한다. 이 어셈블리의 생성 코드는 대상 프레임워크 기준으로
+        // 갈리므로 Tests(net8/9) 코퍼스만으로는 폴백 경로가 절대 돌지 않았다(2026-09-08 커버리지 확장).
+        var fallback = new MessageProtocol.NetStandardFixtures.FallbackCollections
+        {
+            Bulk = new List<int> { 1, -2, 3, int.MaxValue },
+            Texts = new List<string?> { "a", null, "ccc" },
+            Codes = new List<byte> { 250, 0 }.AsReadOnly(),
+            Tags = new[] { "x", null },
+            Samples = new[] { double.NaN, -0.0, double.NegativeInfinity },
+        };
+
         return new[]
         {
             (MessageSerializer.Serialize(allTypes), typeof(AllTypesMessage)),
@@ -65,6 +77,7 @@ public class DeserializerFuzzTests
             (MessageSerializer.Serialize(noId), (System.Type?)null),        // NonId: object dispatch 거부 경로
             (MessageSerializer.Serialize(login), (System.Type?)typeof(LoginEvent)),
             (MessageSerializer.Serialize(deep), (System.Type?)typeof(ChainMessage)),
+            (MessageSerializer.Serialize(fallback), (System.Type?)typeof(MessageProtocol.NetStandardFixtures.FallbackCollections)),
         };
     }
 
