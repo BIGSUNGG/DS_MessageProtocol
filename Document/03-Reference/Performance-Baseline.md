@@ -33,6 +33,8 @@ dotnet run -c Release --project Test/MessageProtocol.Benchmarks
 | SerializePooledFlat | `BenchMessage` → `SerializePooled`(소유권 해제 포함) | 57.26 ns | 32 B |
 | SerializeSharedGraph | 깊이 5 체인 + 공유 서브트리(백레퍼런스 강제) 직렬화 | 288.31 ns | 528 B |
 | DeserializeSharedGraph | 위 바이트 역직렬화(백레퍼런스 역참조 포함) | 287.31 ns | 872 B |
+| SerializeLargeCollections | `List<int>` 10만(벌크 복사) + `string[]` 1천 직렬화 | 70,999 ns (71 µs) | 411 KB |
+| DeserializeLargeCollections | 위 바이트 역직렬화(배열·리스트 재구성) | 133,990 ns (134 µs) | 448 KB |
 
 참고:
 - byte[] 경로의 할당 대부분은 정확 크기 결과 배열 복사 — **풀링 경로(`SerializePooled`)는 동일 워크로드에서 104B → 32B(소유권 홀더만, 속도 동급)** 로 측정된다(2026-09-08, 위 표 대조). 할당 민감 송신 루프는 `SerializePooled` 권장의 수치 근거.
@@ -50,5 +52,10 @@ dotnet run -c Release --project Test/MessageProtocol.Benchmarks
 
 ## 갭 (필요시 추가)
 
-- ~~풀링 경로·참조 추적 그래프~~ — **2026-09-08 측정 완료**(위 표: `SerializePooledFlat`·`SerializeSharedGraph`·`DeserializeSharedGraph`).
-- 대형 컬렉션(10³~10⁶ 요소), net8.0 TFM 대조.
+- ~~풀링 경로·참조 추적 그래프·대형 컬렉션~~ — **2026-09-08 측정 완료**(위 표).
+- net8.0 TFM 대조 — 낮은 가치(같은 코드·같은 JIT 계열), 측정 수요가 생기면 추가.
+
+## 대형 페이로드 참고 (2026-09-08)
+
+- `List<int>` 10만 요소 직렬화 71µs — 바이트 당 약 0.18ns, `CollectionsMarshal` 벌크 복사 경로가 지배(풀 대여→BlockCopy). 역직렬화 134µs — `List` 재구성(SetCount+벌크)이 쓰기보다 약 1.9배(할당 448KB: 리스트 내부 배열 + string 1천 재생성).
+- 이 규모 페이로드에서 byte[] 결과 복사(411KB)도 측정에 포함 — 송신 루프에서 대형 배치를 자주 보내면 `SerializePooled` 로 이 복사를 회피할 수 있다(위 풀링 대조 참조).

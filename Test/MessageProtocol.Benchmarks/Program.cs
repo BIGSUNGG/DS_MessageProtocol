@@ -59,6 +59,17 @@ namespace Benchmarks
         public GraphNode? Right { get; set; }
     }
 
+    /// <summary>
+    /// 대형 컬렉션 시나리오(인벤토리·엔티티 일괄 전송 실제 스케일) — `List&lt;int&gt;` 10만 요소는
+    /// CollectionsMarshal 벌크 복사 경로, `string[]` 1천 요소는 요소별 쓰기 경로를 각각 압박한다.
+    /// </summary>
+    [StandaloneMessage(4)]
+    public partial class LargeCollections
+    {
+        public List<int>? Numbers { get; set; }
+        public string[]? Names { get; set; }
+    }
+
     [MemoryDiagnoser]
     [Config(typeof(InProcessConfig))]
     public class SerializationBenchmarks
@@ -75,6 +86,7 @@ namespace Benchmarks
         byte[] _bytes = null!;
         byte[] _stringBytes = null!;
         byte[] _graphBytes = null!;
+        byte[] _largeBytes = null!;
 
         readonly StringHeavyMessage _stringMessage = new()
         {
@@ -97,12 +109,19 @@ namespace Benchmarks
 
         readonly GraphNode _graphRoot = BuildSharedGraph();
 
+        readonly LargeCollections _largeCollections = new()
+        {
+            Numbers = Enumerable.Range(0, 100_000).Select(i => i * 7).ToList(),
+            Names = Enumerable.Range(0, 1_000).Select(i => "name" + i).ToArray(),
+        };
+
         [GlobalSetup]
         public void Setup()
         {
             _bytes = MessageSerializer.Serialize(_message);
             _stringBytes = MessageSerializer.Serialize(_stringMessage);
             _graphBytes = MessageSerializer.Serialize(_graphRoot);
+            _largeBytes = MessageSerializer.Serialize(_largeCollections);
         }
 
         [Benchmark]
@@ -126,6 +145,12 @@ namespace Benchmarks
 
         [Benchmark]
         public GraphNode DeserializeSharedGraph() => MessageSerializer.Deserialize<GraphNode>(_graphBytes);
+
+        [Benchmark]
+        public byte[] SerializeLargeCollections() => MessageSerializer.Serialize(_largeCollections);
+
+        [Benchmark]
+        public LargeCollections DeserializeLargeCollections() => MessageSerializer.Deserialize<LargeCollections>(_largeBytes);
 
         [Benchmark]
         public BenchMessage DeserializeTyped() => MessageSerializer.Deserialize<BenchMessage>(_bytes);
