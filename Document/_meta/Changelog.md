@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (2.3.7 릴리스)
+
+- **2.3.7 릴리스** (태그 `v2.3.7`) — 패치: 퍼저 발견 신뢰 경계 교정 2건(KI-41). 런타임 디스패치 판독의 신규 객체 분기 블라인드 캐스트를 안내 `InvalidDataException` 검사로 교정(불신 헤더가 다른 등록 타입으로 라우팅될 때 원인 없는 `InvalidCastException` 방지), NonId 플래그 프레임 거부를 `InvalidCastException` → `InvalidDataException` 으로 유형 교정(와이어 내용 불법 분류 — 모니터링 소비자는 이 유형을 따라가야 함). 역직렬화 차등 퍼저 상주 회귀화. **호환 주보**: NonId 프레임 object dispatch 거부 예외 유형이 바뀌었다 — `InvalidCastException` 을 잡던 소비자는 `InvalidDataException` 으로 갱신. 커밋 `7e3cecd`. 테스트 246, Sandbox 42 통과, DS_RPC 로컬 팩 빌드+테스트 통과 후 태그 푸시.
+
 ## 2026-09-08 (사이클 21) — 신뢰 경계 퍼징
 
 - **역직렬화 차등 퍼저 도입 + 결함 2건 발견·수정(KI-41)** — 결정적 변이(3종 프레임×1,500)로 통합 불변식 검증(깨끗한 거부 예외 유형 한정·성공 판독 멱등 왕복). iter 116: 디스패치 판독 신규 객체 분기의 블라인드 캐스트가 불신 헤더 라우팅에서 원인 없는 `InvalidCastException`(KI-34 미커버 분기) → 안내 검사로 교정. iter 291: NonId 플래그 거부가 `InvalidCastException` 오유형 → `InvalidDataException`(계약 재고정: 테스트 2·Sandbox S2·Public-API). 퍼저 상주 회귀화. 테스트 245→246, Sandbox 42 통과, DS_RPC 로컬 팩(2.3.6-ki41) 통과.
