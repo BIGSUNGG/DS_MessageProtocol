@@ -16,7 +16,7 @@ updated: 2026-09-08
 | ----- | ------ |
 | `MessageSerializer` | 등록·Serialize·Deserialize 정적 진입점 (`MessageProtocol.Serialize`) |
 | `MessageBufferWriter` / `MessageBufferReader` | 페이로드 버퍼 I/O (리틀엔디안, forward-only) |
-| `PooledBuffer` | 풀링된 직렬화 결과 (Dispose 멱등). `Empty`·`Memory`·`UnsafeArraySegment` 는 2.3.0 부터 [Obsolete(error:false)] — 이 저장소·테스트·Sandbox·DS_RPC 전체에서 무참조(2026-09-08 감사)로 다음 major 제거 후보다 |
+| `PooledBuffer` | 풀링된 직렬화 결과 (Dispose 멱등). struct 사본 전체가 참조형 소유 홀더를 공유해 **어떤 사본이 Dispose 해도 풀 반납은 정확히 한 번**이고 나머지 사본의 뷰는 비어 있다(KI-37, 2.3.1). `Empty`·`Memory`·`UnsafeArraySegment` 는 2.3.0 부터 [Obsolete(error:false)] — 이 저장소·테스트·Sandbox·DS_RPC 전체에서 무참조(2026-09-08 감사)로 다음 major 제거 후보다 |
 | `MessageWireFormat` | 헤더 크기·상수·MessageId 조립/분해 헬퍼 |
 | `MessageFlag` | 헤더 flags 니블 (`NonIdMessage` / `Standalone` / `GroupRoot` / `GroupElement`) |
 

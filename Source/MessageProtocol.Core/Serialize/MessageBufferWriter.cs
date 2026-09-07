@@ -90,6 +90,8 @@ namespace MessageProtocol.Serialize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Span<byte> GetSpan(int size)
         {
+            // 음수 size 는 Span 생성자가 우연히 던지는 ArgumentOutOfRange 로만 막혀 있었다 — API 계약으로 명문화(KI-37).
+            if (size < 0) ThrowNegativeSpanSize(size);
             EnsureCapacity(size);
             var span = _buffer.AsSpan(_position, size);
             _position += size;
@@ -368,6 +370,12 @@ namespace MessageProtocol.Serialize
         static void ThrowNegativeCount(int count)
         {
             throw new ArgumentOutOfRangeException(nameof(count), count, "Count must not be negative.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowNegativeSpanSize(int size)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size), size, "Span size must not be negative.");
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

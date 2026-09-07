@@ -431,3 +431,108 @@ public class BufferIOTests
     static Encoding StrictUtf8() =>
         Encoding.GetEncoding(65001, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 }
+
+// ---------- PooledBuffer 사본 소유권 공유 (KI-37) ----------
+
+/// <summary>
+/// PooledBuffer 는 struct 라 대입·전달마다 사본이 생긴다. 수정 전은 사본의 Dispose 가 서로에게
+/// 보이지 않아 같은 대여 배열이 풀에 두 번 반납됐다(다음 대여자가 남의 데이터를 봄). 이제 모든 사본이
+/// 참조형 홀더를 공유해 정확히 한 번만 반납되고, 어떤 사본이 먼저 Dispose 해도 나머지는 빈 뷰를 본다.
+/// </summary>
+public class PooledBufferCopyOwnershipTests
+{
+    [Fact]
+    public void 사본을_각각_Dispose해도_풀_반납은_정확히_한번이다()
+    {
+        var writer = MessageBufferWriter.Create();
+        writer.WriteInt32(0x0A0B0C0D);
+        var original = writer.ToPooledBuffer();
+        var copy = original; // struct 사본 — 수정 전 이 사본의 Dispose 가 이중 반납이었다
+
+        Assert.Equal(4, copy.Length);
+
+        copy.Dispose();
+
+        // 같은 소유 상태를 본다: 반납된 뒤 모든 사본의 뷰는 비어 있다.
+        Assert.Equal(0, copy.Length);
+        Assert.Equal(0, original.Length);
+        Assert.True(original.Span.IsEmpty);
+        Assert.Empty(original.ToArray());
+
+        original.Dispose(); // 이미 반납됨 — 멱등, 예외 없음
+    }
+
+    [Fact]
+    public void 원본을_Dispose하면_사본_뷰도_비어_있다()
+    {
+        var writer = MessageBufferWriter.Create();
+        writer.WriteString("data");
+        var original = writer.ToPooledBuffer();
+        var copy = original;
+
+        original.Dispose();
+
+        Assert.Equal(0, copy.Length);
+        Assert.True(copy.Span.IsEmpty);
+    }
+
+    [Fact]
+    public void SerializePooled의_사본도_같은_소유권을_공유한다()
+    {
+        var message = new Fixtures.FlatMessage { Value = 77 };
+        using var pooled = MessageSerializer.SerializePooled(message);
+        var copy = pooled;
+
+        Assert.True(copy.Span.SequenceEqual(pooled.Span));
+
+        var roundTrip = MessageSerializer.Deserialize<Fixtures.FlatMessage>(pooled.Span.ToArray());
+        Assert.Equal(77, roundTrip.Value);
+
+        copy.Dispose();
+        Assert.Equal(0, pooled.Length); // using 문의 이중 Dispose 도 안전
+    }
+
+    [Fact]
+    public void 빈_writer의_ToPooledBuffer는_Dispose로_예외가_나지_않는다()
+    {
+        var writer = MessageBufferWriter.Create();
+        var pooled = writer.ToPooledBuffer(); // Array.Empty 싱글턴 — 풀 반납 대상이 아니다
+
+        Assert.Equal(0, pooled.Length);
+        Assert.True(pooled.Span.IsEmpty);
+        pooled.Dispose();
+    }
+
+    [Fact]
+    public void GetSpan_음수는_계약_예외로_거부된다()
+    {
+        var writer = MessageBufferWriter.Create();
+        writer.WriteInt32(1);
+        int positionBefore = writer.Length;
+
+        // writer 는 ref struct — 람다로 캡처할 수 없으므로 try/catch 로 계약 예외를 확인한다.
+        ArgumentOutOfRangeException? exception = null;
+        try
+        {
+            writer.GetSpan(-1);
+        }
+        catch (ArgumentOutOfRangeException caught)
+        {
+            exception = caught;
+        }
+
+        Assert.NotNull(exception);
+        Assert.Equal("size", exception.ParamName);
+        Assert.Equal(positionBefore, writer.Length); // 위치는 그대로 — 상태 오염 없음
+    }
+
+    [Fact]
+    public void GetSpan_정상_경로는_전진_기록을_유지한다()
+    {
+        var writer = MessageBufferWriter.Create();
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(writer.GetSpan(4), 77);
+
+        Assert.Equal(4, writer.Length);
+        Assert.Equal(77, new MessageBufferReader(writer.WrittenReadOnlySpan).ReadInt32());
+    }
+}

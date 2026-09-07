@@ -282,7 +282,7 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | ---- | ---- | ---- |
 | KI-5 | 생성 `Deserialize(ref reader)` | 헤더·MessageId 를 검증하지 않고 건너뜀 — 다른 타입 바이트를 먹이면 조용히 재해석 (성능 트레이드오프, 문서화 필요) |
 | KI-9 | 그래프 밖 메시지 위임·런타임 디스패치 멤버 (`EmitOutOfGraphMessage*`·`EmitRuntimeDispatch*`) | **해결 (2026-09-07)** — 호출측 `SerializeContext` 의 오브젝트 id 추적이 위임·디스패치 쓰기로 전파되어 두 번째 등장부터 백레퍼런스로 기록·참조 동일성이 복원된다(와이어는 기존 참조 인코딩 재사용). 잔존 제약: **프레임 경계를 넘는 공유**는 별개 인스턴스로 남는다(각 프레임이 자체 컨텍스트를 쓴다 — 아래 KI-9 상세). 혼합 버전 피어(구버전 수신측)는 디스패치 멤버 위치의 백레퍼런스를 해석하지 못하므로 함께 업그레이드 필요 |
-| KI-37 | `PooledBuffer`(struct) | mutable struct 복사 → 이중 `ArrayPool.Return` 위험 — 사본 둘을 Dispose 하면 같은 배열이 풀에 두 번 반납돼 다음 대여자가 남의 데이터를 봄(현재 호출부는 통과 전달이라 잠재, 클래스화가 정석 해법). 같은 감사(2026-09-08)의 낮은 우선순위 짝: `FromRented(Array.Empty, 0)` 이 `fromPool:true` 로 기록(공용 풀은 0길이 조기 반환으로 무해 — 커스텀 풀 교체 시 위험), `GetSpan(음수)` 가 Span 의 우연한 예외로 안전(명시적 검사 부재) |
+| KI-37 | `PooledBuffer`(struct) | **해결 (2026-09-08)** — 소유 상태를 참조형 홀더로 공유해 사본 이중 반납 원천 차단(아래 항목). 빈 대여 `Array.Empty` 는 풀 반납 대상에서 제외, `GetSpan(음수)` 는 계약 예외로 명문화 |
 | KI-10 | 증분 파이프라인 | **측정 완료(2026-09-05, 아래 기록)** — 출력 스텝은 매 편집마다 재실행되지만(`Compilation` 스텝 항상 Modified + `ForAttributeWithMetadataName` transform 출력이 컴파일별 심볼 인스턴스) 생성 텍스트는 동일해서 다운스트림 재컴파일은 이미 차단됨. 남은 비용은 편집당 생성기 CPU(메시지 타입 수에 비례)뿐이며, 근본 해결은 value-equatable 모델 재작성(대규모)이라 측정 근거로 연기 |
 
 ### KI-9 해소 상세 (2026-09-07)
@@ -359,6 +359,10 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 ### KI-36. 참조 태그 바이트 3–255 가 NewObject 로 조용히 해석됨 (해결)
 
 **상태: 해결 (2026-09-08).** 참조 추적 3경로(그래프 내부 `EmitInGraphMessageRead`·그래프 밖 위임 `EmitOutOfGraphMessageRead`·런타임 디스패치 `EmitRuntimeDispatchRead`)의 생성 판독 코드가 `Null(0)`·`BackReference(2)` 만 검사하고 나머지를 `else` 로 떨어뜨려, 태그 바이트 3–255 를 **NewObject 로 조용히 해석**했다. 불신 피어 입장에서 이건 검증 우회다: 손상·변조 프레임이 즉시 거부되지 않고 다음 바이트부터 객체 페이로드로 파싱되어 프레임 역동기화 → 공격자가 만든 형태의 객체로 복원되거나 엉뚱한 위치에서 늦은 예외가 났다. 수정: 세 `else` 앞에 태그가 `NewObject(1)` 인지 검사하는 분기를 두고, 아니면 값과 규격(0/1/2)을 안내하는 `InvalidDataException` — 합법 프레임(0/1/2)의 와이어 바이트는 불변, 기존 데이터 전부 그대로 복호된다. 회귀 테스트 4개(3경로 각각 태그 3·0xFF 거부 + 정상 왕복 가드). 원본 발견: 2026-09-08 병렬 서브에이전트 감사(contexts 스캔, FINDING 1).
+
+### KI-37. PooledBuffer mutable struct 사본 → 이중 ArrayPool.Return (해결)
+
+**상태: 해결 (2026-09-08).** 2026-09-08 병렬 서브에이전트 감사(writer 스캔, FINDING 1). `PooledBuffer` 는 소유권 핸들인데 struct 라 대입·전달마다 독립 사본이 만들어졌고, `Dispose` 는 그 사본의 필드만 비웠다 — 두 사본을 각각 Dispose 하면 같은 대여 배열이 풀에 두 번 반납돼 다음 대여자가 **다른 메시지의 데이터**를 읽는 손상(프로세스 내 정보 유출·논리 오염). .NET 의 소유권 핸들(`IMemoryOwner<T>`)이 참조형인 이유와 같은 결함이다. 해법 선택: 공개 API 표면(`public struct PooledBuffer`)을 그대로 두고(하위호환 — 클래스화는 사용법 변경이라 major), 소유 상태(`byte[]`·길이·fromPool)를 참조형 `Owner` 홀더에 옮겨 **모든 사본이 홀더를 공유**하게 했다. 어떤 사본이 먼저 Dispose 해도 반납은 정확히 한 번, 이후 모든 사본의 뷰는 비어 있다. 비용: 풀링 직렬화 결과당 24바이트 홀더 1개(페이로드 복사 회수가 이 API 의 목적이므로 지배 비용 아님). 함께 처리(같은 감사 FINDING 2·3): `FromRented` 가 0길이 배열(`Array.Empty` 싱글턴)을 `fromPool:true` 로 기록하던 것을 길이>0 조건으로 수정(공용 풀의 0길이 조기 반환은 문서화되지 않은 내부 동작), `GetSpan(음수)` 가 Span 생성자의 우연한 예외로만 막히던 것을 `ArgumentOutOfRangeException(paramName:"size")` 계약으로 명문화(위치 불변). 회귀 테스트 6개(사본 이중 Dispose·역방향 사본·SerializePooled 사본 공유·빈 대여 Dispose·GetSpan 음수 거부·정상 전진 기록).
 
 ## 관련
 
