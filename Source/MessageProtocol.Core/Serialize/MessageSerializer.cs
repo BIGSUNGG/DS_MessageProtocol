@@ -302,13 +302,14 @@ namespace MessageProtocol.Serialize
             // 캐시 필드가 readonly 가 아니므로 여기서 직접 채워 복구한다. 이 단계가 없으면 그 타입은 영구히 사용 불가다 (KI-11).
             if (SerializerCache<T>.Serialize is null)
             {
+                // 필드가 volatile 이라 각 대입은 release store 다 — 이전의 `Volatile.Write(Serialize)` 묶음 발행은
+                // Serialize 를 먼저 읽는 독자에만 유효했고 Deserialize 만 읽는 핫 경로와 짝이 없었다(KI-39).
                 SerializerCache<T>.Deserialize = deserialize;
                 SerializerCache<T>.SerializeBytes = serializeBytes;
                 SerializerCache<T>.DeserializeBytes = deserializeBytes;
                 SerializerCache<T>.MessageId = messageId;
                 SerializerCache<T>.HasId = hasId;
-                // 핫 경로가 먼저 읽는 필드를 마지막으로 release publication — Serialize 가 보이면 나머지도 보인다.
-                Volatile.Write(ref SerializerCache<T>.Serialize, serialize);
+                SerializerCache<T>.Serialize = serialize;
             }
         }
 

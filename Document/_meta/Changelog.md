@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (사이클 13) — 스레드 안전성
+
+- `Known-Issues` KI-39 해결 — `SerializerCache<T>` 복구 블록의 묶음 발행(`Volatile.Write(Serialize)`)이 같은 위치를 읽는 독자하고만 짝이 되어, `Deserialize`/`MessageId` 만 읽는 핫 경로가 ARM(Unity)에서 등록 완료 후에도 오래된 null/0 을 읽을 수 있던 지연 가시성. 캐시 필드 6개 전체 volatile 화(위치별 release/acquire 쌍) + 복구 블록 자연순 단순화. 관찰 불가결(ARM 필요)이라 메모리 모델 추론으로 인자화, 게이트는 전체 스위트·Sandbox·DS_RPC 로컬 팩(2.3.3-ki39) 통과.
+
 ## 2026-09-08 (사이클 12) — 스레드 안전성
 
 - `Known-Issues` KI-38 해결 — 델리게이트 등록 경로의 TOCTOU(검증→prefill→클레임 순서)로 같은 타입 동시 등록 시 패자의 델리게이트가 `SerializerCache<T>` 에 잔류, 거부된 등록의 직렬화기가 조용히 실행되던 결함. 클레임 선점 후 prefill(+실패 롤백)로 교정, 제네릭 reader 제거 순서를 등록 역순으로 미러링. 회귀 테스트 2개(동시 등록 경쟁·클레임 롤백), 테스트 228→230, Sandbox 38, DS_RPC 로컬 팩(2.3.3-ki38) 통과. KI-39(캐시 복구 블록 ARM 지연 가시성, LOW) 원장 등록 — 다음 사이클 후보. 테스트 갭 4건 목록화(직렬화 null 가드·`Create(<=0)`·`FromRented` 검증 — 코드는 이미 정상, 테스트만 부재).

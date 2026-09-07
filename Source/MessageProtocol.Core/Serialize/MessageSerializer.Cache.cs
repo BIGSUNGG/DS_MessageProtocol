@@ -42,12 +42,18 @@ namespace MessageProtocol.Serialize
         /// </summary>
         internal static class SerializerCache<T>
         {
-            public static TypedSerializeRefAction<T>? Serialize;
-            public static TypedDeserializeRefFunc<T>? Deserialize;
-            public static Func<T, byte[]>? SerializeBytes;
-            public static Func<byte[], T>? DeserializeBytes;
-            public static uint MessageId;
-            public static bool HasId;
+            // volatile(KI-39): 등록 전 조기 접근으로 cctor 가 먼저 돈 타입은 **복구 블록**(PrefillSerializerCache)이
+            // 이 필드들을 cctor 밖에서 다시 쓴다. 복구 쓰기는 마지막에 `Serialize` 를 release 로 발행하지만,
+            // `Deserialize` 만 읽는 핫 경로(Deserialize<T>)는 그 release 와 짝이 없어 ARM(Unity)에서 **등록 완료 후에도
+            // 오래된 null** 을 읽어 false ThrowMissingDeserialize / MessageId=0 을 볼 수 있었다. 필드 전체를
+            // volatile 로 만들면 각 필드의 쓰기는 release·읽기는 acquire 가 되어 위치별 동기화 쌍이 성립한다.
+            // 비용: ARM64 acquire load ≈ 1사이클(LDAR), x86 무료 — 핫 경로에서 무시 가능.
+            public static volatile TypedSerializeRefAction<T>? Serialize;
+            public static volatile TypedDeserializeRefFunc<T>? Deserialize;
+            public static volatile Func<T, byte[]>? SerializeBytes;
+            public static volatile Func<byte[], T>? DeserializeBytes;
+            public static volatile uint MessageId;
+            public static volatile bool HasId;
 
             static SerializerCache()
             {
