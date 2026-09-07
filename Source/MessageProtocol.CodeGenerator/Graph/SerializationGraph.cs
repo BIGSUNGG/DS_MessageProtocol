@@ -13,21 +13,32 @@ namespace MessageProtocol.CodeGenerator.Graph
         readonly AttributeReferences _references;
         readonly Dictionary<ITypeSymbol, SerializableTypeModel> _lookup;
         readonly HashSet<string> _usedHelperSuffixes;
+        readonly SerializableTypeModel[] _reachableTypes;
 
         SerializationGraph(
             SerializableTypeModel rootType,
             AttributeReferences references,
             Dictionary<ITypeSymbol, SerializableTypeModel> lookup,
-            HashSet<string> usedHelperSuffixes)
+            HashSet<string> usedHelperSuffixes,
+            SerializableTypeModel[] reachableTypes)
         {
             RootType = rootType;
             _references = references;
             _lookup = lookup;
             _usedHelperSuffixes = usedHelperSuffixes;
+            _reachableTypes = reachableTypes;
         }
 
         public SerializableTypeModel RootType { get; }
-        public IReadOnlyCollection<SerializableTypeModel> ReachableTypes => _lookup.Values;
+
+        /// <summary>
+        /// 도달 가능 타입을 **타입 이름 오름차순**으로 반환한다. 이전에는 `Dictionary.Values` 열거에
+        /// 의존해 헬퍼 메서드 방출 순서가 BCL 구현 세부에 실려 있었다(.NET Dictionary 는 제거가 없으면
+        /// 삽입 순으로 열거하지만 이는 문서화된 규약이 아니다 — 감사 원장 LOW, 2026-09-08).
+        /// 정렬은 생성 **텍스트 배치**만 안정화한다 — 와이어 바이트는 멤버 순서(`TypeMetadata.GetWireMembers`)
+        /// 가 담당하므로 불변이다. 헬퍼 접미사는 그래프 수집 시점에 이미 확정되어 방출 순서와 무관하다.
+        /// </summary>
+        public IReadOnlyCollection<SerializableTypeModel> ReachableTypes => _reachableTypes;
 
         public static SerializationGraph Create(TypeMetadata rootType, AttributeReferences references)
         {
@@ -37,9 +48,14 @@ namespace MessageProtocol.CodeGenerator.Graph
             {
                 [rootType.Symbol] = rootModel,
             };
-            var graph = new SerializationGraph(rootModel, references, lookup, usedHelperSuffixes);
-            graph.Collect(rootType);
-            return graph;
+            // Collect 는 인스턴스 메서드라 임시 그래프로 수집한 뒤, 정렬된 배열을 넣어 최종 그래프를 만든다.
+            var collector = new SerializationGraph(rootModel, references, lookup, usedHelperSuffixes, Array.Empty<SerializableTypeModel>());
+            collector.Collect(rootType);
+            // 방출 순서 안정화: 타입 이름 기준 정렬(KI-4 계열 — BCL Dictionary 열거 순서 의존 제거).
+            var sorted = lookup.Values
+                .OrderBy(static model => model.TypeName, StringComparer.Ordinal)
+                .ToArray();
+            return new SerializationGraph(rootModel, references, lookup, usedHelperSuffixes, sorted);
         }
 
         public bool IsMessageType(ITypeSymbol typeSymbol)

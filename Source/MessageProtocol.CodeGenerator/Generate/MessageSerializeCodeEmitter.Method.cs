@@ -111,7 +111,10 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"public {staticHidingModifier}static {typeMeta.DeclarationName} Deserialize(ref MessageBufferReader reader)");
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    byte __headerByte = reader.ReadByte();");
-                sb.AppendLine($@"{indent}    if ((__headerByte & {((byte)MessageFlag.NonIdMessage) << 4}) == 0)");
+                // 헤더 규칙은 공용 단일 사실원을 호출한다 — 인라인 비트 재구현이 와이어 규칙과 어긋나는 것을
+                // 구조적으로 불가능하게 만든다(감사 원장 LOW, 2026-09-08). 논리는 기존 인라인과 동일하므로
+                // 생성 바이트는 불변이다.
+                sb.AppendLine($@"{indent}    if (MessageProtocol.MessageWireFormat.HasEmbeddedMessageId(__headerByte))");
                 sb.AppendLine($@"{indent}    {{");
                 sb.AppendLine($@"{indent}        reader.ReadByte();");
                 sb.AppendLine($@"{indent}        reader.ReadByte();");
