@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: context
 status: stable
 tags: [ai, context]
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # CONTEXT — DS_MessageProtocol

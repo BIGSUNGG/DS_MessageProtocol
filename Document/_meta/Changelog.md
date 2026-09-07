@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (2.2.1 릴리스)
+
+- **2.2.1 릴리스** (태그 `v2.2.1`) — 모듈 로드 강건성 수정 3건을 담은 패치 릴리스: 등록 검증을 캐시 prefill 앞으로 재배치(거부된 등록의 `SerializerCache<T>` 잔류 차단, KI-11 잔존 해소), HasId id 의 NonId 플래그 조용한 반쪽 등록을 등록 시점 거부로 승격, `RegisterGenericConstruction` 발행 순서를 classId 먼저로 재배치(경쟁 시 ClassId 0 예외 제거, KI-33). 공유 백레퍼런스 판독의 블라인드 캐스트를 안내 `InvalidDataException` 으로 완화(KI-34, 와이어 무영향). 커밋 `765e30b`·`e80cb86`·`cfe7aa8`. 테스트 205→212(net8.0·net9.0), Sandbox 38 시나리오 통과, DS_RPC 를 로컬 2.2.1 팩으로 빌드+테스트(77/77) 통과 후 태그 푸시.
+
 ## 2026-09-08
 
 - `Known-Issues` KI-11 잔존 해소·KI-33 신규 해결 — 등록 검증을 prefill 앞으로 재배치(거부된 등록의 캐시 잔류 차단)하고, HasId id 의 NonId 플래그(조용한 반쪽 등록)를 등록 시점 거부로 승격, `RegisterGenericConstruction` 발행 순서를 classId 먼저로 재배치(경쟁 시 ClassId 0 예외 제거). `Public-API` 예외 계약 갱신.
