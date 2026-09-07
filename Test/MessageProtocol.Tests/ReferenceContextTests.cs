@@ -135,3 +135,71 @@ public class SharedBaseBackReferenceTests
     }
 }
 
+
+// ---------- 알 수 없는 참조 태그 거부 (신뢰 경계 — 2026-09-08 감사) ----------
+
+/// <summary>
+/// 참조 태그 바이트는 규격상 0(Null)·1(NewObject)·2(BackReference) 뿐이다. 수정 전 생성 코드는
+/// 그 외의 값(3–255)을 조용히 NewObject 로 해석해 손상·변조 프레임을 파싱했다(프레임 역동기화로
+/// 공격자가 만든 형태의 객체로 복원됨). 세 읽기 경로(그래프 내부·외부 위임·런타임 디스패치) 모두
+/// 이제 즉시 InvalidDataException 으로 거부한다.
+/// </summary>
+public class UnknownReferenceKindTests
+{
+    static byte[] SerializeWithLeadingReferenceMember<T>(T host) where T : class
+    {
+        var bytes = MessageSerializer.Serialize(host);
+        // 루트 헤더(임베디드 id 4바이트) 뒤 첫 바이트가 첫 참조 멤버의 태그(NewObject=1)다 — 레이아웃 고정.
+        Assert.True(bytes.Length > 4, "Serialized payload is too short to contain a reference tag.");
+        Assert.Equal((byte)MessageSerializer.ReferenceKind.NewObject, bytes[4]);
+        return bytes;
+    }
+
+    [Fact]
+    public void 그래프_내부_멤버의_알수없는_참조태그는_즉시_거부된다()
+    {
+        var host = new SharedBaseBaseHost { First = new LoginEvent { Timestamp = 1, User = "u" } };
+        var bytes = SerializeWithLeadingReferenceMember(host);
+
+        foreach (byte hostile in new byte[] { 3, 0xFF })
+        {
+            bytes[4] = hostile;
+            var exception = Assert.Throws<System.IO.InvalidDataException>(
+                () => MessageSerializer.Deserialize<SharedBaseBaseHost>(bytes));
+            Assert.Contains($"Unknown reference kind {hostile}", exception.Message);
+        }
+    }
+
+    [Fact]
+    public void 그래프_밖_위임_멤버의_알수없는_참조태그는_즉시_거부된다()
+    {
+        var host = new SharedOutOfGraphHost { First = new MessageProtocol.NetStandardFixtures.FallbackCollections() };
+        var bytes = SerializeWithLeadingReferenceMember(host);
+
+        bytes[4] = 3;
+        var exception = Assert.Throws<System.IO.InvalidDataException>(
+            () => MessageSerializer.Deserialize<SharedOutOfGraphHost>(bytes));
+        Assert.Contains("Unknown reference kind 3", exception.Message);
+    }
+
+    [Fact]
+    public void 런타임_디스패치_멤버의_알수없는_참조태그는_즉시_거부된다()
+    {
+        var host = new SharedDispatchConcreteHost { Command = new StartCommand { Seq = 1, Target = "t" } };
+        var bytes = SerializeWithLeadingReferenceMember(host);
+
+        bytes[4] = 3;
+        var exception = Assert.Throws<System.IO.InvalidDataException>(
+            () => MessageSerializer.Deserialize<SharedDispatchConcreteHost>(bytes));
+        Assert.Contains("Unknown reference kind 3", exception.Message);
+    }
+
+    [Fact]
+    public void 정상_태그_왕복은_그대로_동작한다()
+    {
+        // 가드가 합법 프레임(0/1/2)을 깨지 않는지 고정 — 세 경로 대표 1개씩 왕복.
+        var host = new SharedDispatchConcreteHost { Command = new StartCommand { Seq = 7, Target = "t" } };
+        var back = MessageSerializer.Deserialize<SharedDispatchConcreteHost>(MessageSerializer.Serialize(host));
+        Assert.Equal(7L, Assert.IsType<StartCommand>(back.Command).Seq);
+    }
+}

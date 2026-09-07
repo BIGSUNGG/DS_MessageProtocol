@@ -282,6 +282,7 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 | ---- | ---- | ---- |
 | KI-5 | 생성 `Deserialize(ref reader)` | 헤더·MessageId 를 검증하지 않고 건너뜀 — 다른 타입 바이트를 먹이면 조용히 재해석 (성능 트레이드오프, 문서화 필요) |
 | KI-9 | 그래프 밖 메시지 위임·런타임 디스패치 멤버 (`EmitOutOfGraphMessage*`·`EmitRuntimeDispatch*`) | **해결 (2026-09-07)** — 호출측 `SerializeContext` 의 오브젝트 id 추적이 위임·디스패치 쓰기로 전파되어 두 번째 등장부터 백레퍼런스로 기록·참조 동일성이 복원된다(와이어는 기존 참조 인코딩 재사용). 잔존 제약: **프레임 경계를 넘는 공유**는 별개 인스턴스로 남는다(각 프레임이 자체 컨텍스트를 쓴다 — 아래 KI-9 상세). 혼합 버전 피어(구버전 수신측)는 디스패치 멤버 위치의 백레퍼런스를 해석하지 못하므로 함께 업그레이드 필요 |
+| KI-37 | `PooledBuffer`(struct) | mutable struct 복사 → 이중 `ArrayPool.Return` 위험 — 사본 둘을 Dispose 하면 같은 배열이 풀에 두 번 반납돼 다음 대여자가 남의 데이터를 봄(현재 호출부는 통과 전달이라 잠재, 클래스화가 정석 해법). 같은 감사(2026-09-08)의 낮은 우선순위 짝: `FromRented(Array.Empty, 0)` 이 `fromPool:true` 로 기록(공용 풀은 0길이 조기 반환으로 무해 — 커스텀 풀 교체 시 위험), `GetSpan(음수)` 가 Span 의 우연한 예외로 안전(명시적 검사 부재) |
 | KI-10 | 증분 파이프라인 | **측정 완료(2026-09-05, 아래 기록)** — 출력 스텝은 매 편집마다 재실행되지만(`Compilation` 스텝 항상 Modified + `ForAttributeWithMetadataName` transform 출력이 컴파일별 심볼 인스턴스) 생성 텍스트는 동일해서 다운스트림 재컴파일은 이미 차단됨. 남은 비용은 편집당 생성기 CPU(메시지 타입 수에 비례)뿐이며, 근본 해결은 value-equatable 모델 재작성(대규모)이라 측정 근거로 연기 |
 
 ### KI-9 해소 상세 (2026-09-07)
@@ -343,7 +344,6 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 
 같은 저장소 밖 소비자 프로젝트에서 두 제네릭 선언이 같은 `[StandaloneMessage(7)]` 값과 같은 `ClassId=1` 구성을 선언하면 빌드는 성공하고, 첫 직렬화 시점(모듈 이니셜라이저)에 `RegisterGenericReaderInvoker` 의 `TryAdd` 가 실패해 `InvalidOperationException` → CLR 이 `<Module>` cctor 실패로 캐싱 → **어셈블리 로드 실패**. 오류 메시지는 상대 구성 타입만 지목하고 (MessageId, ClassId) 분해를 알려주지 않는다.
 
-
 ### KI-33. RegisterGenericConstruction 발행 순서 경쟁 → ClassId 0 "not registered" (해결)
 
 **상태: 해결 (2026-09-08).** 감사 원장 MEDIUM(MessageSerializer.cs:124·131). 발행 순서를 `classId → writer invoker → reader invoker` 로 재배치했다 — 생성 코드의 쓰기 경로는 `GetGenericClassId<T>()` 를 읽는데, 수정 전 순서는 writer invoker(`_writerDispatch`)가 먼저 보이므로 object dispatch 로 진입한 `Serialize` 가 classId 기록 전에 `GetGenericClassId=0` 을 읽고 안내 없는 "This generic construction is not registered for serialization" 예외를 냈다(모듈 이니셜라이저끼리는 경쟁이 불가능하지만, 수동 시작 등록(공개 API 가 안내하는 패턴)과 직렬화 워커의 경쟁에서 현실적으로 열린다). 이제 writer 가 보이는 순간 classId 는 항상 보인다. 실패 시 롤백도 재배치에 맞춰 classId 를 되돌린다(회귀 테스트: reader 키 선점으로 강제 실패 → `GetGenericClassId` 가 0으로 복귀). 순서 자체는 나노초 창이라 스트레스 테스트로 결정적 재현이 안 되는 것을 확인하고(돌연변이 검증 3회 통과 — 창이 너무 좁다), 발행 순서 단언 + 병렬 Serialize 압박 테스트로 고정한다.
@@ -355,6 +355,11 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 ### KI-34. 공유 백레퍼런스 판독이 멤버 정적 타입으로 블라인드 캐스트 (완화)
 
 **상태: 완화 (2026-09-08).** 감사 원장 HIGH(2026-09-05 패스, 09155d9 부분 처리). **실험 확정(2026-09-08, 2.2.0 생성 코드)**: 같은 파생 인스턴스를 구체 베이스 멤버가 먼저 기록하면(베이스 필드만 와이어에) 파생 타입 멤버의 백레퍼런스 판독이 등록된 **베이스 인스턴스**를 파생 타입으로 캐스트한다 — `InvalidCastException: Unable to cast 'EventBase' to 'LoginEvent'`. 베이스 멤버 2곳이면 예외 없이 **조용한 타입 좁힘**(같은 베이스 인스턴스 공유·파생 필드 유실), 추상(디스패치) 멤버 + 구체 멤버 조합은 구체 타입이 헤더째 기록되므로 온전히 복원된다. **완화(와이어 무영향)**: 그래프 내부·그래프 밖 위임·런타임 디스패치의 백레퍼런스 판독 3곳 모두 블라인드 캐스트 대신 타입 검사 후, 불일치 시 원인(실제 복원 타입·요구 타입·멤버)과 해법(구체 타입으로 선언 또는 베이스를 abstract 로)을 안내하는 `InvalidDataException` 을 던진다 — 와이어 바이트는 불변. 회귀 테스트 3개(예외 안내·조용한 좁힘 고정·디스패치 대조군). **여전히 열림(정책 결정 사항)**: 좁혀진 복원(베이스 필드만 유실) 자체는 와이어 변경(중첩 메시지를 디스패치로 기록) 없이는 고칠 수 없다 — 감사 원장 HIGH 로 추적 지속.
+
+### KI-36. 참조 태그 바이트 3–255 가 NewObject 로 조용히 해석됨 (해결)
+
+**상태: 해결 (2026-09-08).** 참조 추적 3경로(그래프 내부 `EmitInGraphMessageRead`·그래프 밖 위임 `EmitOutOfGraphMessageRead`·런타임 디스패치 `EmitRuntimeDispatchRead`)의 생성 판독 코드가 `Null(0)`·`BackReference(2)` 만 검사하고 나머지를 `else` 로 떨어뜨려, 태그 바이트 3–255 를 **NewObject 로 조용히 해석**했다. 불신 피어 입장에서 이건 검증 우회다: 손상·변조 프레임이 즉시 거부되지 않고 다음 바이트부터 객체 페이로드로 파싱되어 프레임 역동기화 → 공격자가 만든 형태의 객체로 복원되거나 엉뚱한 위치에서 늦은 예외가 났다. 수정: 세 `else` 앞에 태그가 `NewObject(1)` 인지 검사하는 분기를 두고, 아니면 값과 규격(0/1/2)을 안내하는 `InvalidDataException` — 합법 프레임(0/1/2)의 와이어 바이트는 불변, 기존 데이터 전부 그대로 복호된다. 회귀 테스트 4개(3경로 각각 태그 3·0xFF 거부 + 정상 왕복 가드). 원본 발견: 2026-09-08 병렬 서브에이전트 감사(contexts 스캔, FINDING 1).
+
 ## 관련
 
 - [Feature-Spec](../02-Architecture/Feature-Spec.md)

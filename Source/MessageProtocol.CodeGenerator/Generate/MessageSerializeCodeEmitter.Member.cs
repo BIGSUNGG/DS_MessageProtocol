@@ -253,6 +253,10 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}        }}
 {indent}        {targetExpression} = ({model.TypeName})__back{uid};
 {indent}    }}
+{indent}    else if (__refKind{uid} != (byte)MessageSerializer.ReferenceKind.NewObject)
+{indent}    {{
+{indent}        throw new System.IO.InvalidDataException($""Unknown reference kind {{__refKind{uid}}}; expected Null(0), NewObject(1) or BackReference(2). The payload is corrupt or from an incompatible protocol version."");
+{indent}    }}
 {indent}    else
 {indent}    {{
 {indent}        reader.EnterNestedObject();
@@ -318,6 +322,10 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({typeName}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
 {indent}        }}
 {indent}        {targetExpression} = ({typeName})__back{uid};
+{indent}    }}
+{indent}    else if (__nk{uid} != (byte)MessageSerializer.ReferenceKind.NewObject)
+{indent}    {{
+{indent}        throw new System.IO.InvalidDataException($""Unknown reference kind {{__nk{uid}}}; expected Null(0), NewObject(1) or BackReference(2). The payload is corrupt or from an incompatible protocol version."");
 {indent}    }}
 {indent}    else
 {indent}    {{
@@ -387,6 +395,10 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({GetTypeDisplayName(typeSymbol)}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
 {indent}        }}
 {indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})__back{uid};
+{indent}    }}
+{indent}    else if (__pk{uid} != (byte)MessageSerializer.ReferenceKind.NewObject)
+{indent}    {{
+{indent}        throw new System.IO.InvalidDataException($""Unknown reference kind {{__pk{uid}}}; expected Null(0), NewObject(1) or BackReference(2). The payload is corrupt or from an incompatible protocol version."");
 {indent}    }}
 {indent}    else
 {indent}    {{
