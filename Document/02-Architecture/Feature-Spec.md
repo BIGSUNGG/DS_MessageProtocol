@@ -25,7 +25,7 @@ updated: 2026-09-08
 | 제네릭 메시지 | 헤더 7바이트: 플래그 Generic(0) + MessageId 24비트 + 구성 클래스 ID 24비트 ([ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)) |
 | ID 값 범위 | `0 .. 2^24-1` |
 
-헤더 규칙은 직렬화 런타임과 코드 생성기가 공유하는 단일 소스(Legacy: `Source/Shared` Link Compile)에서 온다.
+헤더 규칙은 직렬화 런타임과 코드 생성기가 공유하는 단일 소스(Legacy: `Source/Shared` Link Compile)에서 온다. 생성 `Deserialize(ref reader)` 는 헤더를 건너뛰지 않고 타입의 MessageId 와 비교해 불일치 프레임(다른 타입의 바이트·위조 NonId 헤더·변조 id)을 진입에서 `InvalidDataException` 으로 거부한다(Known-Issues KI-5) — 합법 프레임의 와이어 바이트는 불변. 수동 구현도 같은 비교를 권장한다.
 
 ## F2. 메시지 종류·카테고리
 

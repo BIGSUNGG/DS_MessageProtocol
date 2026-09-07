@@ -308,3 +308,53 @@ public class RoundTripTests
         Assert.Contains("GenericMessage", ex.Message); // 선언 방법 안내 포함
     }
 }
+
+// ---------- 생성 Deserialize 헤더 검증 (KI-5) ----------
+
+/// <summary>
+/// 생성 Deserialize(ref reader) 는 헤더를 건너뛰기만 해 다른 타입의 바이트를 먹이면 페이로드를
+/// 조용히 재해석했다(KI-5). 이제 프레임의 4바이트 MessageId(또는 NonId 1바이트 헤더)를 타입의
+/// 것과 비교해 불일치 시 안내 InvalidDataException 으로 거부한다. 분기는 프레임 바이트 기준이라
+/// NonId 플래그를 주장하는 위조 헤더도 1바이트 비교에서 잡힌다.
+/// </summary>
+public class WireHeaderValidationTests
+{
+    [Fact]
+    public void 다른_타입의_바이트를_먹이면_헤더에서_거부된다()
+    {
+        var wrongBytes = MessageSerializer.Serialize(new FlatMessage { Value = 7 });
+
+        var exception = Assert.Throws<System.IO.InvalidDataException>(
+            () => MessageSerializer.Deserialize<AllTypesMessage>(wrongBytes));
+
+        Assert.Contains(nameof(AllTypesMessage), exception.Message);
+        Assert.Contains("does not match", exception.Message);
+    }
+
+    [Fact]
+    public void 위조_NonId_헤더는_1바이트_비교에서_거부된다()
+    {
+        var bytes = MessageSerializer.Serialize(new FlatMessage { Value = 7 });
+        bytes[0] = 0xFF; // NonId 플래그 주장 — 4바이트 읽기를 우회하려는 위조
+
+        Assert.Throws<System.IO.InvalidDataException>(() => MessageSerializer.Deserialize<FlatMessage>(bytes));
+    }
+
+    [Fact]
+    public void MessageId_마지막_바이트_변조도_거부된다()
+    {
+        var bytes = MessageSerializer.Serialize(new FlatMessage { Value = 7 });
+        bytes[3] ^= 0x01; // id 하위 비트 변조 — 우연히 같은 타입으로 복호되는 일 차단
+
+        Assert.Throws<System.IO.InvalidDataException>(() => MessageSerializer.Deserialize<FlatMessage>(bytes));
+    }
+
+    [Fact]
+    public void 정상_프레임은_검증_통과후_그대로_왕복된다()
+    {
+        var message = new FlatMessage { Value = 12345 };
+        var back = MessageSerializer.Deserialize<FlatMessage>(MessageSerializer.Serialize(message));
+
+        Assert.Equal(12345, back.Value);
+    }
+}

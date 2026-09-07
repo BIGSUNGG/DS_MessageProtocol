@@ -105,6 +105,15 @@ namespace MessageProtocol.CodeGenerator.Generate
                 var rootModel = graph.RootType;
                 string staticHidingModifier = GetStaticHidingModifier(typeMeta);
 
+                // 검증 상수 — EmitSerialize 가 바이크하는 것과 같은 MessageId 4바이트(빅엔디언).
+                // 다른 타입의 바이트를 먹이면 페이로드를 조용히 재해석하던 결함(KI-5)을 프레임 진입에서 차단한다.
+                uint expectedId = typeMeta.GetMessageId();
+                byte expectedHeader = (byte)(expectedId >> 24);
+                byte expectedB1 = (byte)(expectedId >> 16);
+                byte expectedB2 = (byte)(expectedId >> 8);
+                byte expectedB3 = (byte)expectedId;
+                string typeName = typeMeta.DeclarationName;
+
                 var sb = new StringBuilder();
 
                 // Hot path: reader 기반
@@ -112,13 +121,21 @@ namespace MessageProtocol.CodeGenerator.Generate
                 sb.AppendLine($@"{indent}{{");
                 sb.AppendLine($@"{indent}    byte __headerByte = reader.ReadByte();");
                 // 헤더 규칙은 공용 단일 사실원을 호출한다 — 인라인 비트 재구현이 와이어 규칙과 어긋나는 것을
-                // 구조적으로 불가능하게 만든다(감사 원장 LOW, 2026-09-08). 논리는 기존 인라인과 동일하므로
-                // 생성 바이트는 불변이다.
+                // 구조적으로 불가능하게 만든다(감사 원장 LOW, 2026-09-08). 분기는 **프레임 바이트(런타임) 기준**으로
+                // 판정한다 — 불신 바이트가 NonId 플래그를 주장하면 4바이트 읽기를 건너뛰고 아래 비교에서 거부된다.
                 sb.AppendLine($@"{indent}    if (MessageProtocol.MessageWireFormat.HasEmbeddedMessageId(__headerByte))");
                 sb.AppendLine($@"{indent}    {{");
-                sb.AppendLine($@"{indent}        reader.ReadByte();");
-                sb.AppendLine($@"{indent}        reader.ReadByte();");
-                sb.AppendLine($@"{indent}        reader.ReadByte();");
+                sb.AppendLine($@"{indent}        byte __idB1 = reader.ReadByte();");
+                sb.AppendLine($@"{indent}        byte __idB2 = reader.ReadByte();");
+                sb.AppendLine($@"{indent}        byte __idB3 = reader.ReadByte();");
+                sb.AppendLine($@"{indent}        if (__headerByte != 0x{expectedHeader:X2} || __idB1 != 0x{expectedB1:X2} || __idB2 != 0x{expectedB2:X2} || __idB3 != 0x{expectedB3:X2})");
+                sb.AppendLine($@"{indent}        {{");
+                sb.AppendLine($@"{indent}            throw new System.IO.InvalidDataException($""Wire header {{__headerByte:X2}} {{__idB1:X2}} {{__idB2:X2}} {{__idB3:X2}} does not match {typeName} (expected MessageId 0x{expectedId:X8}); the bytes belong to a different message type or are corrupt."");");
+                sb.AppendLine($@"{indent}        }}");
+                sb.AppendLine($@"{indent}    }}");
+                sb.AppendLine($@"{indent}    else if (__headerByte != 0x{expectedHeader:X2})");
+                sb.AppendLine($@"{indent}    {{");
+                sb.AppendLine($@"{indent}        throw new System.IO.InvalidDataException($""Wire header {{__headerByte:X2}} does not match {typeName} (expected 0x{expectedHeader:X2}); the bytes belong to a different message type or are corrupt."");");
                 sb.AppendLine($@"{indent}    }}");
                 if (typeMeta.IsGenericWireMessage)
                 {
