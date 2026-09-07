@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: troubleshoot
 status: draft
 tags: [known-issues, generator, runtime]
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Known Issues
@@ -180,7 +180,7 @@ null 규약은 길이 접두 `-1` 인데 판독 코드가 `length < 0` 전체를
 
 `abstract [GroupRootMessage] AbstractEvent` 를 멤버로 가진 메시지는 **MSGPROT 진단이 하나도 없이** `global::TestNs.AbstractEvent.Serialize(message.Payload, ref writer);` · `result.Payload = global::TestNs.AbstractEvent.Deserialize(ref reader);` 를 방출해 소비자 빌드가 `CS0117` 2건으로 깨졌다(GeneratorDriver 실험으로 확인 — 생성기 진단 0건, 컴파일 오류 `CS0117: 'AbstractEvent'에 'Serialize' 정의가 없음` ×2). 추상 루트 + 구체 요소는 그룹 메시지의 **정상적인 선언 형태**(상속 전용 루트라 `MessageCodeGenerator` 가 의도적으로 생성을 건너뜀)라, 다형 페이로드를 담은 봉투 메시지라는 자연스러운 사용이 곧장 빌드 붕괴로 이어졌고 원인이 생성기라는 단서도 없었다. 구조적 원인: 그래프 수집(`SerializationGraph.IsSerializableObjectType`)이 추상 타입을 제외한 뒤 `IsMessageType` 분기로 빠지는데, 이 분기는 **위임 대상에 정적 멤버가 실제로 존재하는지 검증하지 않는** 사각지대였다(KI-18 은 비메시지 추상 페이로드만 MSGPROT006 으로 걸렀다). 회귀 테스트의 이빨도 확인 — 이미터 변경만 되돌리면 테스트 프로젝트가 생성 코드 CS0117 로 빌드 실패한다.
 
-조치 방향: 추상 메시지 멤버를 런타임 디스패치로 연결 → 완료. 제약: 이 경로는 백레퍼런스를 추적하지 않으므로 추상 멤버를 통한 공유·순환 참조는 미지원(`T` 멤버·KI-9 와 동일 제약, `Feature-Spec` F3 명문화). 남은 꼬리: **구체** 베이스 타입 멤버(예: `EventBase` 타입 멤버에 `LoginEvent` 인스턴스)는 여전히 그래프 내부 페이로드 경로라 선언 타입 기준으로 직렬화되어 파생 필드가 유실된다 — 감사 원장 HIGH 항목(백레퍼런스 캐스트·파생 필드 유실)으로 별도 추적 중이며 와이어 형식 정책 결정이 필요해 이번 변경에서 분리했다.
+조치 방향: 추상 메시지 멤버를 런타임 디스패치로 연결 → 완료. 제약: 이 경로는 백레퍼런스를 추적하지 않으므로 추상 멤버를 통한 공유·순환 참조는 미지원(`T` 멤버·KI-9 와 동일 제약, `Feature-Spec` F3 명문화). 남은 꼬리: **구체** 베이스 타입 멤버(예: `EventBase` 타입 멤버에 `LoginEvent` 인스턴스)는 여전히 그래프 내부 페이로드 경로라 선언 타입 기준으로 직렬화되어 파생 필드가 유실된다 — 감사 원장 HIGH 항목(백레퍼런스 캐스트·파생 필드 유실)으로 별도 추적 중이며 와이어 형식 정책 결정이 필요해 이번 변경에서 분리했다. 남은 꼬리: **구체** 베이스 타입 멤버(예: `EventBase` 타입 멤버에 `LoginEvent` 인스턴스)는 여전히 그래프 내부 페이로드 경로라 선언 타입 기준으로 직렬화되어 파생 필드가 유실된다 — 감사 원장 HIGH 항목(백레퍼런스 캐스트·파생 필드 유실)으로 별도 추적 중이며 와이어 형식 정책 결정이 필요해 이번 변경에서 분리했다.
 
 ### KI-25. 쓰기 측 중첩 재귀 무제한 → 송신 측 스택 오버플로·읽기 가드와의 비대칭 (해결)
 
@@ -202,7 +202,7 @@ KI-14 는 읽기만 막았다. 쓰기 측은 깊이를 세는 곳이 아예 없�
 
 `PrefillSerializerCache` 가 정적 필드 6개를 fence 없이 쓰고 `IsSet = true` 를 일반 쓰기로 발행해, 다른 스레드의 캐시 cctor 가 찢어진 상태(null·혼합 델리게이트)를 `readonly` 필드에 영구 고정할 수 있었다. 더 쉽게 밟히는 제2형태는 순서 문제였다 — 등록 전에 누군가 `SerializerCache<T>` 를 건드리면(예: 미등록 타입을 `Serialize<T>` 하려다 실패) cctor 가 리플렉션 경로로 돌고, 계약 멤버가 없는 타입에서는 `ResolveSerializeRefMethod` 가 **cctor 안에서** 던진다. CLR 은 정적 생성자 실패를 타입별로 영구 캐싱하므로 이후 델리게이트 등록이 성공해도 그 타입은 영원히 `TypeInitializationException` 이었다(실험: 수정 전 회귀 테스트에서 16건 관측). 즉 **일시적 순서 실수가 영구 고장으로 고정**되는 형태였고, 오류 메시지도 진짜 원인(등록 누락)이 아니라 CLR 내부 예외로 가려졌다.
 
-조치 방향: 캐시를 오염 불가능하게 만들기 → 완료. 남은 꼬리(별도 추적): 첫 등록 시도가 `RegisterCore` 검증에서 거부되면 롤백이 Prefill·cctor 를 되돌리지 않아 `MessageId`·`HasId` 가 잔류한다(감사 원장 MEDIUM). 이번 복구 경로는 `Serialize is null` 일 때만 채우므로 **이미 등록된 타입의 중복 등록이 델리게이트를 조용히 갈아끼우는 불일치는 만들지 않는다**(중복 등록은 거부되지만 캐시·디스패치가 서로 다른 델리게이트를 가리키는 상태가 되지 않음).
+조치 방향: 캐시를 오염 불가능하게 만들기 → 완료. ~~남은 꼬리(별도 추적): 첫 등록 시도가 `RegisterCore` 검증에서 거부되면 롤백이 Prefill·cctor 를 되돌리지 않아 `MessageId`·`HasId` 가 잔류한다(감사 원장 MEDIUM).~~ **잔존 해결 (2026-09-08)**: 델리게이트 fast path(HasId·NonId 양쪽)가 prefill **전에** 새 검증 관문 `ValidateRegistration`(부수효과 없음 — 타입 중복·generic 플래그·와이어 id 중복·NonId 플래그)을 통과한다. 거부되면 캐시가 아예 건드려지지 않으므로 `RegisterGenericConstruction<T>` 가 캐시의 `MessageId` 로 런타임 키를 조립하던 2차 오염(잘못된 키로의 등록)도 함께 차단된다. `RegisterCore` 의 원자적 클레임(TryAdd/GetOrAdd)은 검증 통과 후 발행 직전의 동시 등록 경쟁용 백스톱으로 그대로 남는다. 회귀 테스트: 거부된 등록(점유 id) 후 캐시 `MessageId` 가 자기 값으로만 채워지고 올바른 id 재등록·왕복 성공(돌연변이로 prefill 을 검증 앞으로 되돌리면 실패). 델리게이트 조용히 갈아끼우지 않는 성질도 유지 — 중복 등록은 여전히 거부되며 이번에는 캐시도 오염되지 않는다.
 
 ### KI-4. 와이어 멤버 순서가 `Dictionary.Values` 열거에 의존 + 병합 로직 이중 정의 (해결)
 
@@ -342,6 +342,15 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 원본 발견 내용 (소비자 프로젝트 실험 검증):
 
 같은 저장소 밖 소비자 프로젝트에서 두 제네릭 선언이 같은 `[StandaloneMessage(7)]` 값과 같은 `ClassId=1` 구성을 선언하면 빌드는 성공하고, 첫 직렬화 시점(모듈 이니셜라이저)에 `RegisterGenericReaderInvoker` 의 `TryAdd` 가 실패해 `InvalidOperationException` → CLR 이 `<Module>` cctor 실패로 캐싱 → **어셈블리 로드 실패**. 오류 메시지는 상대 구성 타입만 지목하고 (MessageId, ClassId) 분해를 알려주지 않는다.
+
+
+### KI-33. RegisterGenericConstruction 발행 순서 경쟁 → ClassId 0 "not registered" (해결)
+
+**상태: 해결 (2026-09-08).** 감사 원장 MEDIUM(MessageSerializer.cs:124·131). 발행 순서를 `classId → writer invoker → reader invoker` 로 재배치했다 — 생성 코드의 쓰기 경로는 `GetGenericClassId<T>()` 를 읽는데, 수정 전 순서는 writer invoker(`_writerDispatch`)가 먼저 보이므로 object dispatch 로 진입한 `Serialize` 가 classId 기록 전에 `GetGenericClassId=0` 을 읽고 안내 없는 "This generic construction is not registered for serialization" 예외를 냈다(모듈 이니셜라이저끼리는 경쟁이 불가능하지만, 수동 시작 등록(공개 API 가 안내하는 패턴)과 직렬화 워커의 경쟁에서 현실적으로 열린다). 이제 writer 가 보이는 순간 classId 는 항상 보인다. 실패 시 롤백도 재배치에 맞춰 classId 를 되돌린다(회귀 테스트: reader 키 선점으로 강제 실패 → `GetGenericClassId` 가 0으로 복귀). 순서 자체는 나노초 창이라 스트레스 테스트로 결정적 재현이 안 되는 것을 확인하고(돌연변이 검증 3회 통과 — 창이 너무 좁다), 발행 순서 단언 + 병렬 Serialize 압박 테스트로 고정한다.
+
+원본 발견 내용 (코드 리뷰):
+
+`RegisterGenericConstruction<T>` 가 writer invoker 등록(:124) 후 `_genericClassIds` 기록(:131) 사이에 다른 스레드의 `Serialize` 가 끼면 ClassId 0 으로 "not registered" 예외. 순서만 바꾸면 되는 결정적 결함이지만 관측 창이 좁아 실험 재현은 어렵다.
 
 ## 관련
 

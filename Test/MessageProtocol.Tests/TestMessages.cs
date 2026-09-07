@@ -333,3 +333,96 @@ public partial class SharedOutOfGraphHost
     public FallbackCollections? First { get; set; }
     public FallbackCollections? Second { get; set; }
 }
+
+// ---------- 등록 검증 순서 (KI-11 잔존) ----------
+
+// 거부된 등록 후 재등록 복구 검증용 수동 메시지 — 어느 테스트에서도 먼저 등록·접근하지 않는다
+// (첫 접근이 "거부되는 등록"이어야 캐시 오염 여부가 관찰된다).
+public class ManualIdMessage : MessageProtocol.Serialize.IHasIdMessageSerializable<ManualIdMessage>
+{
+    public int Value { get; set; }
+
+    public static uint MessageId => MessageProtocol.MessageWireFormat.ComposeMessageId(
+        MessageProtocol.MessageFlag.Standalone, (byte)MessageProtocol.MessageCategory.Category0, 140);
+
+    public static void Serialize(ManualIdMessage message, ref MessageProtocol.Serialize.MessageBufferWriter writer)
+    {
+        uint id = MessageId;
+        writer.WriteByte((byte)(id >> 24));
+        writer.WriteByte((byte)(id >> 16));
+        writer.WriteByte((byte)(id >> 8));
+        writer.WriteByte((byte)(id));
+        writer.WriteInt32(message.Value);
+    }
+
+    public static byte[] Serialize(ManualIdMessage message)
+    {
+        var writer = MessageProtocol.Serialize.MessageBufferWriter.Create();
+        try
+        {
+            Serialize(message, ref writer);
+            return writer.ToArray();
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    public static ManualIdMessage Deserialize(ref MessageProtocol.Serialize.MessageBufferReader reader)
+    {
+        reader.Skip(MessageProtocol.MessageWireFormat.IdHeaderSize);
+        return new ManualIdMessage { Value = reader.ReadInt32() };
+    }
+
+    public static ManualIdMessage Deserialize(byte[] data)
+    {
+        var reader = new MessageProtocol.Serialize.MessageBufferReader(data);
+        return Deserialize(ref reader);
+    }
+}
+
+// NonId 플래그가 박힌 id 로 HasId 등록을 시도하는 거부 검증용 — 성공 등록이 없어 테스트 순서와 무관하다.
+public class ManualFlagProbeMessage : MessageProtocol.Serialize.IHasIdMessageSerializable<ManualFlagProbeMessage>
+{
+    public int Value { get; set; }
+
+    public static uint MessageId => MessageProtocol.MessageWireFormat.ComposeMessageId(
+        MessageProtocol.MessageFlag.Standalone, (byte)MessageProtocol.MessageCategory.Category0, 141);
+
+    public static void Serialize(ManualFlagProbeMessage message, ref MessageProtocol.Serialize.MessageBufferWriter writer)
+    {
+        uint id = MessageId;
+        writer.WriteByte((byte)(id >> 24));
+        writer.WriteByte((byte)(id >> 16));
+        writer.WriteByte((byte)(id >> 8));
+        writer.WriteByte((byte)(id));
+        writer.WriteInt32(message.Value);
+    }
+
+    public static byte[] Serialize(ManualFlagProbeMessage message)
+    {
+        var writer = MessageProtocol.Serialize.MessageBufferWriter.Create();
+        try
+        {
+            Serialize(message, ref writer);
+            return writer.ToArray();
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    public static ManualFlagProbeMessage Deserialize(ref MessageProtocol.Serialize.MessageBufferReader reader)
+    {
+        reader.Skip(MessageProtocol.MessageWireFormat.IdHeaderSize);
+        return new ManualFlagProbeMessage { Value = reader.ReadInt32() };
+    }
+
+    public static ManualFlagProbeMessage Deserialize(byte[] data)
+    {
+        var reader = new MessageProtocol.Serialize.MessageBufferReader(data);
+        return Deserialize(ref reader);
+    }
+}

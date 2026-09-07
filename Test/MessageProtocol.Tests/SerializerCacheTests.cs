@@ -69,4 +69,106 @@ public class SerializerCacheTests
 
         Assert.Equal(42, roundTrip.Value);
     }
+
+    // ---------- KI-11 잔존: 거부된 등록의 캐시 잔류 (2026-09-07 해소) ----------
+
+    [Fact]
+    public void 거부된_HasId_등록은_SerializerCache에_충돌_MessageId를_남기지_않는다()
+    {
+        // 수정 전: prefill 이 등록 검증보다 먼저 돌아, 거부된 등록의 MessageId/HasId 가 캐시에 영구 잔류했고
+        // 이후 올바른 id 로 재등록해도 복구 블록(Serialize is null)을 건너뛰어 잘못된 MessageId 가 남았다
+        // (RegisterGenericConstruction 이 캐시의 MessageId 로 런타임 키를 조립하므로 오염은 키 충돌로 번진다).
+        Assert.Throws<InvalidOperationException>(() =>
+            MessageSerializer.RegisterHasIdMessage<ManualIdMessage>(
+                ManualIdMessage.Serialize, ManualIdMessage.Deserialize, FlatMessage.MessageId)); // 이미 점유된 id
+
+        // 거부로 캐시가 오염되지 않았다 — 이 접근이 cctor 를 돌려도 자기 자신의 MessageId 로만 채워진다.
+        Assert.Equal(ManualIdMessage.MessageId, MessageSerializer.SerializerCache<ManualIdMessage>.MessageId);
+
+        // 올바른 id 로 재등록하면 성공하고 object dispatch 왕복도 동작한다.
+        MessageSerializer.RegisterHasIdMessage<ManualIdMessage>(
+            ManualIdMessage.Serialize, ManualIdMessage.Deserialize, ManualIdMessage.MessageId);
+        Assert.Equal(ManualIdMessage.MessageId, MessageSerializer.SerializerCache<ManualIdMessage>.MessageId);
+
+        var roundTrip = (ManualIdMessage)MessageSerializer.Deserialize(
+            MessageSerializer.Serialize((object)new ManualIdMessage { Value = 7 }));
+        Assert.Equal(7, roundTrip.Value);
+    }
+
+    [Fact]
+    public void NonId_비트가_박힌_HasId_등록은_조용한_반쪽_등록이_아니라_등록_시점에_거부된다()
+    {
+        // 수정 전: RegisterCore 가 MessageId·reader 등록을 조용히 건너뛰어 object 직렬화만 동작하고
+        // 이후 Deserialize(object) 가 원인을 알려주지 않는 KeyNotFoundException 으로 실패했다 (감사 원장 LOW).
+        uint nonIdFlagged = MessageProtocol.MessageWireFormat.ComposeMessageId(
+            MessageProtocol.MessageFlag.NonIdMessage, 0, 777);
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            MessageSerializer.RegisterHasIdMessage<ManualFlagProbeMessage>(
+                ManualFlagProbeMessage.Serialize, ManualFlagProbeMessage.Deserialize, nonIdFlagged));
+
+        Assert.Contains("NonId", exception.Message);
+        Assert.Contains(nameof(MessageSerializer.RegisterNonIdMessage), exception.Message);
+    }
+
+    // ---------- RegisterGenericConstruction 발행 순서 (2026-09-07 해소) ----------
+
+    [Fact]
+    public void RegisterGenericConstruction은_classId를_writer보다_먼저_발행한다()
+    {
+        // 감사 원장 MEDIUM: 수정 전 순서(writer → reader → classId)에서는 writer 디스패치가 보인 뒤 classId
+        // 기록 전에 object dispatch 로 진입한 Serialize 가 GetGenericClassId=0 을 읽고 안내 없는
+        // "not registered" 예외를 냈다. 샘플러가 writer 를 보는 순간 classId 도 보여야 한다.
+        var violations = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+        var stop = new ManualResetEventSlim(false);
+        var envelope = new GenericEnvelope<ChainMessage> { Value = new ChainMessage() };
+        Type constructionType = typeof(GenericEnvelope<ChainMessage>);
+
+        var samplers = Enumerable.Range(0, 3).Select(_ => new Thread(() =>
+        {
+            while (!stop.IsSet)
+            {
+                try
+                {
+                    MessageSerializer.Serialize((object)envelope);
+                }
+                catch (Exception ex)
+                {
+                    // 발행 전 정상 실패(미등록·generic-flag 안내)와 달리 classId=0 경쟁은 생성 코드의
+                    // 전용 메시지로만 나타난다 — 이것이 관찰되면 발행 순서 위반이다.
+                    if (ex.Message.Contains("This generic construction is not registered for serialization"))
+                    {
+                        violations.Enqueue(ex);
+                    }
+                }
+            }
+        })).ToArray();
+
+        foreach (var sampler in samplers) sampler.Start();
+        MessageSerializer.RegisterGenericConstruction<GenericEnvelope<ChainMessage>>(9);
+        Thread.SpinWait(500_000);   // 등록 완료 후에도 압박 유지 — 완료 상태에서 위반이 나면 안 된다.
+        stop.Set();
+        foreach (var sampler in samplers) sampler.Join();
+
+        Assert.Empty(violations);
+        Assert.Equal(9u, MessageSerializer.GetGenericClassId<GenericEnvelope<ChainMessage>>());
+        var back = (GenericEnvelope<ChainMessage>)MessageSerializer.Deserialize(
+            MessageSerializer.Serialize((object)new GenericEnvelope<ChainMessage> { Value = new ChainMessage() }));
+        Assert.NotNull(back.Value);
+    }
+
+    [Fact]
+    public void RegisterGenericConstruction_실패_시_classId도_롤백된다()
+    {
+        // (MessageId, ClassId) reader 키를 선점해 reader 등록 단계에서 실패를 강제한다 — 재배치된 발행
+        // 순서(classId 먼저)의 롤백이 classId 도 되돌리는지 검증. 롤백 누락이면 이후 재시도가
+        // 잘못된 classId 로 성공하는 사고가 생긴다.
+        // 선점: GenericEnvelope<FlatMessage> 는 ClassId=1 로 등록돼 있다(모듈 초기화) — 같은 (messageId, 1) 키로
+        // reader 등록 단계에서 실패를 강제한다. 재배치된 발행 순서(classId 먼저)의 롤백이 classId 도 되돌리는지 검증.
+        Assert.Throws<InvalidOperationException>(() =>
+            MessageSerializer.RegisterGenericConstruction<GenericEnvelope<MemberControlMessage>>(1));
+
+        // 실패했으므로 classId 도 기록돼 있으면 안 된다.
+        Assert.Equal(0u, MessageSerializer.GetGenericClassId<GenericEnvelope<MemberControlMessage>>());
+    }
 }

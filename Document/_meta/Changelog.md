@@ -2,6 +2,12 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08
+
+- `Known-Issues` KI-11 잔존 해소·KI-33 신규 해결 — 등록 검증을 prefill 앞으로 재배치(거부된 등록의 캐시 잔류 차단)하고, HasId id 의 NonId 플래그(조용한 반쪽 등록)를 등록 시점 거부로 승격, `RegisterGenericConstruction` 발행 순서를 classId 먼저로 재배치(경쟁 시 ClassId 0 예외 제거). `Public-API` 예외 계약 갱신.
+- `Known-Issues` KI-34 신규 완화 + KI-24 꼬리 갱신 — 공유 백레퍼런스 판독의 블라인드 캐스트를 실험으로 확정(`InvalidCastException`)하고 안내 `InvalidDataException` 으로 완화(와이어 무영향). 베이스 멤버 2곳의 조용한 타입 좁힘 복원은 제약으로 고정.
+- `Public-API` 갭 4건 보강 — 제네릭 와이어 표면(`GenericIdHeaderSize`·`MessageFlag.Generic`), 속성 표 `GenericMessageAttribute` 행, `RegisterGenericConstruction<T>`·`GetGenericClassId<T>`, `DeserializeFromReader(ref MessageBufferReader)`.
+
 ## 2026-09-07 (2.2.0 릴리스)
 
 - **2.2.0 릴리스** (태그 `v2.2.0`) — 신규 진단 규칙 추가(`MSGPROT015` 제네릭 구성 런타임 키 중복)와 디스패치·그래프 밖 위임 멤버의 공유 참조 복원(KI-9)을 포함하는 마이너 릴리스. 2.1.0 이후 3 커밋: `9b9e6b1`(MSGPROT015 컴파일 승격), `ab4053f`(공유 참조 백레퍼런스 복원 — 혼합 버전 피어 주의: 디스패치 멤버 위치의 백레퍼런스는 2.2.0 생성 코드부터 발생하므로 공유 참조 그래프를 주고받는 피어는 양측 재생성 필요), `edc33ee`(문서 정리). 테스트 205개(net8.0·net9.0)·Sandbox 38 시나리오 전체 통과. `Packages.md` 버전 기준 2.2.0 으로 갱신(2.1.0 때 갱신이 누락돼 2.0.0 으로 정체였던 것을 함께 수정).

@@ -42,6 +42,11 @@ namespace MessageProtocol.Serialize
             serializeBytes ??= CreateSerializeBytesWrapper(serialize);
             deserializeBytes ??= CreateDeserializeBytesWrapper(deserialize);
 
+            // 등록 검증을 prefill 보다 먼저 — prefill 이 먼저 돌면 거부된 등록의 MessageId/HasId 가
+            // SerializerCache<T> 에 영구 잔류하고, 이후 올바른 등록의 prefill 은 복구 블록(Serialize is null)
+            // 을 건너뛰므로 잘못된 값이 남는다 (Known-Issues KI-11 잔존, 2026-09-07 해소).
+            ValidateRegistration(typeof(T), messageId, hasId: true);
+
             PrefillSerializerCache(serialize, deserialize, serializeBytes, deserializeBytes, messageId, hasId: true);
 
             RegisterCore(typeof(T), messageId, hasId: true,
@@ -62,6 +67,7 @@ namespace MessageProtocol.Serialize
             }
 
             uint messageId = SerializerCache<T>.MessageId;
+            ValidateRegistration(typeof(T), messageId, hasId: true);
             RegisterCore(typeof(T), messageId, hasId: true,
                 writer: static (object m, ref MessageBufferWriter w) => Serialize((T)m, ref w),
                 reader: SerializerCache<T>.Deserialize is null
@@ -84,6 +90,9 @@ namespace MessageProtocol.Serialize
             {
                 deserializeBytes ??= CreateDeserializeBytesWrapper(deserialize);
             }
+
+            // HasId 경로와 같은 이유로 검증이 prefill 보다 먼저 — 중복 등록 거부 시 캐시 오업 방지 (KI-11 잔존).
+            ValidateRegistration(typeof(T), 0u, hasId: false);
 
             PrefillSerializerCache(serialize, deserialize, serializeBytes, deserializeBytes, messageId: 0u, hasId: false);
 
@@ -123,25 +132,31 @@ namespace MessageProtocol.Serialize
                 throw new InvalidOperationException($"Message type '{typeof(T).FullName}' is already registered.");
             }
 
+            bool classIdRecorded = false;
             bool writerRegistered = false;
             bool readerRegistered = false;
             try
             {
+                // 발행 순서: classId → writer → reader. 생성 코드의 쓰기 경로는 GetGenericClassId<T> 를 읽는데,
+                // writer invoker 를 먼저 발행하면 object dispatch 로 진입한 Serialize 가 classId 0 을 읽고
+                // "not registered" 예외를 낸다(수동 시작 등록과 직렬화의 경쟁 — 감사 원장 MEDIUM, 2026-09-07 해소).
+                // classId 를 가장 먼저 발행해 writer 가 보이는 순간 classId 도 보이게 한다.
+                _genericClassIds[typeof(T)] = classId;
+                classIdRecorded = true;
+
                 RegisterWriterInvoker(typeof(T), static (object m, ref MessageBufferWriter w) => Serialize((T)m, ref w));
                 writerRegistered = true;
 
                 RegisterGenericReaderInvoker(messageId, classId, typeof(T),
                     (ref MessageBufferReader r) => (object)deserialize(ref r)!);
                 readerRegistered = true;
-
-                _genericClassIds[typeof(T)] = classId;
             }
             catch
             {
-                _registeredTypes.TryRemove(typeof(T), out _);
-                _genericClassIds.TryRemove(typeof(T), out _);
-                if (writerRegistered) TryRemoveWriterInvoker(typeof(T));
                 if (readerRegistered) TryRemoveGenericReaderInvoker(messageId, classId);
+                if (writerRegistered) TryRemoveWriterInvoker(typeof(T));
+                if (classIdRecorded) _genericClassIds.TryRemove(typeof(T), out _);
+                _registeredTypes.TryRemove(typeof(T), out _);
                 throw;
             }
         }
@@ -260,6 +275,49 @@ namespace MessageProtocol.Serialize
                 // 핫 경로가 먼저 읽는 필드를 마지막으로 release publication — Serialize 가 보이면 나머지도 보인다.
                 Volatile.Write(ref SerializerCache<T>.Serialize, serialize);
             }
+        }
+
+        /// <summary>
+        /// 등록을 발행하기 전에 거부 조건을 검증한다 — 부수효과 없음(디스패치·캐시 어느 쪽도 건드리지 않는다).
+        /// prefill 이 이 검증보다 먼저 돌면 거부된 등록의 MessageId/HasId 가 <see cref="SerializerCache{T}"/> 에
+        /// 영구 잔류한다 (Known-Issues KI-11 잔존). RegisterCore 의 원자적 클레임(TryAdd/GetOrAdd) 은 그대로
+        /// 남아 검증 통과 후 발행 직전의 동시 등록 경쟁을 담당한다.
+        /// </summary>
+        static void ValidateRegistration(Type type, uint messageId, bool hasId)
+        {
+            if (_registeredTypes.ContainsKey(type))
+            {
+                throw new InvalidOperationException($"Message type '{type.FullName}' is already registered.");
+            }
+
+            if (!hasId)
+            {
+                return;
+            }
+
+            byte headerByte = (byte)(messageId >> 24);
+            if (MessageWireFormat.IsGenericMessage(headerByte))
+            {
+                throw new InvalidOperationException(
+                    $"Message type '{type.FullName}' uses the generic header flag; register generic constructions with '{nameof(RegisterGenericConstruction)}' instead.");
+            }
+
+            if (MessageWireFormat.HasEmbeddedMessageId(headerByte))
+            {
+                if (_registeredMessageIds.TryGetValue(messageId, out var existing) && !ReferenceEquals(existing, type))
+                {
+                    throw new InvalidOperationException(
+                        $"Message type with ID {messageId} is already registered by '{existing.FullName}'.");
+                }
+
+                return;
+            }
+
+            // hasId 등록인데 헤더에 NonId 비트 — 이전에는 id·reader 등록을 조용히 건너뛰어 object 직렬화만 동작하고
+            // 이후 Deserialize(object) 가 원인을 알려주지 않는 KeyNotFoundException 으로 실패했다. 등록 시점에 안내한다.
+            throw new InvalidOperationException(
+                $"Message type '{type.FullName}' is registered as a HasId message but its MessageId 0x{messageId:X8} carries the NonId flag, so the wire header would embed no message id. " +
+                $"Register NonId messages with '{nameof(RegisterNonIdMessage)}' instead, or compose the id with Standalone/Group flags.");
         }
 
         static void RegisterCore(Type type, uint messageId, bool hasId, BufferWriterAction writer, BufferReaderFunc? reader)
