@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (2.3.2 릴리스)
+
+- **2.3.2 릴리스** (태그 `v2.3.2`) — 패치: 역직렬화 진입 검증 + 성능 기준선. 생성 `Deserialize(ref reader)` 가 헤더를 타입 MessageId 와 비교해 다른 타입 바이트·위조 NonId 헤더·변조 id 의 조용한 재해석을 진입에서 `InvalidDataException` 으로 거부(KI-5, 원장 최초 등록 항목 해소 — 와이어 불변, 합법 프레임 그대로 복호). 성능: 직렬화 핫 경로 기준선 최초 기록(문자열 많은 시나리오 포함 5개, `03-Reference/Performance-Baseline.md`), WriteString ASCII 사전 스캔 가설 측정 기각(+68% 회귀, 재시도 금지 근거 명시), 참조 추적 사전 초기 용량 8. 커밋 `a2eb7b9`·`a1eb829`. 테스트 224→228, Sandbox 38 통과, DS_RPC 로컬 팩 빌드+테스트 통과 후 태그 푸시.
+
 ## 2026-09-08 (사이클 7) — 성능 영역
 
 - **성능 기준선 최초 기록** — `Test/MessageProtocol.Benchmarks` 에 문자열 많은 시나리오 2개 추가(`StringHeavyMessage` — ASCII 100자×4, 게임 서버 실제 프로파일)하고 5개 시나리오 기준선을 `03-Reference/Performance-Baseline.md` 에 최초 기록(이전까지 기록된 수치 없음).
