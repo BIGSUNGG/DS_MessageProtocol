@@ -30,8 +30,13 @@ dotnet run -c Release --project Test/MessageProtocol.Benchmarks
 | DeserializeStringHeavy | 위 바이트 역직렬화(문자열 4개 재생성 포함) | 168.55 ns | 944 B |
 | DeserializeTyped | `BenchMessage` 제네릭 역직렬화 | 52.79 ns | 192 B |
 | DeserializeDispatch | object dispatch 역직렬화 | 71.56 ns | 192 B |
+| SerializePooledFlat | `BenchMessage` → `SerializePooled`(소유권 해제 포함) | 57.26 ns | 32 B |
+| SerializeSharedGraph | 깊이 5 체인 + 공유 서브트리(백레퍼런스 강제) 직렬화 | 288.31 ns | 528 B |
+| DeserializeSharedGraph | 위 바이트 역직렬화(백레퍼런스 역참조 포함) | 287.31 ns | 872 B |
 
-참고: 할당의 대부분은 byte[] 결과 자체(정확 크기 복사)와 역직렬화 문자열 재생성 — 풀링 경로(`SerializePooled`·`PooledBuffer`)는 결과 복사를 회피한다(현재 벤치마크 미포함 — 필요 시 추가).
+참고:
+- byte[] 경로의 할당 대부분은 정확 크기 결과 배열 복사 — **풀링 경로(`SerializePooled`)는 동일 워크로드에서 104B → 32B(소유권 홀더만, 속도 동급)** 로 측정된다(2026-09-08, 위 표 대조). 할당 민감 송신 루프는 `SerializePooled` 권장의 수치 근거.
+- 참조 추적 그래프(공유·백레퍼런스)는 노드당 태그 바이트·컨텍스트 사전 승격 비용으로 단순 메시지 대비 약 5배 — 그래프 모양의 메시지 설계 시 참고.
 
 ## 측정된 부정 결과 — WriteString ASCII 사전 스캔 (재시도 금지 근거)
 
@@ -45,4 +50,5 @@ dotnet run -c Release --project Test/MessageProtocol.Benchmarks
 
 ## 갭 (필요시 추가)
 
-- `SerializePooled`/`PooledBuffer` 경로, 참조 추적 그래프(공유·순환), 대형 컬렉션, net8.0 TFM.
+- ~~풀링 경로·참조 추적 그래프~~ — **2026-09-08 측정 완료**(위 표: `SerializePooledFlat`·`SerializeSharedGraph`·`DeserializeSharedGraph`).
+- 대형 컬렉션(10³~10⁶ 요소), net8.0 TFM 대조.

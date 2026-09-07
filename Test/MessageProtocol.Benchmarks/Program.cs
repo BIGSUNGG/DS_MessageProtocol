@@ -47,6 +47,18 @@ namespace Benchmarks
         public string? Tag { get; set; }
     }
 
+    /// <summary>
+    /// 참조 추적 그래프 시나리오 — 같은 서브그래프를 두 갈래로 공유해 쓰기·읽기 양쪽에서 백레퍼런스를
+    /// 강제한다(깊이 5·공유 노드 서브트리). 풀링 경로와 함께 기준선 갭이었던 두 경로를 잰다.
+    /// </summary>
+    [StandaloneMessage(3)]
+    public partial class GraphNode
+    {
+        public string? Label { get; set; }
+        public GraphNode? Left { get; set; }
+        public GraphNode? Right { get; set; }
+    }
+
     [MemoryDiagnoser]
     [Config(typeof(InProcessConfig))]
     public class SerializationBenchmarks
@@ -62,6 +74,7 @@ namespace Benchmarks
 
         byte[] _bytes = null!;
         byte[] _stringBytes = null!;
+        byte[] _graphBytes = null!;
 
         readonly StringHeavyMessage _stringMessage = new()
         {
@@ -71,11 +84,25 @@ namespace Benchmarks
             Tag = new string('d', 100),
         };
 
+        // 깊이 5 체인의 끝을 두 갈래가 공유 — 쓰기는 백레퍼런스 태그를, 읽기는 GetObject 역참조를 강제한다.
+        static GraphNode BuildSharedGraph()
+        {
+            GraphNode tail = new() { Label = "leaf" };
+            for (int i = 0; i < 4; i++)
+            {
+                tail = new GraphNode { Label = "n" + i, Left = tail, Right = null };
+            }
+            return new GraphNode { Label = "root", Left = tail, Right = tail };   // 같은 서브그래프 공유
+        }
+
+        readonly GraphNode _graphRoot = BuildSharedGraph();
+
         [GlobalSetup]
         public void Setup()
         {
             _bytes = MessageSerializer.Serialize(_message);
             _stringBytes = MessageSerializer.Serialize(_stringMessage);
+            _graphBytes = MessageSerializer.Serialize(_graphRoot);
         }
 
         [Benchmark]
@@ -86,6 +113,19 @@ namespace Benchmarks
 
         [Benchmark]
         public object DeserializeStringHeavy() => MessageSerializer.Deserialize(_stringBytes);
+
+        [Benchmark]
+        public int SerializePooledFlat()   // byte[] 경로(SerializeBytes)와의 할당 대조 — 반환은 소유권 해제 포함
+        {
+            using var pooled = MessageSerializer.SerializePooled(_message);
+            return pooled.Length;
+        }
+
+        [Benchmark]
+        public byte[] SerializeSharedGraph() => MessageSerializer.Serialize(_graphRoot);
+
+        [Benchmark]
+        public GraphNode DeserializeSharedGraph() => MessageSerializer.Deserialize<GraphNode>(_graphBytes);
 
         [Benchmark]
         public BenchMessage DeserializeTyped() => MessageSerializer.Deserialize<BenchMessage>(_bytes);
