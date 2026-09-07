@@ -234,6 +234,36 @@ void Check(string name, bool condition)
         MessageSerializer.Deserialize<CommandBatch>(MessageSerializer.Serialize(new CommandBatch())).Head is null);
 }
 
+// ---------- S14: 신뢰 경계 거부 (KI-5 헤더 검증·KI-36 참조 태그 검증) ----------
+{
+    // 불신 프레임은 조용히 재해석되지 않고 진입에서 안내 예외로 거부되어야 한다.
+    string? Capture(Action action)
+    {
+        try { action(); return null; }
+        catch (Exception ex) { return ex.GetType().Name + ": " + ex.Message; }
+    }
+
+    bool RejectsWith(Action action, string expected) =>
+        Capture(action) is { } rejection && rejection.Contains(expected);
+
+    var foreignBytes = MessageSerializer.Serialize(new Collections { });
+    Check("S14 다른 타입 바이트는 헤더에서 거부",
+        RejectsWith(() => MessageSerializer.Deserialize<AllPrimitives>(foreignBytes), "does not match AllPrimitives"));
+
+    var forged = MessageSerializer.Serialize(new AllPrimitives { });
+    forged[0] = 0xFF;   // NonId 플래그 주장 — 4바이트 읽기 우회 시도
+    Check("S14 위조 NonId 헤더는 거부",
+        RejectsWith(() => MessageSerializer.Deserialize<AllPrimitives>(forged), "does not match AllPrimitives"));
+
+    var batch = MessageSerializer.Serialize(new CommandBatch
+    {
+        Head = new DrawCommand { Seq = 1, Layer = "bg" },
+    });
+    batch[4] = 3;   // 첫 참조 멤버(Head)의 ReferenceKind 태그를 규격 밖 값으로
+    Check("S14 알수없는 참조 태그는 즉시 거부",
+        RejectsWith(() => MessageSerializer.Deserialize<CommandBatch>(batch), "Unknown reference kind 3"));
+}
+
 Console.WriteLine();
 Console.WriteLine(failures == 0 ? "ALL SCENARIOS PASSED" : $"{failures} SCENARIO CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;
