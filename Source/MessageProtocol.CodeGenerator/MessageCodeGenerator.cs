@@ -352,7 +352,11 @@ namespace MessageProtocol.CodeGenerator
             var sb = new StringBuilder(name.Length);
             foreach (char c in name)
             {
-                bool allowed = char.IsLetterOrDigit(c) || c == '_' || c == '.' || c == '-' || c == '(' || c == ')' || c == '`';
+                // `+` 를 허용 목록에 넣는다(KI-40): 식별자에는 `+` 가 절대 들어가지 못하므로 중첩 구분자로서 단사성을
+                // 보장한다. 이전에는 `+` 가 `_` 로 치환돼 `Ns.A+B`(중첩)가 실재하는 `Ns.A_B` 타입과 같은 힌트
+                // 이름을 만들었고, 둘 다 메시지면 AddSource 가 ArgumentException(중복 힌트)을 던져 AD0001 —
+                // 해당 컴파일의 생성 소스 전체가 유실됐다.
+                bool allowed = char.IsLetterOrDigit(c) || c == '_' || c == '.' || c == '-' || c == '(' || c == ')' || c == '`' || c == '+';
                 sb.Append(allowed ? c : '_');
             }
             return sb.ToString();

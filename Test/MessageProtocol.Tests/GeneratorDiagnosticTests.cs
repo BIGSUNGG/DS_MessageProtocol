@@ -1339,4 +1339,47 @@ public class GeneratorDiagnosticTests
         }
         return count;
     }
+
+    // ---------- 힌트 이름 충돌 (KI-40) ----------
+
+    // 중첩 타입 힌트 이름의 `+` 가 `_` 로 치환되던 시절, `Ns.A+B`(중첩)와 실재하는 `Ns.A_B` 타입이 같은
+    // 힌트 이름을 만들어 AddSource 가 중복 예외를 던졌다 — AD0001 로 컴파일의 생성 소스 전체 유실.
+    // 이제 `+` 가 보존되어(식별자에 `+` 는 불가능) 충돌이 구조적으로 불가능하다.
+    [Fact]
+    public void 중첩_타입과_밑줄_조인_이름의_탑레벨_타입은_독립적으로_생성된다()
+    {
+        const string source = """
+            using MessageProtocol;
+
+            namespace Ns
+            {
+                [StandaloneMessage(201)]
+                public partial class Outer
+                {
+                    public int Value { get; set; }
+
+                    [StandaloneMessage(202)]
+                    public partial class Inner
+                    {
+                        public int Value { get; set; }
+                    }
+                }
+
+                [StandaloneMessage(203)]
+                public partial class Outer_Inner
+                {
+                    public int Value { get; set; }
+                }
+            }
+            """;
+
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(source);
+
+        // AD0001(생성기 비정상 종료) 없이 세 타입 모두 생성된다.
+        Assert.DoesNotContain(diagnostics, d => d.Id == "AD0001");
+        Assert.Contains("class Outer", generated);
+        Assert.Contains("Outer.Inner", generated);
+        Assert.Contains("Outer_Inner", generated);
+        Assert.Empty(compileErrors);
+    }
 }
