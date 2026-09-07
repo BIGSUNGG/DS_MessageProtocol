@@ -8,7 +8,7 @@ updated: 2026-08-31
 
 # DS_MessageProtocol — Home
 
-컴파일 타임 메시지 직렬화와 런타임 MessageSerializer를 제공하는 .NET 라이브러리. Unity / .NET Standard 2.1. v2 재작성 버전(현재 패키지 2.3.8).
+컴파일 타임 메시지 직렬화와 런타임 MessageSerializer를 제공하는 .NET 라이브러리. Unity / .NET Standard 2.1. v2 재작성 버전(현재 패키지 2.3.9).
 
 ## Map of Content
 
