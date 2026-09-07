@@ -264,3 +264,49 @@ public class RegistrationRaceTests
             ownId);
     }
 }
+
+// ---------- 진입점 계약 가드 (2026-09-08 테스트 갭 일괄 폐쇄) ----------
+
+/// <summary>
+/// 직렬화 진입점들의 null 가드는 구현되어 있었으나 어디에서도 테스트되지 않았다(2026-09-08 감사) —
+/// 계약(ArgumentNullException + ParamName "message")을 실행으로 고정한다.
+/// </summary>
+public class SerializeEntryGuardTests
+{
+    [Fact]
+    public void 제네릭_Serialize_ref_writer는_null_메시지를_거부한다()
+    {
+        var writer = MessageBufferWriter.Create();
+        ArgumentNullException? exception = null;
+        try
+        {
+            MessageSerializer.Serialize<Fixtures.FlatMessage>(null!, ref writer);
+        }
+        catch (ArgumentNullException caught)
+        {
+            exception = caught;
+        }
+
+        Assert.NotNull(exception);
+        Assert.Equal("message", exception.ParamName);
+        Assert.Equal(0, writer.Length); // 상태 오염 없음
+    }
+
+    [Fact]
+    public void 제네릭_Serialize는_null_메시지를_거부한다()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(
+            () => MessageSerializer.Serialize<Fixtures.FlatMessage>(null!));
+
+        Assert.Equal("message", exception.ParamName);
+    }
+
+    [Fact]
+    public void SerializePooled은_null_메시지를_거부한다()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(
+            () => MessageSerializer.SerializePooled<Fixtures.FlatMessage>(null!));
+
+        Assert.Equal("message", exception.ParamName);
+    }
+}

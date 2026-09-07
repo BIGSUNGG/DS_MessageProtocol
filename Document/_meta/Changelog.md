@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (사이클 14) — 테스트 갭 폐쇄
+
+- **진입점 계약 가드 테스트 일괄 폐쇄(13개)** — 2026-09-08 감사 목록화 건: 직렬화 진입점 null 가드 6개(제네릭 ref-writer·byte[]·Pooled + object 3종, `ArgumentNullException`·ParamName 고정), `SerializeToWriter` 미등록 타입 안내 예외(실제 계약은 `RegisterType` 지연 경유의 `IMessageSerializable` 안내 — 테스트 작성 중 실제 메시지로 교정), `Create(0/-1/int.MinValue)` 빈 버퍼 시작→첫 쓰기 증설 왕복(3), `PooledBuffer.FromRented` 인자 검증 3개(null·길이 초과·음수). 구현은 이미 정상이라 코드 변화 없음 — 계약을 실행으로 고정. 테스트 230→243, Sandbox 38 통과. (도중 1건 오탐 메시지 가정으로 실패 — 실제 예외 경로 확인 후 교정, 전체 통과.)
+
 ## 2026-09-08 (사이클 13) — 스레드 안전성
 
 - `Known-Issues` KI-39 해결 — `SerializerCache<T>` 복구 블록의 묶음 발행(`Volatile.Write(Serialize)`)이 같은 위치를 읽는 독자하고만 짝이 되어, `Deserialize`/`MessageId` 만 읽는 핫 경로가 ARM(Unity)에서 등록 완료 후에도 오래된 null/0 을 읽을 수 있던 지연 가시성. 캐시 필드 6개 전체 volatile 화(위치별 release/acquire 쌍) + 복구 블록 자연순 단순화. 관찰 불가결(ARM 필요)이라 메모리 모델 추론으로 인자화, 게이트는 전체 스위트·Sandbox·DS_RPC 로컬 팩(2.3.3-ki39) 통과.

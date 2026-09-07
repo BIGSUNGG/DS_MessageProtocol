@@ -252,3 +252,63 @@ public class RegistrationTests
         Assert.Same(back.First, back.Second);
     }
 }
+
+// ---------- object 진입점 계약 가드 (2026-09-08 테스트 갭 일괄 폐쇄) ----------
+
+/// <summary>object dispatch 진입점의 null·미등록 계약을 실행으로 고정한다(구현은 있었으나 무테스트).</summary>
+public class ObjectEntryGuardTests
+{
+    [Fact]
+    public void Serialize_object는_null을_거부한다()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => MessageSerializer.Serialize(null!));
+        Assert.Equal("message", exception.ParamName);
+    }
+
+    [Fact]
+    public void SerializePooled_object는_null을_거부한다()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => MessageSerializer.SerializePooled(null!));
+        Assert.Equal("message", exception.ParamName);
+    }
+
+    [Fact]
+    public void SerializeToWriter는_null을_거부한다()
+    {
+        var writer = MessageBufferWriter.Create();
+        ArgumentNullException? exception = null;
+        try
+        {
+            MessageSerializer.SerializeToWriter(null!, ref writer);
+        }
+        catch (ArgumentNullException caught)
+        {
+            exception = caught;
+        }
+
+        Assert.NotNull(exception);
+        Assert.Equal("message", exception.ParamName);
+    }
+
+    [Fact]
+    public void SerializeToWriter는_미등록_타입을_등록_안내_예외로_거부한다()
+    {
+        // 미등록 타입은 GetWriterInvoker 의 지연 RegisterType 을 탄다 — 메시지 구현이 없는 타입은
+        // "IMessageSerializable 구현 없음" 안내로, 있는 타입은 지연 등록 후 정상 동작(다른 테스트 고정).
+        var writer = MessageBufferWriter.Create();
+        InvalidOperationException? exception = null;
+        try
+        {
+            MessageSerializer.SerializeToWriter(new NotAMessage(), ref writer);
+        }
+        catch (InvalidOperationException caught)
+        {
+            exception = caught;
+        }
+
+        Assert.NotNull(exception);
+        Assert.Contains(nameof(NotAMessage), exception.Message);
+        Assert.Contains("IMessageSerializable", exception.Message);
+        Assert.Equal(0, writer.Length); // 깊이 계상 전에 거부 — 상태 오염 없음
+    }
+}

@@ -536,3 +536,53 @@ public class PooledBufferCopyOwnershipTests
         Assert.Equal(77, new MessageBufferReader(writer.WrittenReadOnlySpan).ReadInt32());
     }
 }
+
+// ---------- Create·FromRented 계약 (2026-09-08 테스트 갭 일괄 폐쇄) ----------
+
+/// <summary>빈 버퍼 시작 경로와 FromRented 인자 검증(구현됨·무테스트)을 고정한다.</summary>
+public class WriterCreateAndFromRentedContractTests
+{
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void Create_0이하_초기용량은_빈_버퍼로_시작해_첫_쓰기에_정상_증설된다(int initialCapacity)
+    {
+        var writer = MessageBufferWriter.Create(initialCapacity);
+
+        Assert.Equal(0, writer.Capacity); // Array.Empty 시작
+        writer.WriteInt32(77);
+        writer.WriteString("ok");
+
+        Assert.True(writer.Length > 0);
+        var reader = new MessageBufferReader(writer.WrittenReadOnlySpan);
+        Assert.Equal(77, reader.ReadInt32());
+        Assert.Equal("ok", reader.ReadString());
+    }
+
+    [Fact]
+    public void FromRented는_null_배열을_거부한다()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => PooledBuffer.FromRented(null!, 0));
+        Assert.Equal("rented", exception.ParamName);
+    }
+
+    [Fact]
+    public void FromRented는_길이_초과를_거부한다()
+    {
+        var rented = new byte[8];
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => PooledBuffer.FromRented(rented, 9));
+
+        Assert.Equal("length", exception.ParamName);
+    }
+
+    [Fact]
+    public void FromRented는_음수_길이도_거부한다()
+    {
+        var rented = new byte[8];
+
+        // (uint)length > (uint)rented.Length 비교가 음수를 큰 양수로 잡는다.
+        Assert.Throws<ArgumentOutOfRangeException>(() => PooledBuffer.FromRented(rented, -1));
+    }
+}
