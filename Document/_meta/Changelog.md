@@ -6,6 +6,7 @@
 
 - `Known-Issues` KI-32 신규·해결 — 서로 다른 제네릭 선언의 (MessageId, ClassId) 런타임 키 충돌을 `MSGPROT015` 로 컴파일 승격(모듈 로드 `TypeInitializationException` 예방). `Feature-Spec` F2 유일성 규칙(제네릭 런타임 키 담당 진단 분리)·F5 진단 목록(MSGPROT015) 갱신.
 - `Known-Issues` KI-9 해소 — 런타임 디스패치 멤버(`T`·추상 메시지 타입)·그래프 밖 위임 멤버를 통한 공유 참조가 호출측 참조 추적 컨텍스트로 백레퍼런스 기록되어 참조 동일성 복원(와이어는 기존 참조 인코딩 재사용). 잔존 제약(프레임 경계 공유·혼합 버전 피어)은 KI-9 상세로 명문화. KI-25 꼬리 종결 갱신. `Feature-Spec` F3 세 경로 설명·범위 밖 제약 갱신.
+- 탑승 LOW 정리 — `Known-Issues` 도입부 통과 기준선을 실측치(테스트 205개·Sandbox 38 시나리오)로 갱신, `AGENTS.md` 문서동기화 트리거에서 존재하지 않는 `Examples/`·`TemplateSource/` 제거, `Feature-Spec` F10 에서 존재하지 않는 'Standalone round-trip 콘솔 샘플' 정정(`Sandbox` 가 실행 검증을 담당).
 
 ## 2026-09-07
 
