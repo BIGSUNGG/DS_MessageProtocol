@@ -20,6 +20,7 @@ namespace MessageProtocol.Serialize
             _fromPool = fromPool;
         }
 
+        [Obsolete("Unused across DS_MessageProtocol, its tests, Sandbox, and the DS_RPC sibling stack (audited 2026-09-08); candidate for removal in the next major version.", error: false)]
         public static PooledBuffer Empty => default;
 
         public static PooledBuffer FromRented(byte[] rented, int length)
@@ -33,9 +34,11 @@ namespace MessageProtocol.Serialize
 
         public ReadOnlySpan<byte> Span => _buffer is null ? ReadOnlySpan<byte>.Empty : _buffer.AsSpan(0, _length);
 
+        [Obsolete("Unused across DS_MessageProtocol, its tests, Sandbox, and the DS_RPC sibling stack (audited 2026-09-08); use Span instead. Candidate for removal in the next major version.", error: false)]
         public ReadOnlyMemory<byte> Memory => _buffer is null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, _length);
 
         /// <summary>풀 반환 없는 뷰. 배열이 재사용될 수 있으니 수명 관리에 주의.</summary>
+        [Obsolete("Unused across DS_MessageProtocol, its tests, Sandbox, and the DS_RPC sibling stack (audited 2026-09-08); use Span or ToArray instead. Candidate for removal in the next major version.", error: false)]
         public ArraySegment<byte> UnsafeArraySegment => _buffer is null ? default : new ArraySegment<byte>(_buffer, 0, _length);
 
         public byte[] ToArray()
