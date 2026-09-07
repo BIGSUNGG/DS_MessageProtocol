@@ -84,7 +84,9 @@ namespace MessageProtocol.Serialize
                     return 1;
                 }
 
-                _objectIds = new Dictionary<object, int>(ReferenceComparer.Instance)
+                // 초기 용량 8: 전형적인 객체 그래프(2~8개 추적 객체)의 첫 리사이즈(1→3→7)를 건너뛴다.
+                // 첫 슬롯 승격 시에만 할당되는 사전이라 빈 사전 비용은 없다(2026-09-08 핫패스 감사 FINDING 3).
+                _objectIds = new Dictionary<object, int>(8, ReferenceComparer.Instance)
                 {
                     [_firstObject] = 1,
                 };
@@ -128,7 +130,7 @@ namespace MessageProtocol.Serialize
                     return 1;
                 }
 
-                _objects = new Dictionary<int, object>
+                _objects = new Dictionary<int, object>(8) // 초기 용량 8 — 리사이즈 지연(위와 같은 근거).
                 {
                     [1] = _firstObject,
                 };

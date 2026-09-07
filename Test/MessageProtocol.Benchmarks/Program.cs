@@ -33,6 +33,20 @@ namespace Benchmarks
         public List<int>? Numbers { get; set; }
     }
 
+    /// <summary>
+    /// 문자열 많은 메시지(게임 서버 실제 프로파일: 이름·채팅·ASCII 키). WriteString 용량 산정이
+    /// 3n+3 보수 예약에서 ASCII 정확 산정으로 바뀐 것의 효과를 재는 시나리오다.
+    /// 100자 문자열 4개 — 보수 예약은 4·(4+303)=1,228B, ASCII 실제는 416B.
+    /// </summary>
+    [StandaloneMessage(2)]
+    public partial class StringHeavyMessage
+    {
+        public string? Name { get; set; }
+        public string? Channel { get; set; }
+        public string? Text { get; set; }
+        public string? Tag { get; set; }
+    }
+
     [MemoryDiagnoser]
     [Config(typeof(InProcessConfig))]
     public class SerializationBenchmarks
@@ -47,12 +61,31 @@ namespace Benchmarks
         };
 
         byte[] _bytes = null!;
+        byte[] _stringBytes = null!;
+
+        readonly StringHeavyMessage _stringMessage = new()
+        {
+            Name = new string('a', 100),
+            Channel = new string('b', 100),
+            Text = new string('c', 100),
+            Tag = new string('d', 100),
+        };
 
         [GlobalSetup]
-        public void Setup() => _bytes = MessageSerializer.Serialize(_message);
+        public void Setup()
+        {
+            _bytes = MessageSerializer.Serialize(_message);
+            _stringBytes = MessageSerializer.Serialize(_stringMessage);
+        }
 
         [Benchmark]
         public byte[] SerializeBytes() => MessageSerializer.Serialize(_message);
+
+        [Benchmark]
+        public byte[] SerializeStringHeavy() => MessageSerializer.Serialize(_stringMessage);
+
+        [Benchmark]
+        public object DeserializeStringHeavy() => MessageSerializer.Deserialize(_stringBytes);
 
         [Benchmark]
         public BenchMessage DeserializeTyped() => MessageSerializer.Deserialize<BenchMessage>(_bytes);
