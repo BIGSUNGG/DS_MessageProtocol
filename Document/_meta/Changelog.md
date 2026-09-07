@@ -2,6 +2,10 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-08 (사이클 8) — 구조 영역
+
+- **생성기 참조 추적 방출 단일 사실원화** — `Member.cs` 의 참조 추적 3경로(그래프 내부·밖 위임·런타임 디스패치) × 쓰기·판독 6곳 수작업 복제(~350줄, KI-34·KI-36 안내 메시지 문자열 3중 복제, 등록 문장 순서 이미 표류)를 골격 헬퍼 2개(`EmitTrackedReferenceWrite`·`EmitTrackedReferenceRead`) + 경로별 차이 전달 래퍼로 통합. **골든 비교로 생성 바이트 불변 검증**(Tests 27 + NetStandardFixtures 폴백 2 = 29개 `.g.cs` 바이트 동일 — 스태시 왕복 A/B 빌드). 향후 참조 프로토콜 변경(예: ReferenceKind 추가)은 6곳이 아닌 1곳 수정. 구조 감사(2026-09-08 스카우트) FINDING 1; 잔여 FINDING 2~5(원시형 스위치 표 4중 복제·MessageCodeGenerator SRP 분리·ConstructionConflicts 캡슐화·MessageId 바이트 베이킹 공유)는 다음 사이클 후보. Feature-Spec F1–F10 전수 대조: 불일치 없음(수 시나리오 개수 표기 마이너).
+
 ## 2026-09-08 (2.3.2 릴리스)
 
 - **2.3.2 릴리스** (태그 `v2.3.2`) — 패치: 역직렬화 진입 검증 + 성능 기준선. 생성 `Deserialize(ref reader)` 가 헤더를 타입 MessageId 와 비교해 다른 타입 바이트·위조 NonId 헤더·변조 id 의 조용한 재해석을 진입에서 `InvalidDataException` 으로 거부(KI-5, 원장 최초 등록 항목 해소 — 와이어 불변, 합법 프레임 그대로 복호). 성능: 직렬화 핫 경로 기준선 최초 기록(문자열 많은 시나리오 포함 5개, `03-Reference/Performance-Baseline.md`), WriteString ASCII 사전 스캔 가설 측정 기각(+68% 회귀, 재시도 금지 근거 명시), 참조 추적 사전 초기 용량 8. 커밋 `a2eb7b9`·`a1eb829`. 테스트 224→228, Sandbox 38 통과, DS_RPC 로컬 팩 빌드+테스트 통과 후 태그 푸시.

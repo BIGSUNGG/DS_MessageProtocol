@@ -200,15 +200,16 @@ namespace MessageProtocol.CodeGenerator.Generate
             }
 
             // ------- 그래프 내부 객체 (참조 추적) -------
+            //
+            // 참조 추적 3경로(그래프 내부·그래프 밖 위임·런타임 디스패치)의 쓰기·판독 골격은 같은
+            // Null/BackReference/NewObject 와이어 프로토콜을 공유한다. 골격과 안내 메시지(KI-34 백레퍼런스
+            // 불일치·KI-36 알수없는 태그)는 아래 두 헬퍼가 단일 사실원으로 뿜고, 경로별 차이(등록 순서·
+            // null 표현·프레임 호출문·태그 로컬 이름)만 호출부가 전달한다 — 6곳 수작업 복제는 이미 문장
+            // 순서 표류(in-graph 는 RegisterObject 먼저, 나머지는 태그 먼저)를 보였다(2026-09-08 구조
+            // 감사 FINDING 1). 생성 바이트는 기존과 동일하다(골든 비교로 검증).
 
-            static string EmitInGraphMessageWrite(SerializableTypeModel model, string valueExpression, string indent, EmitState state)
+            static string EmitTrackedReferenceWrite(string valueExpression, int uid, string indent, string newObjectBody)
             {
-                if (!model.IsReferenceType)
-                {
-                    return $"{indent}{model.WritePayloadMethodName}(ref writer, {valueExpression}, ref context);\n";
-                }
-
-                int uid = state.NextUniqueId();
                 return $@"{indent}if ({valueExpression} is null)
 {indent}{{
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.Null);
@@ -220,13 +221,54 @@ namespace MessageProtocol.CodeGenerator.Generate
 {indent}}}
 {indent}else
 {indent}{{
-{indent}    context.RegisterObject({valueExpression});
+{newObjectBody}{indent}}}
+";
+            }
+
+            static string EmitTrackedReferenceRead(string tagLocalName, string typeName, string targetExpression, int uid, string indent, string nullAssignment, string newObjectBody)
+            {
+                return $@"{indent}{{
+{indent}    byte {tagLocalName}{uid} = reader.ReadByte();
+{indent}    if ({tagLocalName}{uid} == (byte)MessageSerializer.ReferenceKind.Null)
+{indent}    {{
+{indent}        {nullAssignment}
+{indent}    }}
+{indent}    else if ({tagLocalName}{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
+{indent}    {{
+{indent}        int __objId{uid} = reader.ReadInt32();
+{indent}        var __back{uid} = context.GetObject(__objId{uid});
+{indent}        if (!(__back{uid} is {typeName}))
+{indent}        {{
+{indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({typeName}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
+{indent}        }}
+{indent}        {targetExpression} = ({typeName})__back{uid};
+{indent}    }}
+{indent}    else if ({tagLocalName}{uid} != (byte)MessageSerializer.ReferenceKind.NewObject)
+{indent}    {{
+{indent}        throw new System.IO.InvalidDataException($""Unknown reference kind {{{tagLocalName}{uid}}}; expected Null(0), NewObject(1) or BackReference(2). The payload is corrupt or from an incompatible protocol version."");
+{indent}    }}
+{indent}    else
+{indent}    {{
+{newObjectBody}{indent}    }}
+{indent}}}
+";
+            }
+
+            static string EmitInGraphMessageWrite(SerializableTypeModel model, string valueExpression, string indent, EmitState state)
+            {
+                if (!model.IsReferenceType)
+                {
+                    return $"{indent}{model.WritePayloadMethodName}(ref writer, {valueExpression}, ref context);\n";
+                }
+
+                int uid = state.NextUniqueId();
+                string newObjectBody = $@"{indent}    context.RegisterObject({valueExpression});
 {indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
 {indent}    writer.EnterNestedObject();
 {indent}    {model.WritePayloadMethodName}(ref writer, {valueExpression}, ref context);
 {indent}    writer.LeaveNestedObject();
-{indent}}}
 ";
+                return EmitTrackedReferenceWrite(valueExpression, uid, indent, newObjectBody);
             }
 
             static string EmitInGraphMessageRead(SerializableTypeModel model, string targetExpression, string indent, EmitState state)
@@ -237,37 +279,14 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
 
                 int uid = state.NextUniqueId();
-                return $@"{indent}{{
-{indent}    byte __refKind{uid} = reader.ReadByte();
-{indent}    if (__refKind{uid} == (byte)MessageSerializer.ReferenceKind.Null)
-{indent}    {{
-{indent}        {targetExpression} = null;
-{indent}    }}
-{indent}    else if (__refKind{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
-{indent}    {{
-{indent}        int __objId{uid} = reader.ReadInt32();
-{indent}        var __back{uid} = context.GetObject(__objId{uid});
-{indent}        if (!(__back{uid} is {model.TypeName}))
-{indent}        {{
-{indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({model.TypeName}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
-{indent}        }}
-{indent}        {targetExpression} = ({model.TypeName})__back{uid};
-{indent}    }}
-{indent}    else if (__refKind{uid} != (byte)MessageSerializer.ReferenceKind.NewObject)
-{indent}    {{
-{indent}        throw new System.IO.InvalidDataException($""Unknown reference kind {{__refKind{uid}}}; expected Null(0), NewObject(1) or BackReference(2). The payload is corrupt or from an incompatible protocol version."");
-{indent}    }}
-{indent}    else
-{indent}    {{
-{indent}        reader.EnterNestedObject();
+                string newObjectBody = $@"{indent}        reader.EnterNestedObject();
 {indent}        var __tmp{uid} = {model.CreateInstanceMethodName}();
 {indent}        context.RegisterNewObject(__tmp{uid});
 {indent}        {model.PopulatePayloadMethodName}(ref reader, __tmp{uid}, ref context);
 {indent}        reader.LeaveNestedObject();
 {indent}        {targetExpression} = __tmp{uid};
-{indent}    }}
-{indent}}}
 ";
+                return EmitTrackedReferenceRead("__refKind", model.TypeName, targetExpression, uid, indent, $"{targetExpression} = null;", newObjectBody);
             }
 
             // ------- 그래프 밖 메시지 (정적 Serialize/Deserialize 위임) -------
@@ -278,24 +297,13 @@ namespace MessageProtocol.CodeGenerator.Generate
                 if (typeSymbol.IsReferenceType)
                 {
                     int uid = state.NextUniqueId();
-                    return $@"{indent}if ({valueExpression} is null)
-{indent}{{
-{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.Null);
-{indent}}}
-{indent}else if (context.TryGetObjectId({valueExpression}, out int __backId{uid}))
-{indent}{{
-{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.BackReference);
-{indent}    writer.WriteInt32(__backId{uid});
-{indent}}}
-{indent}else
-{indent}{{
-{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
+                    string newObjectBody = $@"{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
 {indent}    context.RegisterObject({valueExpression});
 {indent}    writer.EnterNestedObject();
 {indent}    {typeName}.Serialize({valueExpression}, ref writer);
 {indent}    writer.LeaveNestedObject();
-{indent}}}
 ";
+                    return EmitTrackedReferenceWrite(valueExpression, uid, indent, newObjectBody);
                 }
 
                 return $"{indent}{typeName}.Serialize({valueExpression}, ref writer);\n";
@@ -307,35 +315,12 @@ namespace MessageProtocol.CodeGenerator.Generate
                 int uid = state.NextUniqueId();
                 if (typeSymbol.IsReferenceType)
                 {
-                    return $@"{indent}{{
-{indent}    byte __nk{uid} = reader.ReadByte();
-{indent}    if (__nk{uid} == (byte)MessageSerializer.ReferenceKind.Null)
-{indent}    {{
-{indent}        {targetExpression} = null;
-{indent}    }}
-{indent}    else if (__nk{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
-{indent}    {{
-{indent}        int __objId{uid} = reader.ReadInt32();
-{indent}        var __back{uid} = context.GetObject(__objId{uid});
-{indent}        if (!(__back{uid} is {typeName}))
-{indent}        {{
-{indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({typeName}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
-{indent}        }}
-{indent}        {targetExpression} = ({typeName})__back{uid};
-{indent}    }}
-{indent}    else if (__nk{uid} != (byte)MessageSerializer.ReferenceKind.NewObject)
-{indent}    {{
-{indent}        throw new System.IO.InvalidDataException($""Unknown reference kind {{__nk{uid}}}; expected Null(0), NewObject(1) or BackReference(2). The payload is corrupt or from an incompatible protocol version."");
-{indent}    }}
-{indent}    else
-{indent}    {{
-{indent}        reader.EnterNestedObject();
+                    string newObjectBody = $@"{indent}        reader.EnterNestedObject();
 {indent}        {targetExpression} = {typeName}.Deserialize(ref reader);
 {indent}        reader.LeaveNestedObject();
 {indent}        context.RegisterNewObject({targetExpression}!);
-{indent}    }}
-{indent}}}
 ";
+                    return EmitTrackedReferenceRead("__nk", typeName, targetExpression, uid, indent, $"{targetExpression} = null;", newObjectBody);
                 }
 
                 return $"{indent}{targetExpression} = {typeName}.Deserialize(ref reader);\n";
@@ -344,7 +329,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             // ------- 런타임 메시지 디스패치 (타입 매개변수·추상 메시지 멤버) -------
 
             /// <summary>
-            /// 런타임 타입 디스패치 쓰기: 전체 메시지(헤더 포함)를 <c>SerializeToWriter</c> 로 쓴다.
+            /// 런타임 타입 디스패치 쓰기: 전체 메시지(헤더 포함)을 <c>SerializeToWriter</c> 로 쓴다.
             /// 타입 매개변수 멤버와 추상 메시지 타입 멤버가 공유한다. 호출측 SerializeContext 의
             /// 오브젝트 id 추적을 그대로 쓴다 — 같은 인스턴스가 두 번 등장하면 두 번째부터 백레퍼런스로
             /// 기록되어 참조 동일성이 복원된다(감사 원장 MEDIUM, 2026-09-05 패스 · KI-9). 프레임 내부는
@@ -353,22 +338,11 @@ namespace MessageProtocol.CodeGenerator.Generate
             static string EmitRuntimeDispatchWrite(string valueExpression, string indent, EmitState state)
             {
                 int uid = state.NextUniqueId();
-                return $@"{indent}if ({valueExpression} is null)
-{indent}{{
-{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.Null);
-{indent}}}
-{indent}else if (context.TryGetObjectId({valueExpression}, out int __backId{uid}))
-{indent}{{
-{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.BackReference);
-{indent}    writer.WriteInt32(__backId{uid});
-{indent}}}
-{indent}else
-{indent}{{
-{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
+                string newObjectBody = $@"{indent}    writer.WriteByte((byte)MessageSerializer.ReferenceKind.NewObject);
 {indent}    context.RegisterObject({valueExpression});
 {indent}    MessageSerializer.SerializeToWriter({valueExpression}, ref writer);
-{indent}}}
 ";
+                return EmitTrackedReferenceWrite(valueExpression, uid, indent, newObjectBody);
             }
 
             /// <summary>
@@ -380,33 +354,11 @@ namespace MessageProtocol.CodeGenerator.Generate
             static string EmitRuntimeDispatchRead(ITypeSymbol typeSymbol, string targetExpression, string indent, EmitState state)
             {
                 int uid = state.NextUniqueId();
-                return $@"{indent}{{
-{indent}    byte __pk{uid} = reader.ReadByte();
-{indent}    if (__pk{uid} == (byte)MessageSerializer.ReferenceKind.Null)
-{indent}    {{
-{indent}        {targetExpression} = default;
-{indent}    }}
-{indent}    else if (__pk{uid} == (byte)MessageSerializer.ReferenceKind.BackReference)
-{indent}    {{
-{indent}        int __objId{uid} = reader.ReadInt32();
-{indent}        var __back{uid} = context.GetObject(__objId{uid});
-{indent}        if (!(__back{uid} is {GetTypeDisplayName(typeSymbol)}))
-{indent}        {{
-{indent}            throw new System.IO.InvalidDataException($""Back-reference {{__objId{uid}}} resolved to '{{__back{uid}.GetType().FullName}}' but member '{targetExpression}' requires '{{typeof({GetTypeDisplayName(typeSymbol)}).FullName}}'. The same instance was first recorded through a member with a less derived static type, so only its base members were written; declare the member as the concrete type or make the base abstract so the concrete element is dispatched at runtime (Known-Issues KI-34)."");
-{indent}        }}
-{indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})__back{uid};
-{indent}    }}
-{indent}    else if (__pk{uid} != (byte)MessageSerializer.ReferenceKind.NewObject)
-{indent}    {{
-{indent}        throw new System.IO.InvalidDataException($""Unknown reference kind {{__pk{uid}}}; expected Null(0), NewObject(1) or BackReference(2). The payload is corrupt or from an incompatible protocol version."");
-{indent}    }}
-{indent}    else
-{indent}    {{
-{indent}        {targetExpression} = ({GetTypeDisplayName(typeSymbol)})MessageSerializer.DeserializeFromReader(ref reader);
+                string typeName = GetTypeDisplayName(typeSymbol);
+                string newObjectBody = $@"{indent}        {targetExpression} = ({typeName})MessageSerializer.DeserializeFromReader(ref reader);
 {indent}        context.RegisterNewObject({targetExpression}!);
-{indent}    }}
-{indent}}}
 ";
+                return EmitTrackedReferenceRead("__pk", typeName, targetExpression, uid, indent, $"{targetExpression} = default;", newObjectBody);
             }
 
             // ------- 배열 -------
