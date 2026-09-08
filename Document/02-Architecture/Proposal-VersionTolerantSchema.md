@@ -1,15 +1,15 @@
 ---
 project: DS_MessageProtocol
 type: proposal
-status: proposed
+status: rejected
 tags: [proposal, feature, wire-format, major-candidate]
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # 제안: 버전 내성 스키마 (Version-Tolerant Schema)
 
-> **상태: 제안 — 구현 승인 대기** (PENDING.md 연계). 와이어 형식 변경을 수반하므로 **major 버전** 결정이며,
-> 사용자 판단 사항이다(스펙 자율성 규칙 3). 이 노트는 근거와 설계 옵션만 제시한다.
+> **상태: 기각 (2026-09-09)** — [ADR-0006](../05-Decisions/ADR-0006-No-Schema-Evolution.md). Unity·서버가 같은 라이브러리를 함께 소비하는 이 프로젝트에는 버전 혼합 피어가 없어 스키마 진화 자체가 불필요.
+> 근거·설계 옵션은 참조용으로 보존한다. 배포 환경이 바뀌면(외부 배포·제3자 클라이언트) 새 ADR 로 재검토.
 
 ## 문제 (왜 게임 서버 운영에 실제 필요한가)
 
