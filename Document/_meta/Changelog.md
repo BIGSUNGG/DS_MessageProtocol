@@ -2,6 +2,12 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-09 (상용화 개선 패스)
+
+- KI-42 해결 — 교차 어셈블리 파생의 `new` 수식어 오남용: 메타데이터(참조 DLL) abstract 베이스에서도 무조건 `new` 를 붙여 CS0109 4건/타입, 구체 메타데이터 베이스에서도 internal `Initialize()` 로 1건/타입 — `TreatWarningsAsErrors` 소비자(프로토콜 DLL + 서버/클라이언트 DLL 분리 표준 구성) 빌드 실패. `BaseEmitsStaticContract` 가 abstract 를 메타데이터만으로 먼저 걸러내고 `Initialize` 의 `new` 는 소스 베이스에서만(`isModuleInitializer` 플래그). 회귀 테스트 4개(베이스를 별도 어셈블리로 컴파일하는 `RunGeneratorWithMetadataBase` 헬퍼 — 실패 사전 확인, IVT 개방/비개방 쌍 포함). Serialize 오버로드는 첫 인자 타입이 타입마다 달라 가릴 수 없음을 확정.
+- `DeserializeExact` 추가 — 전체 소비 검사 역직렬화 옵션 API(제네릭·object dispatch): 남은 바이트가 있으면 `InvalidDataException` — [Commercial-Readiness-Review](../04-Improvements/Commercial-Readiness-Review.md) 권고 조치 2 이행. 스키마 표류(ADR-0006 레이아웃 동결 위반·필드 제거)를 조용한 데이터 유실 대신 fail-fast 로 전환, 와이어 무영향. 회귀 테스트 5개(깨끗한 프레임 왕복·남은 바이트 거부·기본 `Deserialize` 의 접미 허용 대조군·제네릭 구성 프레임).
+- 리뷰 라운드 보강 — KI-42 IVT 고리: 베이스 어셈블리가 `[InternalsVisibleTo]` 로 소비자에게 internal 을 열면 Initialize `new` 를 빼도 CS0108 이 생성 코드에 떠 빌드가 깨진다(이번 패스가 도입한 퇴행 고리). `GivesAccessTo` 로 접근 판별해 개방 베이스는 `new` 유지로 교정(회귀 2). `DeserializeExact` 커버리지 맹점 폐쇄: netstandard2.1(Unity) 폴백 프로필 실행 검증 2·빈 span `ArgumentException` 계약 1·NonId 1바이트 헤더 프레임 계약 1. `Public-API` frontmatter 날짜 정정. 테스트 296→309(net8.0·net9.0), 클린 리빌드 경고 0(기존 테스트 분석기 경고만), Sandbox 42 통과. `Public-API`·`Commercial-Readiness-Review` 갱신.
+
 ## 2026-09-09 (ADR — 스키마 진화 미지원)
 
 - **ADR-0006: 와이어 스키마 진화 미지원 확정** — 버전 내성 스키마 제안([Proposal-VersionTolerantSchema](../02-Architecture/Proposal-VersionTolerantSchema.md))을 기각. Unity·서버가 같은 라이브러리(메시지 계약)를 함께 소비하므로 버전 혼합 피어가 없어 진화가 불필요. 위치 기반 와이어 유지, 메시지 레이아웃 동결·스키마 변경은 신규 MessageId 타입 추가로 하는 운영 규칙을 공식 컨벤션으로 확정. 제안 노트 기각 상태 전환, PENDING major 결정 항목 종결, [Commercial-Readiness-Review](../04-Improvements/Commercial-Readiness-Review.md) §1 에 ADR 링크 추가. 재검토 조건: 외부 배포(제3자 클라이언트) 전환 시 새 ADR.

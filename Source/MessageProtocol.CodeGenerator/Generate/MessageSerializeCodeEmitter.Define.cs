@@ -11,7 +11,7 @@ namespace MessageProtocol.CodeGenerator.Generate
         /// <summary>partial 타입 선언 + 상속·인터페이스 + 정적 멤버 배치.</summary>
         internal static class Define
         {
-            public static string Emit(TypeMetadata typeMeta, SerializationGraph serializationGraph, AttributeReferences attributeReferences, EmitState state)
+            public static string Emit(TypeMetadata typeMeta, SerializationGraph serializationGraph, AttributeReferences attributeReferences, EmitState state, IAssemblySymbol? consumerAssembly)
             {
                 var sb = new StringBuilder();
                 string indent = GetTypeIndent(typeMeta);
@@ -34,7 +34,7 @@ namespace MessageProtocol.CodeGenerator.Generate
             sb.AppendLine($"{declarationIndent}    public {staticHidingModifier}static uint MessageId => {typeMeta.GetMessageId()};");
             if (typeMeta.CanUseModuleInitializer)
             {
-                sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ")}");
+                sb.AppendLine($"{declarationIndent}    {Method.EmitOnModuleInitialize(typeMeta, indent + "     ", consumerAssembly)}");
                 sb.AppendLine($"{declarationIndent}");
             }
             sb.AppendLine($"{declarationIndent}    {Method.EmitSerialize(typeMeta, indent + "    ", serializationGraph)}");

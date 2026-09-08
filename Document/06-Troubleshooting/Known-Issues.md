@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: troubleshoot
 status: draft
 tags: [known-issues, generator, runtime]
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # Known Issues
@@ -384,6 +384,16 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 ### KI-41. 역직렬화 신뢰 경계의 두 미검증 경로 — 디스패치 블라인드 캐스트·NonId 플래그 오유형 예외 (해결)
 
 **상태: 해결 (2026-09-08).** **차등 퍼저가 발견**(신규 `DeserializerFuzzTests` — 유효 프레임 3종×결정적 변이 1,500회: 비트 뒤집기·절단·극값 치환; 불변식 ①거부는 알려진 깨끗한 예외 유형만 ②성공 판독은 멱등 왕복). **발견 1(iter 116)**: 런타임 디스패치 판독의 신규 객체 분기가 `({typeName})MessageSerializer.DeserializeFromReader(...)` 로 **블라인드 캐스트** — 불신 헤더가 다른 등록 타입(FlatMessage)으로 라우팅하면 PointMessage 멤버 캐스트에서 원인 없는 `InvalidCastException`. KI-34 가 백레퍼런스 분기만 고쳤을 때 이 분기는 미커버였다. → KI-34 계열의 안내 타입 검사로 교정(안내 `InvalidDataException`). **발견 2(iter 291)**: 최상위 object dispatch 가 NonId 플래그 프레임을 `InvalidCastException("Message is not a standalone or group message")` 으로 거부 — 캐스트가 일어난 적 없는 와이어 내용 불법에 오유형 예외. → `InvalidDataException` 으로 교정(Sandbox S2·DispatchTests 계약 재고정). 두 발견 모두 예외 유형 교정 — 이미 실패는 났다, 안내·분류가 틀어져 신뢰 경계 모니터링에서 누락됐던 것. 계약 재고정: 테스트 2·Sandbox 1. 퍼저는 상주 회귀로 유지(시드 고정·재현 가능, 관측 하한 포함 — 죽은 퍼저 방지). **심화(2026-09-08)**: 코퍼스 6종(NonId·그룹 요소·깊이 60 체인 추가)·변이 5종(다중 비트·가비지 접미 추가 — 길이 접두 동시 타격·소비되지 않는 접미 쓰레기)·진입 2경로(object dispatch + 제네릭 — 이형 헤더는 KI-5 검증 경로)로 확장, 6×2,000×2 변이에서 **신규 위반 0** — 심화 코퍼스에서도 경계 유지 확인. **폴백 프로파일 코퍼스 추가(2026-09-08)**: netstandard2.1(Unity) 로 생성된 `FallbackCollections`(인덱서 루프 판독기·NaN/-0.0/∞ 페이로드 포함)를 7번째 시드로 — CollectionsMarshal 경로만 변이되던 공백을 메우고 폴백 생성 코드도 변이 하에서 **위반 0** 확인. **캠페인 노브 + 심층 캠페인(2026-09-08)**: `MSGPROT_FUZZ_SCALE` 환경변수로 온디맨드 심층 탐사(CI 는 기본 1) — **15배 캠페인(7시드×3만×2진입 ≈ 42만 판독, 양 TFM) 위반 0**, 결함 꼬리의 깊은 구간까지 정화 확인.
+
+### KI-42. 교차 어셈블리 파생의 `new` 수식어 오남용 → CS0109 경고 누적·TreatWarningsAsErrors 빌드 실패 (해결)
+
+**상태: 해결 (2026-09-09).** KI-28(`GetStaticHidingModifier` 가 베이스의 실제 방출 여부를 보도록 교정)의 교차 어셈블리 꼬리. 프로토콜 DLL(abstract 그룹 루트) + 서버/클라이언트 DLL(구체 요소) 분리는 상용 프로젝트의 표준 구성인데, 두 가지 형태로 CS0109(“멤버가 상속된 멤버를 숨기지 않음”)가 남아 있었다. ① 메타데이터 베이스가 abstract 면 소스와 무관하게 정적 계약을 절대 방출하지 않음(abstract 그룹 루트는 생성 skip·그 외 abstract 는 MSGPROT010)에도 무조건 `new` 를 붙여 **타입당 4건**(MessageId·Initialize·Deserialize×2). ② `Initialize()` 는 `internal` 이라 어셈블리 밖의 베이스가 가진 Initialize 는 이 컴파일에서 접근 불가 — 구체 메타데이터 베이스에서도 Initialize 의 `new` 는 **항상** CS0109(타입당 1건). 해법: `BaseEmitsStaticContract` 가 abstract 를 메타데이터만으로 먼저 걸러내고(내리는 쪽이 안전 — 가릴 대상이 확실히 없다), `Initialize` 의 `new` 는 베이스가 이 컴파일 소스에 있을 때만(`GetStaticHidingModifier(typeMeta, isModuleInitializer: true)`). **IVT 예외(리뷰 라운드 보강)**: 베이스 어셈블리가 소비자 어셈블리에 `[InternalsVisibleTo]` 로 internal 접근을 열면 베이스의 internal `Initialize` 는 가릴 대상이 되돌아온다 — 이 구성에서 `new` 를 빼면 사용자가 수정할 수 없는 CS0108 이 생성 코드에 뜬다(TreatWarningsAsErrors 에서 빌드 실패). `GetStaticHidingModifier` 가 `baseType.Symbol.ContainingAssembly.GivesAccessTo(consumerAssembly)` 로 이 경우를 감지해 방출 여부 판정으로 되돌아간다. 구체 메타데이터 베이스의 public 멤버(MessageId·Deserialize×2) `new` 는 기존대로 유지 — 그쪽 컴파일에서 생성됐는지 여기서 알 수 없어 내리면 CS0108/CS0114 로 역전한다. 회귀 테스트 4개(신규 `RunGeneratorWithMetadataBase` 헬퍼 — 베이스를 별도 어셈블리로 컴파일·PE 방출 후 소비 컴파일이 메타데이터 베이스로 상속받게 한다): abstract 메타데이터 베이스 파생은 `new static` 미방출 + CS0109 0건, 구체 메타데이터 베이스 파생은 MessageId/Deserialize 만 `new` 유지 + CS0109 0건, IVT 개방 베이스는 Initialize 도 `new` 유지 + CS0108 0건, 비-IVT 베이스는 Initialize `new` 생략 고정(퇴행 가드). 기존 KI-28 회귀 2개(소스 베이스)는 그대로 통과 — 소스 경로 동작 불변. Serialize 오버로드는 첫 인자 타입이 타입마다 달라 시그니처가 달라지므로 애초에 가릴 수 없다는 점도 이번에 확정(파생 Serialize 는 `new` 없이 안전). 테스트 296→309(net8.0·net9.0; 상용화 패스 +13 — DeserializeExact 5·KI-42 회귀 4·리뷰 라운드 계약 보강 4[폴백 프로파일 DeserializeExact 2·빈 span/NonId 프레임 2]).
+
+원본 발견 내용 (실험 검증):
+
+베이스 어셈블리를 생성기와 함께 컴파일한 뒤(실제 프로토콜 DLL 빌드와 동일) 소비 어셈블리에서 `[GroupElementMessage]` 파생을 생성하면, abstract 공유 루트에서 파생된 요소마다 CS0109 4건(경고), 구체 공유 루트에서도 Initialize 로 1건씩 발생했다. `TreatWarningsAsErrors` CI 에서는 서버/클라이언트 프로젝트가 빌드 실패한다. KI-28 이 소스 베이스만 고쳤던 이유는 메타데이터 심볼에 구문 참조가 없어 partial 여부를 판정할 수 없었기 때문인데, abstract 여부와(internal) 접근성은 메타데이터만으로 확정 가능하므로 그 두 사실만으로 안전하게 내릴 수 있었다.
+
+조치 방향: 판정 가능한 사실(abstract·어셈블리 경계)만으로 `new` 판정 보강 → 완료. 남은 꼬리(KI-28 과 동일): MSGPROT002·003·005·007 로 거부되는 소스 베이스는 이미 컴파일 오류 진단이 떠 CS0109 하나가 더해져도 실질 영향이 없어 반영하지 않는다.
 
 ## 관련
 

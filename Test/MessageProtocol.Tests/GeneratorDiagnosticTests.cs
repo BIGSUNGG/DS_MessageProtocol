@@ -332,6 +332,151 @@ public class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void 다른_어셈블리의_추상_그룹_루트에서_파생된_요소는_new_수식어_없이_생성된다()
+    {
+        // KI-28 교차 어셈블리 꼬리: 프로토콜 DLL(abstract 루트) + 서버/클라이언트 DLL(구체 요소) 분리는
+        // 상용 프로젝트의 표준 구성이다. 메타데이터 베이스는 구문 참조가 없어 partial 판정을 못 하므로
+        // 기존 구현은 무조건 `new` 를 붙였는데 — abstract 여부는 메타데이터만으로 확정되고, abstract 메시지
+        // 타입은 절대 정적 계약을 방출하지 않으므로(그룹 루트 skip·MSGPROT010) CS0109 ×6/타입이 확정된다.
+        // TreatWarningsAsErrors 소비자는 빌드 실패, 아니어도 클린 리빌드마다 경고가 쌓인다.
+        var (diagnostics, generated, compileErrors, warnings) = RunGeneratorWithMetadataBase("""
+            using MessageProtocol;
+            namespace ProtocolShared
+            {
+                [GroupRootMessage(520)]
+                public abstract partial class SharedAbstractRoot { public long Stamp { get; set; } }
+            }
+            """, Header + """
+            [GroupElementMessage(521)]
+            public partial class ElementC : ProtocolShared.SharedAbstractRoot { public string? Tag { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.DoesNotContain("new static", generated);
+        Assert.DoesNotContain(warnings, d => d.Id == "CS0109");
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void 다른_어셈블리의_구체_그룹_루트에서_파생된_요소는_new_수식어를_유지한다()
+    {
+        // 역방향 가드(교차 어셈블리): 구체 메타데이터 베이스는 그쪽 컴파일에서 생성됐는지 여기를 알 수
+        // 없어 기존대로 `new` 를 유지한다 — 잘못 내리면 CS0108/CS0114 로 역전한다.
+        var (diagnostics, generated, compileErrors, warnings) = RunGeneratorWithMetadataBase("""
+            using MessageProtocol;
+            namespace ProtocolShared
+            {
+                [GroupRootMessage(530)]
+                public partial class SharedConcreteRoot { public long Stamp { get; set; } }
+            }
+            """, Header + """
+            [GroupElementMessage(531)]
+            public partial class ElementD : ProtocolShared.SharedConcreteRoot { public int Code { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains("new static", generated);
+        Assert.DoesNotContain(warnings, d => d.Id == "CS0109");
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void IVT로_internal에_접근_가능한_교차_어셈블리_베이스의_Initialize는_new_수식어를_유지한다()
+    {
+        // KI-42 IVT 고리: 프로토콜 DLL 이 [InternalsVisibleTo("소비자")] 로 internal 을 열면
+        // 베이스의 internal Initialize 는 접근 가능해져 가릴 대상이 되돌아온다 — 이때 `new` 를 빼면
+        // 사용자가 수정할 수 없는 CS0108 이 생성 코드에 뜬다(TreatWarningsAsErrors 소비자는 빌드 실패).
+        var (diagnostics, generated, compileErrors, warnings) = RunGeneratorWithMetadataBase("""
+            using System.Runtime.CompilerServices;
+            using MessageProtocol;
+            [assembly: InternalsVisibleTo("GeneratorConsumer")]
+            namespace ProtocolShared
+            {
+                [GroupRootMessage(540)]
+                public partial class SharedIvtRoot { public long Stamp { get; set; } }
+            }
+            """, Header + """
+            [GroupElementMessage(541)]
+            public partial class ElementE : ProtocolShared.SharedIvtRoot { public int Code { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Contains("internal new static void Initialize()", generated);
+        Assert.DoesNotContain(warnings, d => d.Id == "CS0108");
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void IVT가_없는_교차_어셈블리_베이스의_Initialize는_new_수식어를_생략한다()
+    {
+        // 비-IVT 역방향 가드: 접근이 닫힌 internal 베이스 Initialize 는 가릴 대상이 아니므로 `new` 를
+        // 붙이면 CS0109 — 기존 KI-42 동작(생략)이 IVT 분기 도입으로 퇴행하지 않았음을 고정한다.
+        var (diagnostics, generated, compileErrors, warnings) = RunGeneratorWithMetadataBase("""
+            using MessageProtocol;
+            namespace ProtocolShared
+            {
+                [GroupRootMessage(550)]
+                public partial class SharedClosedRoot { public long Stamp { get; set; } }
+            }
+            """, Header + """
+            [GroupElementMessage(551)]
+            public partial class ElementF : ProtocolShared.SharedClosedRoot { public int Code { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.DoesNotContain("internal new static void Initialize()", generated);
+        Assert.Contains("internal static void Initialize()", generated);
+        Assert.DoesNotContain(warnings, d => d.Id == "CS0109");
+        Assert.Empty(compileErrors);
+    }
+
+    /// <summary>
+    /// 별도 어셈블리로 베이스를 컴파일(PE 메모리 방출)해 소비 컴파일이 메타데이터 베이스로 상속받게 한다 —
+    /// 교차 어셈블리 상속(프로토콜 DLL + 프로젝트 DLL) 시나리오. 경고도 함께 반환한다(CS0109 검증용).
+    /// </summary>
+    static (ImmutableArray<Diagnostic> Diagnostics, string GeneratedText, ImmutableArray<Diagnostic> CompileErrors, ImmutableArray<Diagnostic> CompileWarnings)
+        RunGeneratorWithMetadataBase(string baseSource, string consumerSource)
+    {
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(System.IO.Path.PathSeparator)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
+            .ToList();
+        references.Add(MetadataReference.CreateFromFile(typeof(Serialize.MessageSerializer).Assembly.Location));
+
+        var baseWithGenerator = CSharpGeneratorDriver.Create(new MessageCodeGenerator().AsSourceGenerator())
+            .RunGeneratorsAndUpdateCompilation(
+                CSharpCompilation.Create(
+                    "ProtocolShared",
+                    new[] { CSharpSyntaxTree.ParseText(baseSource) },
+                    references,
+                    new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)),
+                out var updatedBase, out _);
+        _ = baseWithGenerator;
+        using var peStream = new System.IO.MemoryStream();
+        var emitResult = updatedBase.Emit(peStream);
+        Assert.True(emitResult.Success, string.Join("\n", emitResult.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        peStream.Position = 0;
+        references.Add(MetadataReference.CreateFromStream(peStream));
+
+        var consumer = CSharpCompilation.Create(
+            "GeneratorConsumer",
+            new[] { CSharpSyntaxTree.ParseText(consumerSource) },
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var driver = CSharpGeneratorDriver.Create(new MessageCodeGenerator().AsSourceGenerator());
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(consumer, out var updated, out var diagnostics);
+        var runResult = driver.GetRunResult();
+
+        var generated = string.Concat(
+            runResult.Results.SelectMany(r => r.GeneratedSources).Select(s => s.SourceText.ToString()));
+        var allCompileDiagnostics = updated.GetDiagnostics();
+        var compileErrors = allCompileDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToImmutableArray();
+        var warnings = allCompileDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Warning).ToImmutableArray();
+        return (diagnostics, generated, compileErrors, warnings);
+    }
+
+    [Fact]
     public void 이미트_순서와_횟수에_관계없이_같은_타입은_같은_생성_텍스트를_낸다()
     {
         // KI-3 회귀: 생성 로컬 이름 번호(`__item3` 등)가 프로세스 전역 정적 카운터였을 때는
@@ -470,7 +615,7 @@ public class GeneratorDiagnosticTests
         var typeMeta = new TypeMetadata(rootType, attributeReferences);
 
         bool emitted = MessageSerializeCodeEmitter.TryEmit(
-            typeMeta, attributeReferences, hasCollectionsMarshal: true, out var code, out _);
+            typeMeta, attributeReferences, hasCollectionsMarshal: true, consumerAssembly: compilation.Assembly, out var code, out _);
 
         Assert.True(emitted);
         Assert.NotNull(code);
@@ -678,7 +823,7 @@ public class GeneratorDiagnosticTests
         var typeMeta = new TypeMetadata(rootType, attributeReferences);
 
         bool emitted = MessageSerializeCodeEmitter.TryEmit(
-            typeMeta, attributeReferences, hasCollectionsMarshal: false, out var code, out _);
+            typeMeta, attributeReferences, hasCollectionsMarshal: false, consumerAssembly: compilation.Assembly, out var code, out _);
 
         Assert.True(emitted);
         Assert.NotNull(code);
@@ -928,7 +1073,7 @@ public class GeneratorDiagnosticTests
         var typeMeta = new TypeMetadata(rootType, attributeReferences);
 
         bool emitted = MessageSerializeCodeEmitter.TryEmit(
-            typeMeta, attributeReferences, hasCollectionsMarshal: true, out var code, out _);
+            typeMeta, attributeReferences, hasCollectionsMarshal: true, consumerAssembly: compilation.Assembly, out var code, out _);
 
         Assert.True(emitted);
         Assert.NotNull(code);
@@ -972,7 +1117,7 @@ public class GeneratorDiagnosticTests
         var typeMeta = new TypeMetadata(rootType, attributeReferences);
 
         bool emitted = MessageSerializeCodeEmitter.TryEmit(
-            typeMeta, attributeReferences, hasCollectionsMarshal: true, out var code, out _);
+            typeMeta, attributeReferences, hasCollectionsMarshal: true, consumerAssembly: compilation.Assembly, out var code, out _);
 
         Assert.True(emitted);
         Assert.NotNull(code);
@@ -1010,7 +1155,7 @@ public class GeneratorDiagnosticTests
         var typeMeta = new TypeMetadata(rootType, attributeReferences);
 
         bool emitted = MessageSerializeCodeEmitter.TryEmit(
-            typeMeta, attributeReferences, hasCollectionsMarshal, out var code, out _);
+            typeMeta, attributeReferences, hasCollectionsMarshal, consumerAssembly: compilation.Assembly, out var code, out _);
 
         Assert.True(emitted);
         Assert.NotNull(code);

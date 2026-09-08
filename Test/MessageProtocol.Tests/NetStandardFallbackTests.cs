@@ -77,6 +77,35 @@ public class NetStandardFallbackTests
     }
 
     [Fact]
+    public void 플백_경로에서도_DeserializeExact_왕복이_동작한다()
+    {
+        // KI-43 진입 가드: Unity(netstandard2.1) 폴백 생성 코드에서도 전체 소비 검사 진입이 정상 왕복해야 한다.
+        var message = new FallbackCollections
+        {
+            Bulk = new List<int> { 1, 2, 3 },
+            Texts = new List<string> { "a", "bb" },
+            Tags = new[] { "x", "y" },
+        };
+
+        var exact = MessageSerializer.DeserializeExact<FallbackCollections>(MessageSerializer.Serialize(message));
+
+        Assert.Equal(message.Bulk, exact.Bulk);
+        Assert.Equal(message.Texts, exact.Texts);
+        Assert.Equal(message.Tags, exact.Tags);
+    }
+
+    [Fact]
+    public void 플백_경로에서도_DeserializeExact_잔여_바이트_거부가_동작한다()
+    {
+        // KI-43 진입 가드: 폴백 생성 코드로 읽은 뒤 남은 바이트(스키마 표류 프레임)는
+        // 조용한 유실 대신 InvalidDataException 으로 거부되어야 한다 — Unity 프로필에서도 동일.
+        byte[] bytes = MessageSerializer.Serialize(new FallbackCollections { Bulk = new List<int> { 1, 2, 3 } });
+        byte[] padded = bytes.Concat(new byte[2]).ToArray();
+
+        Assert.Throws<InvalidDataException>(() => MessageSerializer.DeserializeExact<FallbackCollections>(padded));
+    }
+
+    [Fact]
     public void 폴백_List_벌크_할당_가드가_실행된다()
     {
         // KI-17: CollectionsMarshal 미지원 타깃의 List<T> 벌크 판독은 `개수×요소크기 ≤ Remaining` 을 할당 전에 검증해야 한다.

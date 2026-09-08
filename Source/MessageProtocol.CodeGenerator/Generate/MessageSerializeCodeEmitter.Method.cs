@@ -1,6 +1,7 @@
 using MessageProtocol.CodeGenerator.Graph;
 using MessageProtocol.CodeGenerator.Metadata;
 using MessageProtocol;
+using Microsoft.CodeAnalysis;
 using System.Text;
 
 namespace MessageProtocol.CodeGenerator.Generate
@@ -10,9 +11,11 @@ namespace MessageProtocol.CodeGenerator.Generate
         /// <summary>Serialize / Deserialize / ModuleInitializer / 그래프 헬퍼 메서드 이미터.</summary>
         internal static class Method
         {
-            public static string EmitOnModuleInitialize(TypeMetadata typeMeta, string indent)
+            public static string EmitOnModuleInitialize(TypeMetadata typeMeta, string indent, IAssemblySymbol? consumerAssembly)
             {
-                string staticHidingModifier = GetStaticHidingModifier(typeMeta);
+                // Initialize 는 internal 이라 가릴 대상이 기본적으로 같은 어셈블리에만 존재한다 — 어셈블리 밖 베이스에서는
+                // new 를 붙이지 않되, 베이스 어셈블리가 InternalsVisibleTo 로 접근을 여는 경우는 제외한다.
+                string staticHidingModifier = GetStaticHidingModifier(typeMeta, isModuleInitializer: true, consumerAssembly);
                 string typeName = typeMeta.Symbol.Name;
                 bool hasId = typeMeta.IsStandaloneMessage || typeMeta.IsGroupMessage;
 

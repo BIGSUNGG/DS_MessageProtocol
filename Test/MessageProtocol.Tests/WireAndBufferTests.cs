@@ -586,3 +586,105 @@ public class WriterCreateAndFromRentedContractTests
         Assert.Throws<ArgumentOutOfRangeException>(() => PooledBuffer.FromRented(rented, -1));
     }
 }
+
+/// <summary>
+/// 전체 소비 검사(<c>DeserializeExact</c>) 계약 — 스키마 표류(ADR-0006 레이아웃 동결 위반)에서
+/// 발생하는 "남는 바이트"를 조용한 데이터 유실 대신 InvalidDataException 으로 전환한다.
+/// 기본 Deserialize 는 전송 계층 프레이밍 여유로 뒤에 붙은 바이트를 계속 허용한다(대조군).
+/// </summary>
+public class DeserializeExactTests
+{
+    [Fact]
+    public void 제네릭_진입은_깨끗한_프레임을_그대로_왕복한다()
+    {
+        byte[] frame = MessageSerializer.Serialize(new MessageProtocol.Tests.Fixtures.FlatMessage { Value = 42 });
+
+        var restored = MessageSerializer.DeserializeExact<MessageProtocol.Tests.Fixtures.FlatMessage>(frame);
+
+        Assert.Equal(42, restored.Value);
+    }
+
+    [Fact]
+    public void 제네릭_진입은_남은_바이트가_있으면_거부한다()
+    {
+        byte[] clean = MessageSerializer.Serialize(new MessageProtocol.Tests.Fixtures.FlatMessage { Value = 7 });
+        byte[] padded = new byte[clean.Length + 3];
+        clean.CopyTo(padded, 0);
+        padded[^1] = 0xFF;
+
+        var exception = Assert.Throws<System.IO.InvalidDataException>(
+            () => MessageSerializer.DeserializeExact<MessageProtocol.Tests.Fixtures.FlatMessage>(padded));
+
+        Assert.Contains("trailing", exception.Message);
+        // 대조군: 기본 Deserialize 는 접미 여유 바이트를 계속 허용한다(전송 계층 프레이밍 여유).
+        Assert.Equal(7, MessageSerializer.Deserialize<MessageProtocol.Tests.Fixtures.FlatMessage>(padded).Value);
+    }
+
+    [Fact]
+    public void object_dispatch_진입은_깨끗한_프레임을_그대로_왕복한다()
+    {
+        byte[] frame = MessageSerializer.Serialize(new MessageProtocol.Tests.Fixtures.FlatMessage { Value = 11 });
+
+        var restored = Assert.IsType<MessageProtocol.Tests.Fixtures.FlatMessage>(MessageSerializer.DeserializeExact(frame));
+
+        Assert.Equal(11, restored.Value);
+    }
+
+    [Fact]
+    public void object_dispatch_진입은_남은_바이트가_있으면_거부한다()
+    {
+        byte[] clean = MessageSerializer.Serialize(new MessageProtocol.Tests.Fixtures.FlatMessage { Value = 9 });
+        byte[] padded = new byte[clean.Length + 1];
+        clean.CopyTo(padded, 0);
+
+        var exception = Assert.Throws<System.IO.InvalidDataException>(
+            () => MessageSerializer.DeserializeExact(padded));
+
+        Assert.Contains("schema drift", exception.Message);
+        Assert.IsType<MessageProtocol.Tests.Fixtures.FlatMessage>(MessageSerializer.Deserialize(padded));
+    }
+
+    [Fact]
+    public void 제네릭_구성_프레임도_전체_소비_검사를_통과한다()
+    {
+        var envelope = new MessageProtocol.Tests.Fixtures.GenericEnvelope<MessageProtocol.Tests.Fixtures.FlatMessage> { Value = new MessageProtocol.Tests.Fixtures.FlatMessage { Value = 3 }, Note = "n" };
+        byte[] frame = MessageSerializer.Serialize(envelope);
+
+        var restored = MessageSerializer.DeserializeExact<MessageProtocol.Tests.Fixtures.GenericEnvelope<MessageProtocol.Tests.Fixtures.FlatMessage>>(frame);
+
+        Assert.Equal(3, restored.Value!.Value);
+        Assert.Equal("n", restored.Note);
+        // object dispatch 경로(제네릭 헤더 라우팅)도 동일 계약.
+        Assert.IsType<MessageProtocol.Tests.Fixtures.GenericEnvelope<MessageProtocol.Tests.Fixtures.FlatMessage>>(MessageSerializer.DeserializeExact(frame));
+    }
+
+    [Fact]
+    public void 빈_span은_InvalidDataException_이_아니라_ArgumentException으로_거부한다()
+    {
+        // 진입 검증(인자 오류)은 와이어 오류(InvalidDataException)와 구분된다 — 호출자 측 버그와
+        // 악성 프레임을 같은 타입으로 섞으면 상용 서버의 예외 필터가 분류를 못 한다. 두 진입 모두 고정.
+        Assert.Throws<ArgumentException>(
+            () => MessageSerializer.DeserializeExact<MessageProtocol.Tests.Fixtures.FlatMessage>(ReadOnlySpan<byte>.Empty));
+        Assert.Throws<ArgumentException>(() => MessageSerializer.DeserializeExact(ReadOnlySpan<byte>.Empty));
+    }
+
+    [Fact]
+    public void NonId_프레임도_전체_소비_검사를_통과한다()
+    {
+        // NonId 프레임은 헤더가 1바이트다 — 잔여 바이트 검사가 1바이트 헤더 프레임에서도
+        // 동작함을 고정한다(KI-41 상호작용: 제네릭 진입은 NonId 거부를 우회한다).
+        var message = new MessageProtocol.Tests.Fixtures.NoIdMessage { Flag = 7, Note = "nonid" };
+        byte[] frame = MessageSerializer.Serialize(message);
+
+        var restored = MessageSerializer.DeserializeExact<MessageProtocol.Tests.Fixtures.NoIdMessage>(frame);
+
+        Assert.Equal(7, restored.Flag);
+        Assert.Equal("nonid", restored.Note);
+
+        byte[] padded = new byte[frame.Length + 1];
+        frame.CopyTo(padded, 0);
+
+        Assert.Throws<System.IO.InvalidDataException>(
+            () => MessageSerializer.DeserializeExact<MessageProtocol.Tests.Fixtures.NoIdMessage>(padded));
+    }
+}

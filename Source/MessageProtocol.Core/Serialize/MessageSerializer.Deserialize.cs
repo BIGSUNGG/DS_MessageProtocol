@@ -43,6 +43,26 @@ namespace MessageProtocol.Serialize
             return deserialize!(ref reader);
         }
 
+        /// <summary>
+        /// 제네릭 경로(전체 소비 검사): 프레임 전체를 정확히 소비해야 성공한다. 남은 바이트가 있으면
+        /// <see cref="System.IO.InvalidDataException"/> — 피어가 이 타입과 다른 멤버 레이아웃으로 쓴 프레임
+        /// (스키마 표류 — ADR-0006 레이아웃 동결 위반, 예: 필드 제거)을 조용한 데이터 유실 대신 크게 실패시킨다.
+        /// 기본 <see cref="Deserialize{T}(ReadOnlySpan{byte})"/> 은 뒤에 붙은 여유 바이트를 허용한다.
+        /// </summary>
+        public static T DeserializeExact<T>(ReadOnlySpan<byte> data) where T : IMessageSerializable<T>
+        {
+            if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
+            var deserialize = SerializerCache<T>.Deserialize;
+            if (deserialize is null) ThrowMissingDeserialize<T>();
+            var reader = new MessageBufferReader(data);
+            var result = deserialize!(ref reader);
+            if (reader.Position != data.Length)
+            {
+                ThrowTrailingBytes(reader.Position, data.Length);
+            }
+            return result;
+        }
+
         /// <summary>제네릭 경로: ReadOnlyMemory 에서 역직렬화.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static T Deserialize<T>(ReadOnlyMemory<byte> data) where T : IMessageSerializable<T>
@@ -83,6 +103,28 @@ namespace MessageProtocol.Serialize
         /// <summary>object dispatch 역직렬화: ReadOnlySpan 입력. 제네릭 메시지는 (MessageId, ClassId) 로 구성에 라우팅한다.</summary>
         public static object Deserialize(ReadOnlySpan<byte> data)
         {
+            return DeserializeCore(data, out _);
+        }
+
+        /// <summary>
+        /// object dispatch 역직렬화(전체 소비 검사): 프레임 전체를 정확히 소비해야 성공한다.
+        /// 남은 바이트가 있으면 <see cref="System.IO.InvalidDataException"/> — 피어가 이 타입과 다른 멤버 레이아웃으로
+        /// 쓴 프레임(스키마 표류 — ADR-0006 레이아웃 동결 위반)을 조용한 데이터 유실 대신 크게 실패시킨다.
+        /// 기본 <see cref="Deserialize(ReadOnlySpan{byte})"/> 은 전송 계층 프레이밍 여유 등으로 뒤에 붙은 바이트를 허용한다.
+        /// </summary>
+        public static object DeserializeExact(ReadOnlySpan<byte> data)
+        {
+            var result = DeserializeCore(data, out int consumed);
+            if (consumed != data.Length)
+            {
+                ThrowTrailingBytes(consumed, data.Length);
+            }
+            return result;
+        }
+
+        /// <summary>라우팅 공통 본체 — 소비한 바이트 수를 반환한다(전체 소비 검사용).</summary>
+        static object DeserializeCore(ReadOnlySpan<byte> data, out int consumed)
+        {
             if (data.Length == 0) throw new ArgumentException("Message data is empty.", nameof(data));
 
             byte header = data[0];
@@ -112,7 +154,9 @@ namespace MessageProtocol.Serialize
                 }
 
                 var genericReader = new MessageBufferReader(data);
-                return genericInvoker(ref genericReader);
+                var genericValue = genericInvoker(ref genericReader);
+                consumed = genericReader.Position;
+                return genericValue;
             }
 
             if (!_readerDispatch.TryGetValue(messageId, out var invoker))
@@ -121,7 +165,19 @@ namespace MessageProtocol.Serialize
             }
 
             var reader = new MessageBufferReader(data);
-            return invoker(ref reader);
+            var value = invoker(ref reader);
+            consumed = reader.Position;
+            return value;
+        }
+
+        /// <summary>전체 소비 검사 실패 — 와이어 내용 불법으로 보고한다(경계·인자 오류와 구분).</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowTrailingBytes(int consumed, int total)
+        {
+            throw new System.IO.InvalidDataException(
+                $"Deserialization consumed {consumed} of {total} bytes; {total - consumed} trailing byte(s) remain. " +
+                $"The frame was written with a different member layout than this type (schema drift) or contains extra data. " +
+                $"Per ADR-0006, published message layouts are frozen — introduce a new MessageId type for layout changes.");
         }
 
         /// <summary>중첩 object dispatch: 현재 reader 위치의 헤더로 등록된 타입에 라우팅한다. 제네릭 헤더는 (MessageId, ClassId) 라우팅.</summary>

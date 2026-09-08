@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: reference
 status: stable
 tags: [api]
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # Public API
@@ -77,11 +77,11 @@ ID 값 범위: `0 .. 2^24-1`.
 | `Deserialize(byte[]\|Span\|Memory)` | MessageId 기반 object 역직렬화 (Standalone/Group만) |
 | `Deserialize(byte[])`·`Deserialize(ReadOnlySpan<byte>)` (object dispatch) | NonId 플래그 프레임 거부는 `InvalidDataException`(2026-09-08, KI-41 — 이전 `InvalidCastException` 폐지). 디스패치 판독의 신규 객체 분기도 타입 불일치 시 안내 `InvalidDataException` |
 | `DeserializeFromReader(ref MessageBufferReader)` | reader 현재 위치의 헤더로 등록 타입에 라우팅하는 중첩 object 디스패치 — 타입 매개변수·추상 메시지 멤버 판독과 수동 구현 재귀의 진입점. 중첩 깊이 한 수준을 계상한다(KI-14) |
+| `DeserializeExact<T>(ReadOnlySpan<byte>)`·`DeserializeExact(ReadOnlySpan<byte>)` | 전체 소비 검사 역직렬화(옵션) — 프레임 전체를 정확히 소비해야 성공하고, 남은 바이트가 있으면 와이어 내용 불법으로 `InvalidDataException`(빈 입력은 진입 검증 실패로 `ArgumentException` — 와이어 불법과 진입 오류의 분류 계약). 피어가 다른 멤버 레이아웃으로 쓴 프레임(ADR-0006 레이아웃 동결 위반 — 예: 필드 제거)을 조용한 데이터 유실 대신 크게 실패시킨다(2026-09-09, [Commercial-Readiness-Review](../04-Improvements/Commercial-Readiness-Review.md) 권고 조치 2). 기본 `Deserialize` 는 전송 계층 프레이밍 여유로 뒤에 붙은 바이트를 계속 허용한다 |
 
 핫 경로 권장: `Serialize(T, ref MessageBufferWriter)` / `SerializePooled<T>` / `Deserialize<T>(Span)`.
 
 예외 계약: 등록(`RegisterHasIdMessage`·`RegisterGenericConstruction` 등)은 **캐시를 채우기 전에** 거부 조건(타입 중복·generic 플래그 오용·와이어 id 중복·HasId id 의 NonId 플래그)을 검증한다 — 거부되면 `InvalidOperationException` 이고 캐시는 오염되지 않는다(KI-11). 미등록·계약 미구현 타입의 `Serialize<T>`·`Deserialize<T>` 는 필요한 멤버를 안내하는 `InvalidOperationException` 을 던진다 — CLR 이 타입별로 영구 캐싱하는 `TypeInitializationException` 이 아니며, 등록 전에 캐시를 먼저 건드렸더라도 이후 델리게이트 등록(`RegisterHasIdMessage<T>(…)`, `RegisterNonIdMessage<T>(…)`)으로 복구된다. 리플렉션 등록 경로(`RegisterHasIdMessage<T>()`·`RegisterNonIdMessage<T>()`·`RegisterGenericConstruction<T>`)는 직렬화 델리게이트 부재를 나중 NRE 가 아니라 **등록 시점**에 같은 예외로 알린다. 백레퍼런스 판독은 컨텍스트가 복원한 인스턴스가 멤버 정적 타입과 호환되는지 검사해, 베이스 타입 멤버로 먼저 기록된 인스턴스를 파생 타입 멤버가 읽는 조합에서 블라인드 `InvalidCastException` 대신 원인과 해법을 안내하는 `InvalidDataException` 을 던진다(KI-34).
-
 
 ## 죽은 API 감사 (2026-09-08)
 

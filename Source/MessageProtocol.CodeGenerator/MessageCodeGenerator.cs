@@ -176,7 +176,7 @@ namespace MessageProtocol.CodeGenerator
             }
 
             bool hasCollectionsMarshal = compilation.GetTypeByMetadataName("System.Runtime.InteropServices.CollectionsMarshal") != null;
-            if (!MessageSerializeCodeEmitter.TryEmit(typeMeta, attributeReferences, hasCollectionsMarshal, out string? serializeCode, out var unsupportedMembers))
+            if (!MessageSerializeCodeEmitter.TryEmit(typeMeta, attributeReferences, hasCollectionsMarshal, compilation.Assembly, out string? serializeCode, out var unsupportedMembers))
             {
                 foreach (var unsupported in unsupportedMembers)
                 {
