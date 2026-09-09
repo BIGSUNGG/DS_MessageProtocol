@@ -385,6 +385,16 @@ KI-8(카테고리 마스킹) 실험이 드러낸 더 넓은 사각지대다. `[S
 
 **상태: 해결 (2026-09-08).** **차등 퍼저가 발견**(신규 `DeserializerFuzzTests` — 유효 프레임 3종×결정적 변이 1,500회: 비트 뒤집기·절단·극값 치환; 불변식 ①거부는 알려진 깨끗한 예외 유형만 ②성공 판독은 멱등 왕복). **발견 1(iter 116)**: 런타임 디스패치 판독의 신규 객체 분기가 `({typeName})MessageSerializer.DeserializeFromReader(...)` 로 **블라인드 캐스트** — 불신 헤더가 다른 등록 타입(FlatMessage)으로 라우팅하면 PointMessage 멤버 캐스트에서 원인 없는 `InvalidCastException`. KI-34 가 백레퍼런스 분기만 고쳤을 때 이 분기는 미커버였다. → KI-34 계열의 안내 타입 검사로 교정(안내 `InvalidDataException`). **발견 2(iter 291)**: 최상위 object dispatch 가 NonId 플래그 프레임을 `InvalidCastException("Message is not a standalone or group message")` 으로 거부 — 캐스트가 일어난 적 없는 와이어 내용 불법에 오유형 예외. → `InvalidDataException` 으로 교정(Sandbox S2·DispatchTests 계약 재고정). 두 발견 모두 예외 유형 교정 — 이미 실패는 났다, 안내·분류가 틀어져 신뢰 경계 모니터링에서 누락됐던 것. 계약 재고정: 테스트 2·Sandbox 1. 퍼저는 상주 회귀로 유지(시드 고정·재현 가능, 관측 하한 포함 — 죽은 퍼저 방지). **심화(2026-09-08)**: 코퍼스 6종(NonId·그룹 요소·깊이 60 체인 추가)·변이 5종(다중 비트·가비지 접미 추가 — 길이 접두 동시 타격·소비되지 않는 접미 쓰레기)·진입 2경로(object dispatch + 제네릭 — 이형 헤더는 KI-5 검증 경로)로 확장, 6×2,000×2 변이에서 **신규 위반 0** — 심화 코퍼스에서도 경계 유지 확인. **폴백 프로파일 코퍼스 추가(2026-09-08)**: netstandard2.1(Unity) 로 생성된 `FallbackCollections`(인덱서 루프 판독기·NaN/-0.0/∞ 페이로드 포함)를 7번째 시드로 — CollectionsMarshal 경로만 변이되던 공백을 메우고 폴백 생성 코드도 변이 하에서 **위반 0** 확인. **캠페인 노브 + 심층 캠페인(2026-09-08)**: `MSGPROT_FUZZ_SCALE` 환경변수로 온디맨드 심층 탐사(CI 는 기본 1) — **15배 캠페인(7시드×3만×2진입 ≈ 42만 판독, 양 TFM) 위반 0**, 결함 꼬리의 깊은 구간까지 정화 확인.
 
+### 분기 병합 상태·잔여 리스크 검토 (2026-09-09)
+
+**main == feature/improvement (`c4d7b43`) 병합 완료 확인** — 루프 65+ 커밋·9 릴리스가 main 에 반영됨(사용자 병합). 병합 준비성 검토(서브에이전트는 사용량 한도로 중단 → 인라인 기계 검증으로 완료):
+
+1. **KI-39 다중 필드 캐시 독자** — `RegisterGenericConstruction`(HasId·Serialize·Deserialize·MessageId 그룹 판독)·리플렉션 등록 경로는 KI-38 클레임 선점으로 **타입당 단일 스레드만 캐시를 채우므로** 그룹 일관성 위협 없음(단일 필드 핫 경로는 volatile 쌍으로 KI-39 해결). 잔여 위험 없음.
+2. **KI-38 클레임 롤백 완결성** — 조기 TryAdd 클레임의 롤백이 4개 전 경로(델리게이트 HasId :72·NonId :134·제네릭 구성 :194·RegisterCore :405)에 존재. 누수 경로 없음.
+3. **`git diff main...feature/improvement` 공차** — 미병합 제품 변경 없음.
+4. **소비자 호환** — 예외 유형 재정의 2건(NonId 플래그·디스패치 캐스트 → `InvalidDataException`, KI-41)은 2.3.7 릴리스 노트의 호환 주보로 공지됨. 와이어 형식 불변(골든 검증 3회).
+
+**판정: 잔여 블로커 없음.** — 사용자 편집 세션의 미커밋 변경(Obsidian 테이블 재정형·Legacy 공백)은 루프가 건드리지 않고 그대로 둠.
 ## 관련
 
 - [Feature-Spec](../02-Architecture/Feature-Spec.md)
