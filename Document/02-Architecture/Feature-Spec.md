@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: architecture
 status: approved
 tags: [feature-spec, rewrite, parity]
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # Feature Spec — 재작성 프로젝트 지원 기능
@@ -161,8 +161,18 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 
 - 네트워크 전송 → DS_Communication
 - RPC 디스패치·원격 호출 → DS_RPC
-- Legacy에서 미지원이던 멤버 타입 추가 (`Dictionary`, nullable 값 타입 등) — 스펙 동결, 필요 시 별도 결정(05-ADR)으로 확장.
 - 제네릭 메시지 `T` 의 비메시지(원시) 타입 인스턴스화, 디스패치 프레임 **경계를 넘는** 공유·순환 참조의 완전한 단일 인스턴스 복원(프레임 내부 공유·순환은 2.2.0 부터 복원 — [ADR-0004](../05-Decisions/ADR-0004-Generic-Message-Wire-Format.md)·Known-Issues KI-9 참고).
+
+### 추후 재검토 후 구현 예정 (2026-09-09 등록)
+
+MessagePack·MemoryPack 기능 비교(2026-09-09)에서 미지원으로 확인된 항목 중 아래 네 가지는 **추후 더 고려해본 후 구현할 예정**이다. 이 외의 미지원 기능(스키마 진화는 [ADR-0006](../05-Decisions/ADR-0006-No-Schema-Evolution.md) 으로 미지원 확정, 압축·Typeless·TypeScript 생성 등)은 여전히 범위 밖이다.
+
+| 기능 | 현재 상태 | 구현 시 고려 사항 |
+| ------ | ------ | ------ |
+| `Dictionary`·nullable 값 타입 등 멤버 타입 추가 | 미지원 — 스펙 동결 | 신규 멤버 타입 규격 추가. 별도 결정(05-ADR)으로 확장 |
+| 컴팩트 정수 인코딩(varint) | 미지원 — 고정폭 | **와이어 형식 변경을 수반** — 기존 프레임 호환(2.3.9)·버전 정책과 함께 결정 필요. 작은 정수 위주 메시지에서 와이어 절반 수준 절약 vs 인코딩 분기 비용 트레이드오프 |
+| 스트리밍 I/O (`Stream`·`PipeWriter`·비동기) | 미지원 — `byte[]`/Span 완결 버퍼 동기 API 만 | API 수준 추가로 와이어 무영향. 대형 스트림 처리·파일 I/O 대응 |
+| 기존 인스턴스 역직렬화(Overwrite) | 미지원 — 항상 새 인스턴스 | API 수준 추가로 와이어 무영향. 오브젝트 풀링 서버의 역직렬화 무할당 경로 |
 
 ## Legacy 대비 재작성 변경점 (2026-08-31)
 

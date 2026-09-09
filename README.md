@@ -1,54 +1,344 @@
 # DS_MessageProtocol
 
-컴파일 타임 메시지 직렬화와 런타임 `MessageSerializer`를 제공하는 .NET 라이브러리 세트입니다. 런타임은 **.NET Standard 2.1**과 **net6.0**을 타깃으로 하여 Unity 및 일반 .NET 환경에서 사용할 수 있습니다.
+A source-generated binary message serialization library for .NET, built for game servers and other allocation-sensitive applications. Declare message types with attributes; a Roslyn source generator emits `Serialize` / `Deserialize` implementations at compile time, and the runtime `MessageSerializer` provides registration, dispatch, and pooled-buffer hot paths.
 
-## 패키지
+- **Targets:** `netstandard2.1` (Unity-compatible) and `net6.0+`
+- **Wire format:** compact binary headers (1–7 bytes) + little-endian payload, strict UTF-8 strings
+- **Version:** 2.3.9
 
-| NuGet 패키지 | 설명 |
-| -------------- | ------ |
-| **MessageProtocol** | 애플리케이션에서 참조하는 메인 패키지. NuGet 패키지에는 런타임 DLL과 함께 `analyzers/dotnet/cs` 경로에 CodeGenerator 어셈블리가 포함됩니다. |
-| **MessageProtocol.Core** | 직렬화 런타임 API(`MessageSerializer`, 메시지 계약 등). 다른 패키지 없이 코어만 필요할 때 사용합니다. |
-| **MessageProtocol.CodeGenerator** | 메시지 타입용 생성 코드를 만드는 Roslyn 분석기 패키지 (netstandard2.0 분석기). 고급 시나리오 또는 세분화된 참조가 필요할 때 사용합니다. |
+## Packages
 
-## 설치
+| NuGet package | Description |
+| ------------- | ----------- |
+| **MessageProtocol** | Main package — the single entry point for applications. Contains the Core runtime DLL and ships the CodeGenerator as a Roslyn analyzer (`analyzers/dotnet/cs`). |
+| **MessageProtocol.Core** | Serialization runtime API only (`MessageSerializer`, message contracts). Use when you don't need generated code. |
+| **MessageProtocol.CodeGenerator** | Standalone Roslyn analyzer/source generator (netstandard2.0). For advanced or fine-grained reference scenarios. |
+
+### Install
 
 ```bash
 dotnet add package MessageProtocol
 ```
 
-코어만 필요한 경우:
+Core runtime only:
 
 ```bash
 dotnet add package MessageProtocol.Core
 ```
 
-Unity Package Manager에서 NuGet을 쓰지 않는 경우, 위 패키지에서 빌드된 DLL을 프로젝트에 복사해 참조할 수 있습니다. 타깃은 **netstandard2.1**입니다.
+**Unity:** the Unity Package Manager doesn't consume NuGet directly — copy the built DLLs (target `netstandard2.1`) from the packages into your project and reference them. See [Compatibility](#compatibility) for the Unity code-generation profile.
 
-## 요구 사항
+## Requirements
 
-- .NET Standard 2.1 또는 net6.0 이상을 지원하는 런타임, 혹은 Unity(해당 API 호환 버전).
-- 메시지·멤버 속성(`StandaloneMessage`, `MessageIgnore` 등)은 모두 `MessageProtocol` 네임스페이스에 있습니다.
+- A runtime supporting .NET Standard 2.1 or later (net6.0+), or Unity with a compatible API level.
+- Message types must be declared `partial` so the generator can complete them.
+- All attributes live in the `MessageProtocol` namespace (the serializer itself in `MessageProtocol.Serialize`).
 
-## 게임 서버 운영 참고
+## QuickStart
 
-**할당 민감 송신 루프는 `SerializePooled` 를 쓰세요.** 같은 메시지를 `byte[]` 로 받으면 정확 크기 복사가 매 호출마다 할당됩니다(기준 측정: 104B/호출) — `MessageSerializer.SerializePooled(message)` 는 풀링된 버퍼의 소유권(`PooledBuffer`)을 돌려주며 할당은 32B/호출, 속도는 동급입니다. 사용 후 `Dispose` 로 풀 반납(`struct` 사본을 포함해 어떤 사본이 반납해도 정확히 1회).
+Install the main package:
 
-**역직렬화는 불신 입력을 진입에서 거부합니다.** 다른 타입의 바이트·위조 헤더·규격 밖 참조 태그·무효 UTF-8·깊이 상한 초과(기본 64)는 모두 예외로 즉시 실패하며 조용히 재해석되지 않습니다 — 예외 종류와 이유는 `Document/03-Reference/Public-API.md` 의 예외 계약을 참고하세요. 합법적으로 깊은 객체 그래프는 `new MessageBufferReader(buffer, maxNestingDepth)` 로 상한을 올려 처리합니다.
+```bash
+dotnet add package MessageProtocol
+```
 
-수치 근거와 시나리오별 기준선(문자열·공유 참조 그래프·대형 컬렉션 포함)은 `Document/03-Reference/Performance-Baseline.md` 에 있습니다.
+Declare a message type:
 
-## 저장소 구조
+```csharp
+using MessageProtocol;
 
-| 경로 | 내용 |
+[StandaloneMessage(1)]
+public partial class PlayerSpawn
+{
+    public int PlayerId { get; set; }
+    public string? Name { get; set; }
+    public List<int>? Inventory { get; set; }
+}
+```
+
+Serialize and deserialize (`MessageSerializer` lives in the `MessageProtocol.Serialize` namespace):
+
+```csharp
+using MessageProtocol.Serialize;
+
+var msg = new PlayerSpawn
+{
+    PlayerId = 7,
+    Name = "host",
+    Inventory = new List<int> { 1, 2, 3 },
+};
+
+byte[] bytes = MessageSerializer.Serialize(msg);
+var decoded = MessageSerializer.Deserialize<PlayerSpawn>(bytes);
+```
+
+That's it — generated message types **register themselves** on module load via a generated `[ModuleInitializer]`; no manual registration is required. Allocation-sensitive send loops can use the pooled path instead of `Serialize` (see [Cautions](#cautions)):
+
+```csharp
+using (var pooled = MessageSerializer.SerializePooled(msg))
+{
+    // pooled.Span / pooled.Length — same wire bytes as Serialize
+} // Dispose returns the buffer to the ArrayPool
+```
+
+## Feature Guide
+
+### Message kinds and categories
+
+| Attribute | Purpose |
+| --------- | ------- |
+| `[StandaloneMessage(uint id)]` | Independent message with an ID |
+| `[GroupRootMessage(uint id)]` | Group root (inheritable base for a message family) |
+| `[GroupElementMessage(uint id)]` | Group element (id ≠ 0, requires a root in its inheritance hierarchy) |
+| `[NonIdMessage]` | Message without an ID (1-byte header) |
+| `[MessageCategory(MessageCategory.Category0..15)]` | Category nibble in the header byte (single category member only) |
+| `[GenericMessage(typeof(Construction), ClassId = n)]` | Declares a closed generic construction; repeatable (`AllowMultiple`) |
+
+Rules:
+
+- ID values range `0 .. 2^24-1` (the wire ID is the 3 low bytes of the header). `ClassId` ranges `1 .. 2^24-1`.
+- The composed wire MessageId (flags + category + value) must be **unique across your protocol** — duplicates are rejected at compile time (`MSGPROT014`) and would otherwise fail assembly load at runtime.
+- Message types must be `partial`; hierarchy violations (element without root, root with root parent, …) are compile-time diagnostics.
+
+Example group hierarchy and category:
+
+```csharp
+[GroupRootMessage(10)]
+[MessageCategory(MessageCategory.Category3)]
+public partial class ShapeRoot { public string? Name { get; set; } }
+
+[GroupElementMessage(11)]
+public partial class Circle : ShapeRoot { public double Radius { get; set; } }
+```
+
+Generic messages close over specific constructions with a single attribute; declared constructions are auto-registered on module load for both sides:
+
+```csharp
+[StandaloneMessage(40)]
+[GenericMessage(typeof(Envelope<PlayerSpawn>), ClassId = 1)]
+[GenericMessage(typeof(Envelope<Circle>), ClassId = 2)]
+public partial class Envelope<T>
+{
+    public T? Value { get; set; }
+    public string? Note { get; set; }
+}
+```
+
+### Supported member types
+
+| Category | Supported |
+| -------- | --------- |
+| Primitives | `bool`, `byte`, `sbyte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, `decimal`, `char` |
+| String | `string` (nullable allowed) |
+| Enums | Serialized as their underlying primitive |
+| Collections | 1-D arrays `T[]`, `List<T>`, `IList<T>` (element types follow these rules recursively); `byte[]` as raw data (length + contents) |
+| Nested messages | Serializable objects as members (object graph) |
+| Polymorphic members | Abstract message-typed members — the concrete element is written **with its header**, so the receiver restores the exact derived type |
+| References | Cyclic and shared references round-trip via object-ID back-references (no infinite loops, identity preserved) |
+
+Unsupported member types (e.g. `Dictionary<,>`, nullable value types) are rejected with a **compile-time diagnostic** (`MSGPROT006`) — nothing is silently skipped.
+
+Serialization order = wire order: members are written in declaration order, following the base class chain from the root down. This order is part of wire compatibility — do not reorder members of a shipped message type.
+
+### Member control
+
+```csharp
+[StandaloneMessage(4)]
+public partial class MemberControl
+{
+    public int Kept { get; set; }
+
+    [MessageIgnore]                 // excluded from serialization
+    public int Skipped { get; set; }
+
+    [MessageInclude]                // opt a non-public member in
+    int _hidden;
+}
+```
+
+Selection priority: `MessageIgnore` > `MessageInclude` > public accessibility. Static members and indexers are never serialized.
+
+### Compile-time code generation
+
+For every attributed `partial` message type the generator produces:
+
+- `static Serialize(...)` / `static Deserialize(...)` implementations,
+- a `MessageId` constant (for ID-carrying messages),
+- a `[ModuleInitializer]` registration so types are usable with zero setup.
+
+The generated text is deterministic. The generator also validates your protocol at compile time — key diagnostics:
+
+| Diagnostic | Meaning |
+| ---------- | ------- |
+| `MSGPROT001` | Message type must be `partial` |
+| `MSGPROT005` | ID value out of range (`0 .. 2^24-1`) |
+| `MSGPROT006` | Unsupported member type |
+| `MSGPROT010` | Type cannot be generated (abstract, or no parameterless constructor) |
+| `MSGPROT012` | **Warning** — member declared as a *concrete* base with derived message types: derived members are silently dropped (make the base `abstract` to get polymorphic dispatch instead) |
+| `MSGPROT013` | `MessageCategory` out of range (0..15) |
+| `MSGPROT014` | Duplicate composed wire MessageId across two message types |
+
+### Runtime `MessageSerializer`
+
+| API | Purpose |
+| --- | ------- |
+| `Serialize<T>(T)` | Generic cached path — no runtime-type dispatch, no boxing |
+| `Serialize(object)` / `SerializeToWriter` | Runtime-type dispatch — polymorphism (base variable + derived instance) |
+| `SerializePooled<T>(T)` / `SerializePooled(object)` | ArrayPool-backed result (`PooledBuffer`) — see Cautions |
+| `Deserialize<T>(byte[] \| Span \| Memory)` | Generic deserialization |
+| `Deserialize(byte[] \| Span \| Memory)` | Object dispatch by header MessageId (Standalone/Group only; `NonId` frames are rejected) |
+| `DeserializeExact<T>(...)` | Strict variant — the frame must be consumed exactly; leftover bytes fail with `InvalidDataException` |
+| `RegisterHasIdMessage<T>()` / `RegisterNonIdMessage<T>()` | Manual registration (including delegate overloads) |
+| `RegisterType(Type)` | Reflection-based registration (manual implementations) |
+| `RegisterGenericConstruction<T>(classId)` / `GetGenericClassId<T>()` | Generic construction registry |
+
+Manual message implementation is supported: expose the same contract shape (`IMessageSerializable<T>` or `IHasIdMessageSerializable<T>`) and register it. With manual implementations you write the header yourself — header byte first, then the 3-byte ID.
+
+### Wire format
+
+| Layout | Header |
 | ------ | ------ |
-| `Source/` | 제품 코드 — Core(런타임) · CodeGenerator(생성기) · MessageProtocol(메타 패키지) · Shared(와이어 규칙 공유 소스) |
-| `Test/` | 스펙 기반 유닛 테스트 · BenchmarkDotNet 벤치마크 · netstandard2.1 픽스처(`CollectionsMarshal` 없는 Unity 호환 프로필의 폴백 생성 코드를 실행으로 검증) |
-| `Sandbox/` | 기능 인수 조건을 실행하는 콘솔 시나리오 |
-| `Document/` | Obsidian 문서 vault (진입점: `Document/00-AI/CONTEXT.md`) |
-| `Legacy/` | v1 참조 구현 (읽기 전용) |
+| Byte 0 | flags (high nibble) + category (low nibble) |
+| Non-ID message | 1-byte header |
+| ID message | 4-byte header (1 + 3-byte MessageId value) |
+| Generic message | 7-byte header (1 + 3-byte MessageId + 3-byte construction ClassId) |
 
-소스 코드 및 이슈: [https://github.com/BIGSUNGG/DS_MessageProtocol](https://github.com/BIGSUNGG/DS_MessageProtocol)
+`MessageWireFormat` exposes header sizes, constants, and compose/parse helpers (`ComposeHeaderByte`, `ComposeMessageId`, `GetFlags`); `MessageFlag` lists the flag nibbles (`NonIdMessage`, `Standalone`, `GroupRoot`, `GroupElement`, `Generic`).
 
-## 라이선스
+## Cautions
 
-저장소 루트의 라이선스 파일을 따릅니다(없을 경우 저장소 기본 정책을 확인하세요).
+**`SerializePooled` returns a pooled buffer you must dispose.** The returned `PooledBuffer` owns a rented buffer — call `Dispose` after use (the buffer goes back to the pool). `Dispose` is idempotent and safe on any struct copy: copies share one ownership holder, so no matter which copy disposes, the pool return happens exactly once.
+
+**Deserialization rejects untrusted input at the entry point — by design.** Foreign-type bytes, forged headers, out-of-range reference tags, invalid UTF-8, negative string-length prefixes (other than the `-1` null marker), oversized collection length prefixes, and invalid `decimal` flags all throw (`InvalidDataException` or similar) instead of quietly reinterpreting data. Nested object depth is capped per buffer — default **64** on both read and write; exceeding it throws `InvalidDataException` on read / `InvalidOperationException` on write. This guard prevents unrecoverable stack overflows from hostile or accidental deep/cyclic graphs. For legitimately deep graphs, raise the cap on **both sides**:
+
+```csharp
+var reader = new MessageBufferReader(buffer, maxNestingDepth);
+var writer = MessageBufferWriter.Create(initialCapacity, maxNestingDepth);
+```
+
+**Category values: use a single `MessageCategory` member.** The category enum is `[Flags]`-style, but combining members (e.g. `Category1 | Category4`) is interpreted as *a different single category* on the wire — always use one named member (`Category0`..`Category15`).
+
+**Concrete base-typed members drop derived members (warning `MSGPROT012`).** If a member's static type is a non-abstract message type that has derived message types, instances are written as the declared base — derived-only fields are lost without an exception. Declare the base `abstract` to switch to polymorphic runtime dispatch.
+
+**No schema evolution.** Member layout is frozen once shipped: both peers must agree on member set and order (ADR-0006). Use `DeserializeExact` when you want trailing bytes to fail loudly instead of being tolerated as transport padding.
+
+**`NonIdMessage` types cannot be routed by object deserialization.** `MessageSerializer.Deserialize(bytes)` (object dispatch) works for ID-carrying messages only; `NonId` frames are rejected with `InvalidDataException`. Use `Deserialize<T>` for those.
+
+**Unity / netstandard2.1 profile.** On runtimes without `CollectionsMarshal` the generator emits a fallback (slower, allocation-equivalent) code path. This profile is validated by the `Test/MessageProtocol.NetStandardFixtures` project, which builds an assembly from that profile and executes round-trips against it.
+
+## Benchmarks
+
+Baseline measured with BenchmarkDotNet v0.15.8 (`MemoryDiagnoser`, in-process emit toolchain), .NET 9.0.12, Windows 11, AMD Ryzen 9 7940HS (2026-09-08, v2.3.1). The in-process toolchain suits *relative* comparison; treat absolute values as indicative (±10–15% run-to-run noise).
+
+| Scenario | Workload | Median | Allocated |
+| -------- | -------- | ------ | --------- |
+| SerializeBytes | Typical message (int, long, float, 17-char string, `List<int>`×8) → `byte[]` | 54.6 ns | 104 B |
+| SerializePooledFlat | Same message via `SerializePooled` (incl. release) | 57.3 ns | 32 B |
+| DeserializeTyped | Generic deserialization of that message | 52.8 ns | 192 B |
+| DeserializeDispatch | Object-dispatch deserialization | 71.6 ns | 192 B |
+| SerializeStringHeavy | 4×100-char ASCII strings | 138.1 ns | 448 B |
+| DeserializeStringHeavy | Above, deserialized | 168.6 ns | 944 B |
+| SerializeSharedGraph | Depth-5 chain + shared subtree (back-references) | 288.3 ns | 528 B |
+| DeserializeSharedGraph | Above, deserialized | 287.3 ns | 872 B |
+| SerializeLargeCollections | `List<int>`×100k (bulk copy) + `string[]`×1k | 71 µs | 411 KB |
+| DeserializeLargeCollections | Above, deserialized | 134 µs | 448 KB |
+
+Highlights:
+
+- **Generic hot path has no dictionary lookups and no boxing** — static per-type caches.
+- `SerializePooled` cuts allocations from 104 B → 32 B (only the ownership holder) at equal speed on the same workload; it also avoids the exact-size result copy on large payloads.
+- Most of the `byte[]` path's allocation is the exact-size result copy itself.
+- Reference-tracked graphs (shared/cyclic) cost ~5× a flat message per node (tag bytes + context bookkeeping) — plan message shapes accordingly.
+- Deserialization validates collection lengths and `decimal` flags *before* allocating, so hostile frames can't trigger huge allocations.
+
+### Comparison with MemoryPack and MessagePack-CSharp
+
+Head-to-head measurement (2026-09-09): DS_MessageProtocol vs **MemoryPack 1.21.4** vs **MessagePack-CSharp 3.1.4** (StandardResolver, standard configuration) — same machine, same BenchmarkDotNet job: AMD Ryzen 9 7940HS, Windows 11, .NET 9.0.12, BenchmarkDotNet v0.15.8 (DefaultJob + MemoryDiagnoser). Workloads mirror the four fixtures above: flat (scalars + `List<int>`×8), string-heavy (4×100-char strings), object graph (depth-5 chain), large collections (`List<int>`×100k + `string[]`×1k).
+
+**Verdict: DS_MessageProtocol is fastest or tied in every measured scenario** — there was no scenario where a competitor won on speed. Baseline allocations and wire size are on par, and shared/cyclic graph support, the built-in message header (framing + type check), and the zero-allocation `SerializePooled` path are DS-only.
+
+Speed (ns/op unless noted; lower is better; bold = winner):
+
+| Shape | Operation | DS_MessageProtocol | MemoryPack | MessagePack-CSharp |
+| ----- | --------- | -----------------: | ---------: | -----------------: |
+| Flat | Serialize | **65.4** | 94.6 | 88.8 |
+| Flat | Deserialize | **39.4** | 54.6 | 121.0 |
+| String-heavy | Serialize | **114.6** | 115.6 | 161.5 |
+| String-heavy | Deserialize | 125.1 | **119.4** | 242.8 |
+| Graph | Serialize | **180.2** (shared) | 201.5 (tree) | 461.8 (tree) |
+| Graph | Deserialize | **192.5** (shared) | 272.1 (tree) | 639.1 (tree) |
+| Large | Serialize | **48.0 µs** | 67.4 µs | 225.9 µs |
+| Large | Deserialize | **58.3 µs** | 58.8 µs | 537.2 µs |
+
+- On flat and graph shapes DS is 1.1–1.45× faster than MemoryPack and 1.4–3.1× faster than MessagePack-CSharp across the board.
+- DS wins the graph shape **while performing reference tracking** (back-reference tags) — the competitors do no reference tracking at all: MemoryPack and MessagePack-CSharp have no shared/cyclic graph support (MessagePack removed its preserve-reference API in 3.1.4), so they serialize a tree variant of the fixture.
+- Large collections: DS ≈ MemoryPack (leadership alternates between runs — treat as tied); MessagePack-CSharp is 4–5× slower serializing and ~9× slower deserializing.
+
+Allocations (B/op, GC-counter measurement):
+
+| Shape | Serialize / Deserialize | DS_MessageProtocol | MemoryPack | MessagePack-CSharp |
+| ----- | ---------------------- | ------------------: | ---------: | -----------------: |
+| Flat | Ser / De | 104 / 192 | 104 / 192 | 64 / 192 |
+| String-heavy | Ser / De | 448 / 944 | 464 / 944 | 440 / 944 |
+| Graph | Ser / De | 528 / 872 | 176 / 792 | 96 / 792 |
+| Large | Ser / De | 410,928 / 448,033 | 414,928 / 448,067 | **989,168** / 448,049 |
+
+- Baseline allocations are effectively identical across all three ("output buffer + restored objects"); DS's +352 B on graph serialize is the price of reference tracking.
+- MessagePack-CSharp allocates 2.4× on large-collection serialize (internal buffer growth strategy).
+- Only DS offers a zero-allocation send path (`SerializePooled`).
+
+Wire size (bytes):
+
+| Shape | DS_MessageProtocol | MemoryPack | MessagePack-CSharp |
+| ----- | -----------------: | ---------: | -----------------: |
+| Flat | 77 (incl. 4B header) | 78 | **39** |
+| String-heavy | **420** (UTF-8) | 433 (UTF-16) | 409 |
+| Shared graph | **60** (sharing saves) | — (unsupported) | — (unsupported) |
+| Large | 410,902 | 414,899 | 489,117 |
+
+- MessagePack-CSharp's varint halves the wire for small-integer messages (39 vs 77) but loses on strings and large collections.
+- MemoryPack stores strings as UTF-16, costing bytes on non-ASCII text.
+- DS figures include the 4-byte message header; competitor figures are payload only — in production they still pay for length-prefix framing and a type ID on top.
+
+Library notes: MemoryPack is a fastest-class rival with good Unity support, but no reference tracking and a UTF-16 wire. MessagePack-CSharp has the largest ecosystem, `[Key]`-based schema evolution (appending trailing fields), and varint strength — but was slowest here, allocates 2.4× on large serialize, and triggers NuGet security advisories (NU1902/NU1903) on 3.1.4.
+
+Fairness notes: laptop environment, single representative run (±2× run-to-run variance observed on the large shape — trust the tied/faster verdicts, not absolute values); 21 of 24 speed items ran in the same process/job, the 3 string-heavy deserialize items ran in a separate run on the same machine/job. Full methodology and raw data: `Document/04-Improvements/Performance-Comparison.md`.
+
+Reproduce the single-library baseline:
+
+```bash
+dotnet run -c Release --project Test/MessageProtocol.Benchmarks
+```
+
+The tables above are the curated baseline from `Document/03-Reference/Performance-Baseline.md` (2026-09-08, v2.3.1) — treat that document as authoritative. Raw BenchmarkDotNet output also lives under `BenchmarkDotNet.Artifacts/results/` and `artifacts/bench-compare/`, but those are working artifacts: later runs overwrite them in place, so a raw file may contain fewer or different scenarios than the curated table (the current baseline artifact holds only a 3-scenario spot-check with different absolute values). The head-to-head comparison tables above are transcribed from `Document/04-Improvements/Performance-Comparison.md`, which is the authoritative comparison record.
+
+## Performance Contract
+
+The implementation maintains these properties on hot paths (verified by benchmarks on change):
+
+- Generic serialize/deserialize: no dictionary lookups, no boxing (static caches).
+- `ArrayPool`-backed buffers (`SerializePooled` / `PooledBuffer`).
+- Span-based reads/writes; strings decoded without intermediate arrays; `decimal` via an allocation-free path.
+- Generated code batches capacity reservation for fixed-size primitive runs.
+- The nesting-depth guard costs two inline increments per nested object — zero for flat messages, no allocations.
+- Writer growth uses `long` arithmetic with headroom clamping, preserving geometric growth beyond 1 GB; over-limit demands fail without attempting allocation.
+
+## Compatibility
+
+- Targets `netstandard2.1` + `net6.0` — Unity-compatible.
+- `ModuleInitializer` polyfill included for older toolchains.
+- Tests run on `net8.0` and `net9.0`; the netstandard2.1 fallback profile is executed (not just text-asserted) via the NetStandardFixtures project.
+
+## Repository
+
+| Path | Contents |
+| ---- | -------- |
+| `Source/` | Product code — Core (runtime), CodeGenerator (analyzer), MessageProtocol (meta package), Shared (wire rules) |
+| `Test/` | Spec-based unit tests · BenchmarkDotNet benchmarks · netstandard2.1 fixtures |
+| `Sandbox/` | Executable acceptance scenarios (42 checks; exit code 0 on pass): round-trips, dispatch, generics, depth guards, trust-boundary rejections |
+| `Document/` | Documentation vault — start at `Document/01-Overview/Home.md`; feature spec (`02-Architecture/Feature-Spec.md`), public API reference (`03-Reference/Public-API.md`), performance baseline (`03-Reference/Performance-Baseline.md`) |
+| `Legacy/` | v1 reference implementation (read-only) |
+
+Source and issues: [github.com/BIGSUNGG/DS_MessageProtocol](https://github.com/BIGSUNGG/DS_MessageProtocol)
+
+Related sibling projects: **DS_Communication** (network transport) and **DS_RPC** (distributed RPC, built on both).

@@ -2,6 +2,19 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-09 (README 전면 재작성)
+
+- 루트 `README.md` 벤치마크 섹션에 경쟁제 비교 상세 확장 — `Performance-Comparison` 전체 이관: 4종 형태 × 직렬화/역직렬화 속도 8행(플랫·문자열 헤비·그래프·대형, MemoryPack 1.21.4 / MessagePack-CSharp 3.1.4, 동일 머신·동일 BDN Job), GC 카운터 할당 4행, 와이어 크기 4행, 그래프 형태 상이·프레이밍 포함 여부·변동성 공정성 주의, 라이브러리별 특성 노트. 결론 문구(전 영역 최속~동급, 참조 추적 수행하며 트리 변형보다 빠름) 포함.
+- 루트 `README.md` 를 영어 사용자용 문서로 전면 재작성 — 기존 한국어 개요(54줄)를 교체. 필수 섹션: QuickStart(설치 + `[StandaloneMessage]` 최소 예제, `SerializePooled` 풀링 경로)·F1–F10 전 기능 사용 가이드(와이어 헤더, 메시지 종류/카테고리, 멤버 타입, 멤버 제어, 컴파일 타임 코드 생성, 런타임 `MessageSerializer`, 성능 계약, 호환성, 패키지 구성, 검증 산출물)·주의 사항(`PooledBuffer` 정확 1회 반납, 불신 입력 진입 거부, 중첩 깊이 상한 64, Unity 폴백 프로필)·벤치마크 실측(`Performance-Baseline` 큐레이션 표 + bench-compare 경쟁제 비교, 측정 환경 명기, raw 아티팩트 덮어쓰기 주의 공개). 작성 서브에이전트 + 신규 관점 리뷰어 서브에이전트 2라운드 반복(round 1 ISSUES: serializer 스니펫 using 누락·벤치마크 출처 불명확 → 수정 → round 2 CLEAN), 리뷰 아티팩트 `artifacts/readme-review-round-1.md`·`-round-2.md`·`readme-review.md`.
+
+## 2026-09-09 (성능 비교 실측)
+
+- [Performance-Comparison](../04-Improvements/Performance-Comparison.md) 신규 — DS_MessageProtocol vs MemoryPack 1.21.4 · MessagePack-CSharp 3.1.4 동일 머신·동일 BDN Job 실측(4종 메시지 형태 × 직렬화/역직렬화 24항목). 결론: 전 영역 DS 최속~동급(경쟁이 더 빠른 항목 없음), 기본 할당·와이어 동급, 공유 그래프 참조 추적·`SerializePooled`·헤더 내장은 DS 유일 이점. 그래프 비교 시 경쟁 2종의 참조 추적 미지원으로 트리 변형 측정임을 명시. 측정 프로젝트는 gitignored 일회성(`artifacts/bench-compare/`), 저장소 추적 파일 무변경·테스트 309/309 × 2 TFM 유지 확인.
+
+## 2026-09-09 (기능 비교 — 미지원 기능 후보 등록)
+
+- `Feature-Spec` 범위 밖에 "추후 재검토 후 구현 예정" 절 신설 — MessagePack·MemoryPack 기능 비교(2026-09-09)에서 미지원으로 확인된 4가지(`Dictionary`·nullable 멤버 타입, varint, 스트리밍 I/O, 기존 인스턴스 역직렬화)를 구현 후보로 등록하고 구현 시 고려 사항(와이어 호환 여부 등)을 명시. 스키마 진화(ADR-0006 확정)·압축·Typeless 등 나머지는 여전히 범위 밖 유지.
+
 ## 2026-09-09 (상용화 개선 패스)
 
 - KI-42 해결 — 교차 어셈블리 파생의 `new` 수식어 오남용: 메타데이터(참조 DLL) abstract 베이스에서도 무조건 `new` 를 붙여 CS0109 4건/타입, 구체 메타데이터 베이스에서도 internal `Initialize()` 로 1건/타입 — `TreatWarningsAsErrors` 소비자(프로토콜 DLL + 서버/클라이언트 DLL 분리 표준 구성) 빌드 실패. `BaseEmitsStaticContract` 가 abstract 를 메타데이터만으로 먼저 걸러내고 `Initialize` 의 `new` 는 소스 베이스에서만(`isModuleInitializer` 플래그). 회귀 테스트 4개(베이스를 별도 어셈블리로 컴파일하는 `RunGeneratorWithMetadataBase` 헬퍼 — 실패 사전 확인, IVT 개방/비개방 쌍 포함). Serialize 오버로드는 첫 인자 타입이 타입마다 달라 가릴 수 없음을 확정.

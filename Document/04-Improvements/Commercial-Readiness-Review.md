@@ -81,3 +81,4 @@ updated: 2026-09-09
 - [Known-Issues](../06-Troubleshooting/Known-Issues.md) — KI-5/9/14/25/34/36/41
 - [Public-API](../03-Reference/Public-API.md) — 예외·계약
 - 프로브 소스: `artifacts/wire-probe/` (gitignored, 재현: dotnet build + run)
+- [Performance-Comparison](./Performance-Comparison.md) — MemoryPack·MessagePack 대비 속도·할당·와이어 실측 (2026-09-09)
