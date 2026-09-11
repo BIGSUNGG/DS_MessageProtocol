@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: context
 status: stable
 tags: [ai, glossary]
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Glossary
@@ -17,12 +17,13 @@ updated: 2026-09-10
 | Message contract | 직렬화 대상 메시지 타입·계약 (`IMessageSerializable<T>` 등) |
 | Analyzer path | NuGet `analyzers/dotnet/cs` 에 포함되는 생성기 어셈블리 경로 |
 | MessageId | 헤더 byte0 + 24비트 값으로 조립된 `uint` 식별자 |
-| MessageFlag | 헤더 상위 니블: NonId / Standalone / GroupRoot / GroupElement / Generic(0, 제네릭 전용) |
-| MessageCategory | 헤더 하위 니블 0..15 (`MessageCategoryAttribute`) |
+| MessageFlag | 헤더 상위 니블: NonId / Standalone / Parent / Child / Generic(0, 제네릭 전용) |
+| MessageCategory | 헤더 하위 니블 0..15 — 메시지 속성 생성자 인자로 지정 |
 | NonId | ID 없는 메시지. 헤더 1바이트. object `Deserialize` 불가 |
-| Standalone / GroupRoot / GroupElement | ID를 가진 메시지 종류. object deserialize 대상 |
-| `[Message]` 자동 선언 | 무인수 속성 — 종류는 계층 추론(조상 메시지 → 요소, 동일 컴파일 파생 → 루트, 나머지 → 독립), ID 는 FullName 해시. 참조 어셈블리 베이스 상속도 인식 |
+| Standalone / Parent / Child | ID를 가진 메시지 종류(`MessageKind.Standalone`/`Parent`/`Child`). object deserialize 대상 |
+| `[Message]` 선언 | 종류 선언의 유일한 속성 — `(MessageKind kind, uint id, MessageCategory category)`. kind 기본 `Automatic`(계층 추론: 조상 메시지 → Child, 동일 컴파일 파생 → Parent, 나머지 → Standalone), id 생략 시 FullName 해시. 참조 어셈블리 베이스 상속도 인식 |
 | FullName 해시 ID | `[Message]` 의 자동 ID — 타입 FullName 의 FNV-1a 32비트를 24비트로 마스크 (`MessageIdHash`, 알고리즘 동결) |
+| MessageKind | `[Message]` 생성자 종류 열거: Automatic/Standalone/Parent/Child/NonId |
 | MessageIgnore / MessageInclude | 멤버 제어 속성. **`MessageProtocol` 네임스페이스 소속** (v2에서 전역 네임스페이스에서 이동 — Legacy 버그 수정) |
 | ModuleInitializer | 생성 코드가 모듈 로드 시 `Register*` 를 호출하는 훅 |
 | Shared Link | `Source/Shared`를 Core·Generator에 Compile Link로 공유 (와이어 규칙 단일 소스) |

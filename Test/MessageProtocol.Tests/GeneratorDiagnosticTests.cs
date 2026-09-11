@@ -7,6 +7,7 @@ using generator::MessageProtocol.CodeGenerator.Reference;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Collections.Immutable;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace MessageProtocol.Tests;
@@ -68,7 +69,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT001_partial_아닌_메시지()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public class NotPartial { public int X { get; set; } }
             """ + Footer);
 
@@ -81,7 +82,7 @@ public class GeneratorDiagnosticTests
         var (diagnostics, _) = RunGenerator(Header + """
             public class Outer
             {
-                [StandaloneMessage(1)]
+                [Message(MessageKind.Standalone, 1)]
                 public partial class Inner { public int X { get; set; } }
             }
             """ + Footer);
@@ -93,7 +94,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT003_요소_메시지에_루트가_없음()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [GroupElementMessage(1)]
+            [Message(MessageKind.Child, 1)]
             public partial class OrphanElement { public int X { get; set; } }
             """ + Footer);
 
@@ -104,10 +105,10 @@ public class GeneratorDiagnosticTests
     public void MSGPROT004_루트의_부모가_루트()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [GroupRootMessage(1)]
+            [Message(MessageKind.Parent, 1)]
             public partial class RootA { }
 
-            [GroupRootMessage(2)]
+            [Message(MessageKind.Parent, 2)]
             public partial class RootB : RootA { }
             """ + Footer);
 
@@ -118,7 +119,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT005_ID_범위_초과()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [StandaloneMessage(16777216)]
+            [Message(MessageKind.Standalone, 16777216)]
             public partial class TooBig { public int X { get; set; } }
             """ + Footer);
 
@@ -129,7 +130,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT006_미지원_멤버_타입()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class BadMember
             {
                 public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
@@ -140,37 +141,56 @@ public class GeneratorDiagnosticTests
     }
 
     [Fact]
-    public void MSGPROT007_메시지_속성_중복이면_경고하고_생성을_건너뛴다()
+    public void MSGPROT018_NonId에_id_인자를_주면_거부된다()
     {
-        var (diagnostics, generated) = RunGenerator(Header + """
-            [NonIdMessage]
-            [StandaloneMessage(1)]
-            public partial class Confused { public int X { get; set; } }
+        // NonId 헤더는 1바이트 — id 슬롯이 없다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [Message(MessageKind.NonId, id: 7)]
+            public partial class NonIdWithId { public int X { get; set; } }
             """ + Footer);
 
-        Assert.Contains(diagnostics, d => d.Id == "MSGPROT007" && d.Severity == DiagnosticSeverity.Warning);
-        Assert.DoesNotContain("RegisterHasIdMessage<Confused>", generated);
-        Assert.DoesNotContain("RegisterNonIdMessage<Confused>", generated);
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == "MSGPROT018");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains("cannot take id or category", diagnostic.GetMessage());
+        Assert.DoesNotContain("partial class NonIdWithId", generated);
+        Assert.Empty(compileErrors);
     }
 
     [Fact]
-    public void MSGPROT007_스탠드얼론과_그룹루트_중복도_경고한다()
+    public void MSGPROT018_NonId에_category_인자를_주면_거부된다()
     {
-        var (diagnostics, generated) = RunGenerator(Header + """
-            [StandaloneMessage(1)]
-            [GroupRootMessage(2)]
-            public partial class DoubleId { public int X { get; set; } }
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [Message(MessageKind.NonId, category: MessageCategory.Category3)]
+            public partial class NonIdWithCategory { public int X { get; set; } }
             """ + Footer);
 
-        Assert.Contains(diagnostics, d => d.Id == "MSGPROT007");
-        Assert.DoesNotContain("RegisterHasIdMessage<DoubleId>", generated);
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == "MSGPROT018");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.DoesNotContain("partial class NonIdWithCategory", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(99)]
+    public void MSGPROT018_정의되지_않은_MessageKind_값은_거부된다(int kindValue)
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
+            [Message((MessageKind){{kindValue}})]
+            public partial class BadKind { public int X { get; set; } }
+            """ + Footer);
+
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == "MSGPROT018");
+        Assert.Contains(kindValue.ToString(), diagnostic.GetMessage());
+        Assert.DoesNotContain("partial class BadKind", generated);
+        Assert.Empty(compileErrors);
     }
 
     [Fact]
     public void 제네릭_메시지_타입은_매개변수를_유지한_채_컴파일_가능한_코드를_생성한다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class Msg<T> { public T? Value { get; set; } }
             """ + Footer);
 
@@ -185,7 +205,7 @@ public class GeneratorDiagnosticTests
     public void 제네릭_메시지_타입은_자동_등록_코드를_생성하지_않는다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial class Pair<T> { public T? First { get; set; } public int Tag { get; set; } }
             """ + Footer);
 
@@ -199,10 +219,10 @@ public class GeneratorDiagnosticTests
     public void GenericMessage_구성_선언은_자동_등록_클래스를_생성한다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class Target { public int X { get; set; } }
 
-            [StandaloneMessage(2)]
+            [Message(MessageKind.Standalone, 2)]
             [GenericMessage(typeof(Box<Target>), ClassId = 7)]
             public partial class Box<T> { public T? Value { get; set; } }
             """ + Footer);
@@ -221,7 +241,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT008_제네릭이_아닌_타입에_GenericMessage를_붙이면_에러()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             [GenericMessage(typeof(int), ClassId = 1)]
             public partial class NotGeneric { public int X { get; set; } }
             """ + Footer);
@@ -233,7 +253,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT008_미바운드_제네릭_구성_선언은_에러()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [StandaloneMessage(2)]
+            [Message(MessageKind.Standalone, 2)]
             public partial class Box<T> { public T? Value { get; set; } }
 
             [GenericMessage(typeof(Box<>), ClassId = 1)]
@@ -247,7 +267,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT008_제네릭_선언에_StandaloneMessage가_없으면_에러()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial class NoId<T> { public T? V { get; set; } }
 
             [GenericMessage(typeof(NoId<int>), ClassId = 1)]
@@ -265,7 +285,7 @@ public class GeneratorDiagnosticTests
         // KI-27 회귀: 상한 미검증이라 생성기를 통과하고, 생성된 등록 캐리어가 **모듈 이니셜라이저**에서
         // RegisterGenericConstruction 의 ArgumentOutOfRangeException 을 터뜨려 TypeInitializationException(어셈블리 로드 실패)이 된다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             [GenericMessage(typeof(Box<int>), ClassId = {{classId}})]
             public partial class Box<T> { public T? Value { get; set; } }
             """ + Footer);
@@ -283,7 +303,7 @@ public class GeneratorDiagnosticTests
     {
         // 역방향 가드: 상한 검증을 넣으면서 정상 범위(특히 경계값)를 잘라내면 안 된다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             [GenericMessage(typeof(Box<int>), ClassId = {{classId}})]
             public partial class Box<T> { public T? Value { get; set; } }
             """ + Footer);
@@ -296,14 +316,14 @@ public class GeneratorDiagnosticTests
     [Fact]
     public void 추상_그룹_루트의_파생_요소는_new_수식어_없이_생성된다()
     {
-        // KI-28 회귀: abstract [GroupRootMessage] 는 상속 전용이라 정적 계약을 방출하지 않는데,
+        // KI-28 회귀: abstract [Message(MessageKind.Parent)] 는 상속 전용이라 정적 계약을 방출하지 않는데,
         // 파생 요소에 `new` 를 붙이니 가릴 멤버가 없어 소비자 빌드에 CS0109 가 떴다
         // (클린 리빌드 기준 이 저장소에서만 64건 — 다형 그룹은 KI-24 이후 정상 사용 패턴이라 소비자도 동일하게 밟는다).
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [GroupRootMessage(500)]
+            [Message(MessageKind.Parent, 500)]
             public abstract partial class AbstractRoot { public long Timestamp { get; set; } }
 
-            [GroupElementMessage(501)]
+            [Message(MessageKind.Child, 501)]
             public partial class ElementA : AbstractRoot { public string? User { get; set; } }
             """ + Footer);
 
@@ -319,10 +339,10 @@ public class GeneratorDiagnosticTests
         // 역방향 가드: 베이스가 실제로 정적 계약(MessageId·Deserialize 등)을 방출하면 `new` 가 필요하므로
         // (CS0108 방지) 유지해야 한다 — CS0109 를 없앤다고 `new` 를 일괄 제거하면 이쪽이 깨진다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [GroupRootMessage(510)]
+            [Message(MessageKind.Parent, 510)]
             public partial class ConcreteRoot { public long Timestamp { get; set; } }
 
-            [GroupElementMessage(511)]
+            [Message(MessageKind.Child, 511)]
             public partial class ElementB : ConcreteRoot { public int Reason { get; set; } }
             """ + Footer);
 
@@ -343,11 +363,11 @@ public class GeneratorDiagnosticTests
             using MessageProtocol;
             namespace ProtocolShared
             {
-                [GroupRootMessage(520)]
+                [Message(MessageKind.Parent, 520)]
                 public abstract partial class SharedAbstractRoot { public long Stamp { get; set; } }
             }
             """, Header + """
-            [GroupElementMessage(521)]
+            [Message(MessageKind.Child, 521)]
             public partial class ElementC : ProtocolShared.SharedAbstractRoot { public string? Tag { get; set; } }
             """ + Footer);
 
@@ -366,11 +386,11 @@ public class GeneratorDiagnosticTests
             using MessageProtocol;
             namespace ProtocolShared
             {
-                [GroupRootMessage(530)]
+                [Message(MessageKind.Parent, 530)]
                 public partial class SharedConcreteRoot { public long Stamp { get; set; } }
             }
             """, Header + """
-            [GroupElementMessage(531)]
+            [Message(MessageKind.Child, 531)]
             public partial class ElementD : ProtocolShared.SharedConcreteRoot { public int Code { get; set; } }
             """ + Footer);
 
@@ -392,11 +412,11 @@ public class GeneratorDiagnosticTests
             [assembly: InternalsVisibleTo("GeneratorConsumer")]
             namespace ProtocolShared
             {
-                [GroupRootMessage(540)]
+                [Message(MessageKind.Parent, 540)]
                 public partial class SharedIvtRoot { public long Stamp { get; set; } }
             }
             """, Header + """
-            [GroupElementMessage(541)]
+            [Message(MessageKind.Child, 541)]
             public partial class ElementE : ProtocolShared.SharedIvtRoot { public int Code { get; set; } }
             """ + Footer);
 
@@ -415,11 +435,11 @@ public class GeneratorDiagnosticTests
             using MessageProtocol;
             namespace ProtocolShared
             {
-                [GroupRootMessage(550)]
+                [Message(MessageKind.Parent, 550)]
                 public partial class SharedClosedRoot { public long Stamp { get; set; } }
             }
             """, Header + """
-            [GroupElementMessage(551)]
+            [Message(MessageKind.Child, 551)]
             public partial class ElementF : ProtocolShared.SharedClosedRoot { public int Code { get; set; } }
             """ + Footer);
 
@@ -484,7 +504,7 @@ public class GeneratorDiagnosticTests
         // Roslyn 의 생성 출력 비교를 매번 깨뜨려 무관한 편집에도 생성 트리가 교체·재컴파일되게 하고,
         // 빌드 재현성·diff 판독성도 해친다. 이제 번호는 EmitState(이미트 단위) 상태라 입력에만 의존한다.
         var compilation = CreateTpaCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class DeterminismMessage
             {
                 public System.Collections.Generic.List<int>? Values { get; set; }
@@ -499,7 +519,7 @@ public class GeneratorDiagnosticTests
                 public string? Name { get; set; }
             }
 
-            [StandaloneMessage(2)]
+            [Message(MessageKind.Standalone, 2)]
             public partial class OtherDeterminismMessage
             {
                 public System.Collections.Generic.List<long>? Samples { get; set; }
@@ -534,13 +554,13 @@ public class GeneratorDiagnosticTests
         // 직렬화되어 파생 멤버가 조용히 사라진다(실행 확인: LoginEvent.User 유실, 복원 타입은 EventBase).
         // 동작 자체는 유효하므로 생성은 막지 않고 경고로 알린다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [GroupRootMessage(600)]
+            [Message(MessageKind.Parent, 600)]
             public partial class PolyRoot { public long Timestamp { get; set; } }
 
-            [GroupElementMessage(601)]
+            [Message(MessageKind.Child, 601)]
             public partial class PolyElement : PolyRoot { public string? User { get; set; } }
 
-            [StandaloneMessage(602)]
+            [Message(MessageKind.Standalone, 602)]
             public partial class PolyHost { public PolyRoot? Event { get; set; } }
             """ + Footer);
 
@@ -557,13 +577,13 @@ public class GeneratorDiagnosticTests
     public void MSGPROT012_컬렉션_요소_타입도_경고한다()
     {
         var (diagnostics, _, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [GroupRootMessage(610)]
+            [Message(MessageKind.Parent, 610)]
             public partial class ListRoot { public long Timestamp { get; set; } }
 
-            [GroupElementMessage(611)]
+            [Message(MessageKind.Child, 611)]
             public partial class ListElement : ListRoot { public string? User { get; set; } }
 
-            [StandaloneMessage(612)]
+            [Message(MessageKind.Standalone, 612)]
             public partial class ListHost { public System.Collections.Generic.List<ListRoot>? Events { get; set; } }
             """ + Footer);
 
@@ -577,13 +597,13 @@ public class GeneratorDiagnosticTests
         // 역방향 가드: 추상 메시지 타입 멤버는 런타임 디스패치로 구체 요소가 헤더째 기록되므로(KI-24)
         // 유실이 없다 — 지원되는 다형 패턴에 경고를 뿌리면 안 된다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [GroupRootMessage(620)]
+            [Message(MessageKind.Parent, 620)]
             public abstract partial class AbsRoot { public long Timestamp { get; set; } }
 
-            [GroupElementMessage(621)]
+            [Message(MessageKind.Child, 621)]
             public partial class AbsElement : AbsRoot { public string? User { get; set; } }
 
-            [StandaloneMessage(622)]
+            [Message(MessageKind.Standalone, 622)]
             public partial class AbsHost { public AbsRoot? Event { get; set; } }
             """ + Footer);
 
@@ -597,10 +617,10 @@ public class GeneratorDiagnosticTests
     {
         // 역방향 가드: 파생 메시지 타입이 없는 구체 타입 멤버(일반 중첩 페이로드)는 손실이 없으므로 조용해야 한다.
         var (diagnostics, _, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(630)]
+            [Message(MessageKind.Standalone, 630)]
             public partial class PlainPayload { public int X { get; set; } }
 
-            [StandaloneMessage(631)]
+            [Message(MessageKind.Standalone, 631)]
             public partial class PlainHost { public PlainPayload? Payload { get; set; } }
             """ + Footer);
 
@@ -626,10 +646,10 @@ public class GeneratorDiagnosticTests
     public void 분산_선언_캐리어는_구성_등록_코드를_생성한다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class Target { public int X { get; set; } }
 
-            [StandaloneMessage(2)]
+            [Message(MessageKind.Standalone, 2)]
             public partial class Box<T> { public T? Value { get; set; } }
 
             [GenericMessage(typeof(Box<Target>), ClassId = 5)]
@@ -645,10 +665,10 @@ public class GeneratorDiagnosticTests
     public void MSGPROT008_한_컴파일에서_같은_구성을_두_번_선언하면_에러()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class Target { public int X { get; set; } }
 
-            [StandaloneMessage(2)]
+            [Message(MessageKind.Standalone, 2)]
             public partial class Box<T> { public T? Value { get; set; } }
 
             [GenericMessage(typeof(Box<Target>), ClassId = 1)]
@@ -677,10 +697,10 @@ public class GeneratorDiagnosticTests
     public void MSGPROT008_분산_선언에_ClassId가_없으면_에러()
     {
         var (diagnostics, _) = RunGenerator(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class Target { public int X { get; set; } }
 
-            [StandaloneMessage(2)]
+            [Message(MessageKind.Standalone, 2)]
             public partial class Box<T> { public T? Value { get; set; } }
 
             [GenericMessage(typeof(Box<Target>))]
@@ -694,8 +714,7 @@ public class GeneratorDiagnosticTests
     public void 정상_타입은_등록_코드를_생성한다()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [StandaloneMessage(7)]
-            [MessageCategory(MessageCategory.Category2)]
+            [Message(MessageKind.Standalone, 7, MessageCategory.Category2)]
             public partial class Good
             {
                 public int X { get; set; }
@@ -713,7 +732,7 @@ public class GeneratorDiagnosticTests
     public void NonId_타입은_NonId_등록을_생성한다()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial class NoId { public byte B { get; set; } }
             """ + Footer);
 
@@ -725,10 +744,10 @@ public class GeneratorDiagnosticTests
     public void abstract_그룹_루트는_생성을_건너뛴다()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [GroupRootMessage(1)]
+            [Message(MessageKind.Parent, 1)]
             public abstract partial class AbstractRoot { public int X { get; set; } }
 
-            [GroupElementMessage(2)]
+            [Message(MessageKind.Child, 2)]
             public partial class Concrete : AbstractRoot { public int Y { get; set; } }
             """ + Footer);
 
@@ -741,10 +760,10 @@ public class GeneratorDiagnosticTests
     public void 그룹_계층_요소는_루트_멤버를_포함한다()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [GroupRootMessage(1)]
+            [Message(MessageKind.Parent, 1)]
             public partial class R { public int BaseField { get; set; } }
 
-            [GroupElementMessage(2)]
+            [Message(MessageKind.Child, 2)]
             public partial class E : R { public int ChildField { get; set; } }
             """ + Footer);
 
@@ -761,12 +780,12 @@ public class GeneratorDiagnosticTests
             using MessageProtocol;
             namespace NsA
             {
-                [StandaloneMessage(1)]
+                [Message(MessageKind.Standalone, 1)]
                 public partial class Same { public int X { get; set; } }
             }
             namespace NsB
             {
-                [StandaloneMessage(2)]
+                [Message(MessageKind.Standalone, 2)]
                 public partial class Same { public int Y { get; set; } }
             }
             """);
@@ -786,14 +805,14 @@ public class GeneratorDiagnosticTests
             using MessageProtocol;
             namespace A.B
             {
-                [StandaloneMessage(1)]
+                [Message(MessageKind.Standalone, 1)]
                 public partial class C { public int X { get; set; } }
             }
             namespace A
             {
                 public partial class B
                 {
-                    [StandaloneMessage(2)]
+                    [Message(MessageKind.Standalone, 2)]
                     public partial class C { public int Y { get; set; } }
                 }
             }
@@ -811,7 +830,7 @@ public class GeneratorDiagnosticTests
         // KI-17 회귀: CollectionsMarshal 이 없는 타깃(예: netstandard2.0 소비자)의 요소별 판독 경로도
         // List 사전 할당 전에 개수×요소크기 ≤ 남은 바이트 를 검증해야 한다 (개수만 검증하면 8배 선할당 강요).
         var compilation = CreateTpaCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class BulkFallbackMessage
             {
                 public System.Collections.Generic.List<long>? Values { get; set; }
@@ -834,7 +853,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT010_추상_메시지_타입은_생성_거부()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public abstract partial class AbstractMessage { public int X { get; set; } }
             """ + Footer);
 
@@ -846,7 +865,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT010_포지셔널_레코드_메시지는_생성_거부()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial record PointRecord(int X);
             """ + Footer);
 
@@ -858,7 +877,7 @@ public class GeneratorDiagnosticTests
     public void MSGPROT011_읽기_전용_멤버는_생성_거부()
     {
         var (diagnostics, generated) = RunGenerator(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial class GetOnlyMessage { public int X { get; } }
             """ + Footer);
 
@@ -873,7 +892,7 @@ public class GeneratorDiagnosticTests
         // 읽기 전용(MSGPROT011)인 멤버는 두 번째 규칙이 조용히 유실됐다 — 키에 사유(kind)·위치를 포함해
         // 같은 멤버의 같은 규칙 반복만 제거되도록 수정했다.
         var (diagnostics, _) = RunGenerator(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial class BothRulesMessage
             {
                 public System.Collections.Generic.Dictionary<string, int>? Bad { get; }
@@ -889,7 +908,7 @@ public class GeneratorDiagnosticTests
     {
         // 역방향 가드: 멤버별로 각각 한 규칙씩 위반하면 두 위치 모두 보고된다.
         var (diagnostics, _) = RunGenerator(Header + """
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial class TwoMembersMessage
             {
                 public System.Collections.Generic.Dictionary<string, int>? Unsupported { get; set; }
@@ -909,7 +928,7 @@ public class GeneratorDiagnosticTests
             public abstract class AbstractPayload { public int X { get; set; } }
             public partial record PositionalPayload(int X);
 
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class Host
             {
                 public AbstractPayload? A { get; set; }
@@ -926,7 +945,7 @@ public class GeneratorDiagnosticTests
         var (diagnostics, _) = RunGenerator(Header + """
             public partial class GetOnlyPayload { public int X { get; } }
 
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class Host
             {
                 public GetOnlyPayload? Payload { get; set; }
@@ -941,7 +960,7 @@ public class GeneratorDiagnosticTests
     {
         // KI-19 회귀: 같은 네임스페이스의 동명 중첩 캐리어 두 개가 충돌 없이 각각 유일한 등록 클래스를 방출한다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             [GenericMessage(typeof(Envelope<int>), ClassId = 1)]
             public partial class Envelope<T>
             {
@@ -975,7 +994,7 @@ public class GeneratorDiagnosticTests
         // KI-23 회귀: 인덱서도 `IPropertySymbol`(Name = "this[]")이라 멤버로 뽑히면 `message.this[]` 같은
         // 문법 오류 코드가 진단 없이 생성되어 소비자 빌드가 깨진다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class WithIndexer
             {
                 public int Value { get; set; }
@@ -992,17 +1011,17 @@ public class GeneratorDiagnosticTests
     [Fact]
     public void 추상_메시지_타입_멤버는_위임_대신_런타임_디스패치를_생성한다()
     {
-        // KI-24 회귀: abstract [GroupRootMessage] 는 다형 그룹의 자연스러운 선언이지만 생성기는 인스턴스를
+        // KI-24 회귀: abstract [Message(MessageKind.Parent)] 는 다형 그룹의 자연스러운 선언이지만 생성기는 인스턴스를
         // 만들 수 없어 정적 Serialize/Deserialize 를 방출하지 않는다 — 위임 코드는 진단 없이 소비자 빌드를
         // CS0117('AbstractEvent'에 'Serialize' 정의가 없음)로 깨뜨렸다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [GroupRootMessage(300)]
+            [Message(MessageKind.Parent, 300)]
             public abstract partial class AbstractEvent { public long Timestamp { get; set; } }
 
-            [GroupElementMessage(301)]
+            [Message(MessageKind.Child, 301)]
             public partial class LoginEvent : AbstractEvent { public string? User { get; set; } }
 
-            [StandaloneMessage(302)]
+            [Message(MessageKind.Standalone, 302)]
             public partial class Envelope
             {
                 public AbstractEvent? Payload { get; set; }
@@ -1027,10 +1046,10 @@ public class GeneratorDiagnosticTests
         // KI-24 수정의 역방향 가드: 비공개 매개변수 없는 생성자 때문에 그래프에서 빠진 *구체* 메시지 타입은
         // 여전히 생성 정적 멤버를 가지므로 정적 위임이 맞다 (런타임 디스패치로 과도하게 돌리면 안 된다).
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(310)]
+            [Message(MessageKind.Standalone, 310)]
             public partial class PrivateCtorHost { public PrivateCtorPayload? Payload { get; set; } }
 
-            [NonIdMessage]
+            [Message(MessageKind.NonId)]
             public partial class PrivateCtorPayload
             {
                 PrivateCtorPayload() { }
@@ -1052,7 +1071,7 @@ public class GeneratorDiagnosticTests
         // `Dictionary.Values` 열거 순서(삽입 순서일 뿐 규약이 아닌 BCL 구현 세부)에 얹혀 있었다.
         // 이제 `TypeMetadata.GetWireMembers` 가 명시적으로 고정하며, 이 테스트가 그 레이아웃을 못박는다.
         var compilation = CreateTpaCompilation(Header + """
-            [GroupRootMessage(400)]
+            [Message(MessageKind.Parent, 400)]
             public partial class OrderBase
             {
                 public int BaseFirst { get; set; }
@@ -1060,7 +1079,7 @@ public class GeneratorDiagnosticTests
                 public long BaseLast { get; set; }
             }
 
-            [GroupElementMessage(401)]
+            [Message(MessageKind.Child, 401)]
             public partial class OrderDerived : OrderBase
             {
                 public new long Shadowed { get; set; }
@@ -1104,7 +1123,7 @@ public class GeneratorDiagnosticTests
                 public byte NestedOwn { get; set; }
             }
 
-            [StandaloneMessage(402)]
+            [Message(MessageKind.Standalone, 402)]
             public partial class NestedOrderHost
             {
                 public int HostOwn { get; set; }
@@ -1141,7 +1160,7 @@ public class GeneratorDiagnosticTests
         // 계산형 프로퍼티에서는 길이와 요소가 서로 다른 인스턴스에서 나와 프레임이 스스로 모순된다.
         // hasCollectionsMarshal=false 는 Unity/netstandard2.1 소비자 경로라 이 저장소에서는 실행되지 않음 → 생성 텍스트로 고정.
         var compilation = CreateTpaCompilation(Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class SnapshotMessage
             {
                 public System.Collections.Generic.List<int>? Values { get; set; }
@@ -1180,8 +1199,7 @@ public class GeneratorDiagnosticTests
         // KI-8 회귀: 이미터는 카테고리 값을 `& 0x0F` 로 **조용히 마스킹**했으므로 99 는 3 이 되어
         // 와이어 MessageId 가 개발자 의도와 달라졌다(진단 없음).
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
-            [StandaloneMessage(1)]
-            [MessageCategory((MessageCategory){{categoryValue}})]
+            [Message(MessageKind.Standalone, 1, (MessageCategory){{categoryValue}})]
             public partial class BadCategory { public int X { get; set; } }
             """ + Footer);
 
@@ -1199,12 +1217,10 @@ public class GeneratorDiagnosticTests
         // **동일한 와이어 MessageId**(0x23000007) 를 만들고, 모듈 이니셜라이저에서 등록 충돌 예외
         // ("Message type with ID 587202567 is already registered by 'MaskedCategory'")로 어셈블리 로드가 실패했다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
-            [MessageCategory((MessageCategory)99)]
+            [Message(MessageKind.Standalone, 7, (MessageCategory)99)]
             public partial class MaskedCategory { public int X { get; set; } }
 
-            [StandaloneMessage(7)]
-            [MessageCategory(MessageCategory.Category3)]
+            [Message(MessageKind.Standalone, 7, MessageCategory.Category3)]
             public partial class RealCategory3 { public int X { get; set; } }
             """ + Footer);
 
@@ -1224,8 +1240,7 @@ public class GeneratorDiagnosticTests
         // 역방향 가드: 상한 검증을 넣으면서 정상 범위(특히 0·15)를 잘라내면 안 된다.
         // Standalone(2) << 4 | category → Category0 = 0x20, Category15 = 0x2F.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + $$"""
-            [StandaloneMessage(1)]
-            [MessageCategory({{categoryExpression}})]
+            [Message(MessageKind.Standalone, 1, {{categoryExpression}})]
             public partial class CategoryBoundary { public int X { get; set; } }
             """ + Footer);
 
@@ -1241,10 +1256,10 @@ public class GeneratorDiagnosticTests
         // `InvalidOperationException: Message type with ID … is already registered by '…'` → TypeInitializationException
         // (어셈블리 로드 실패)이 되고, 오류 메시지는 상대 타입만 지목해 원인을 가리키지 않았다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             public partial class FirstMessage { public int X { get; set; } }
 
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             public partial class SecondMessage { public int Y { get; set; } }
             """ + Footer);
 
@@ -1267,12 +1282,10 @@ public class GeneratorDiagnosticTests
     {
         // 역방향 가드: 충돌 키는 속성 원값이 아니라 **조립된 와이어 MessageId**(flags+category+24비트 값)다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
-            [MessageCategory(MessageCategory.Category1)]
+            [Message(MessageKind.Standalone, 7, MessageCategory.Category1)]
             public partial class CategoryOneMessage { public int X { get; set; } }
 
-            [StandaloneMessage(7)]
-            [MessageCategory(MessageCategory.Category2)]
+            [Message(MessageKind.Standalone, 7, MessageCategory.Category2)]
             public partial class CategoryTwoMessage { public int Y { get; set; } }
             """ + Footer);
 
@@ -1288,11 +1301,11 @@ public class GeneratorDiagnosticTests
         // 역방향 가드: 제네릭 구성의 런타임 키는 (MessageId, ClassId) 라 선언 id 값이 같아도 ClassId 가 다르면 공존한다.
         // (구성 간 충돌은 기존 `CollectConstructionConflicts` 가 담당한다.)
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenA<int>), ClassId = 1)]
             public partial class GenA<T> { public T? Value { get; set; } }
 
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenB<int>), ClassId = 2)]
             public partial class GenB<T> { public T? Value { get; set; } }
             """ + Footer);
@@ -1309,10 +1322,10 @@ public class GeneratorDiagnosticTests
         // 역방향 가드: abstract 그룹 루트는 상속 전용이라 생성·등록되지 않으므로(생성기가 의도적으로 건너뜀)
         // 같은 id 값의 구체 루트와 충돌하지 않는다 — 등록될 타입만 세야 거짓 양성이 안 난다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [GroupRootMessage(9)]
+            [Message(MessageKind.Parent, 9)]
             public abstract partial class AbstractRoot { public long Timestamp { get; set; } }
 
-            [GroupRootMessage(9)]
+            [Message(MessageKind.Parent, 9)]
             public partial class ConcreteRoot { public long Timestamp { get; set; } }
             """ + Footer);
 
@@ -1329,11 +1342,11 @@ public class GeneratorDiagnosticTests
         // TypeInitializationException(어셈블리 로드 실패)이 된다. (Declaration, ClassId) 키 충돌 검사는 선언이
         // 다르면 다른 키로 봐서 이 형태를 못 잡았다. 소비자 프로젝트 실험으로 수정 전 재생 확인.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenA<int>), ClassId = 1)]
             public partial class GenA<T> { public T? Value { get; set; } }
 
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenB<int>), ClassId = 1)]
             public partial class GenB<T> { public T? Value { get; set; } }
             """ + Footer);
@@ -1356,11 +1369,11 @@ public class GeneratorDiagnosticTests
     {
         // 역방향 가드: 런타임 키는 (MessageId, ClassId) 조합 — ClassId 가 다르면 공존한다.
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenA<int>), ClassId = 1)]
             public partial class GenA<T> { public T? Value { get; set; } }
 
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenB<int>), ClassId = 2)]
             public partial class GenB<T> { public T? Value { get; set; } }
             """ + Footer);
@@ -1374,11 +1387,11 @@ public class GeneratorDiagnosticTests
     public void MSGPROT015_MessageId_값이_다르면_같은_ClassId도_충돌하지_않는다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenA<int>), ClassId = 1)]
             public partial class GenA<T> { public T? Value { get; set; } }
 
-            [StandaloneMessage(8)]
+            [Message(MessageKind.Standalone, 8)]
             [GenericMessage(typeof(GenB<int>), ClassId = 1)]
             public partial class GenB<T> { public T? Value { get; set; } }
             """ + Footer);
@@ -1394,7 +1407,7 @@ public class GeneratorDiagnosticTests
         // 역방향 가드: 한 선언의 여러 구성(서로 다른 타입 인자)은 같은 MessageId 를 공유하지만 ClassId 로
         // 구분된다 — 정상적인 사용 형태. (같은 선언 + 같은 ClassId 중복은 기존 MSGPROT008 이 잡는다.)
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(7)]
+            [Message(MessageKind.Standalone, 7)]
             [GenericMessage(typeof(GenA<int>), ClassId = 1)]
             [GenericMessage(typeof(GenA<string>), ClassId = 2)]
             public partial class GenA<T> { public T? Value { get; set; } }
@@ -1423,7 +1436,7 @@ public class GeneratorDiagnosticTests
         // 그래도 생성 **텍스트**이 동일하면 Roslyn 의 출력 비교가 다운스트림을 막아 생성 트리가 교체·재컴파일되지
         // 않는다 — KI-3(전역 카운터 제거) 이전에는 텍스트가 매번 달라서 그 방어막이 소용없었다.
         string source = Header + """
-            [StandaloneMessage(1)]
+            [Message(MessageKind.Standalone, 1)]
             public partial class IncrementalMsgA
             {
                 public int X { get; set; }
@@ -1431,7 +1444,7 @@ public class GeneratorDiagnosticTests
                 public IncrementalMsgA? Next { get; set; }
             }
 
-            [StandaloneMessage(2)]
+            [Message(MessageKind.Standalone, 2)]
             public partial class IncrementalMsgB { public string? Text { get; set; } }
 
             public static class IncrementalUnrelated
@@ -1501,19 +1514,19 @@ public class GeneratorDiagnosticTests
 
             namespace Ns
             {
-                [StandaloneMessage(201)]
+                [Message(MessageKind.Standalone, 201)]
                 public partial class Outer
                 {
                     public int Value { get; set; }
 
-                    [StandaloneMessage(202)]
+                    [Message(MessageKind.Standalone, 202)]
                     public partial class Inner
                     {
                         public int Value { get; set; }
                     }
                 }
 
-                [StandaloneMessage(203)]
+                [Message(MessageKind.Standalone, 203)]
                 public partial class Outer_Inner
                 {
                     public int Value { get; set; }
@@ -1541,7 +1554,7 @@ public class GeneratorDiagnosticTests
         const string source = """
             using MessageProtocol;
 
-            [StandaloneMessage(210)]
+            [Message(MessageKind.Standalone, 210)]
             [GenericMessage(typeof(Ns.ErrorCarrier.Box<int>), ClassId = UNDECLARED_CONSTANT)]
             public partial class ErrorCarrier
             {
@@ -1550,7 +1563,7 @@ public class GeneratorDiagnosticTests
 
             namespace Ns
             {
-                [StandaloneMessage(211)]
+                [Message(MessageKind.Standalone, 211)]
                 public partial class Box<T>
                 {
                     public T? Value { get; set; }
@@ -1580,7 +1593,7 @@ public class GeneratorDiagnosticTests
         var (diagnostics, generated, _) = RunGeneratorWithCompilation(
             Header
             + """
-            [StandaloneMessage(221)]
+            [Message(MessageKind.Standalone, 221)]
             public partial class ExoticMember
             {
             """
@@ -1598,7 +1611,7 @@ public class GeneratorDiagnosticTests
     public void 가변_struct_메시지는_정상_생성된다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(222)]
+            [Message(MessageKind.Standalone, 222)]
             public partial struct MutablePoint
             {
                 public int X { get; set; }
@@ -1615,7 +1628,7 @@ public class GeneratorDiagnosticTests
     public void static_멤버와_const는_와이어에서_제외된다()
     {
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
-            [StandaloneMessage(223)]
+            [Message(MessageKind.Standalone, 223)]
             public partial class WithStatics
             {
                 public const int Const = 5;
@@ -1667,7 +1680,7 @@ public class GeneratorDiagnosticTests
         var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation("""
             using MessageProtocol;
 
-            [GroupRootMessage(1)]
+            [Message(MessageKind.Parent, 1)]
             public partial class ZRoot { public int X { get; set; } }
 
             [Message]
@@ -1680,5 +1693,100 @@ public class GeneratorDiagnosticTests
         Assert.Contains("Zq4197766", reported[0].GetMessage());
         Assert.DoesNotContain("partial class Zq4197766", generated);
         Assert.Empty(compileErrors);
+    }
+
+    static string ExtractMessageId(string generated)
+    {
+        var match = Regex.Match(generated, @"MessageId => (\d+);");
+        Assert.True(match.Success, "생성 코드에 MessageId 상수가 없다");
+        return match.Groups[1].Value;
+    }
+
+    [Fact]
+    public void kind_Standalone의_id_생략은_Automatic과_동일한_FullName_해시_MessageId를_생성한다()
+    {
+        // id 를 생략(0)한 explicit kind 의 해시 Id 는 Automatic 추론과 동일 경로(MessageIdHash.FromFullName)를 써야 한다.
+        var (standaloneDiagnostics, standaloneGenerated, standaloneErrors) = RunGeneratorWithCompilation(Header + """
+            [Message(MessageKind.Standalone)]
+            public partial class HashTarget { public int X { get; set; } }
+            """ + Footer);
+
+        var (messageDiagnostics, messageGenerated, messageErrors) = RunGeneratorWithCompilation(Header + """
+            [Message]
+            public partial class HashTarget { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(standaloneDiagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(standaloneErrors);
+        Assert.Empty(messageErrors);
+
+        // 동일 FullName → 동일 해시 → 동일 와이어 MessageId ([Message] Automatic 은 파생이 없어 Standalone 로 추론된다).
+        Assert.Equal(ExtractMessageId(standaloneGenerated), ExtractMessageId(messageGenerated));
+    }
+
+    [Fact]
+    public void Automatic에_수동_id를_함께_쓰면_추론_종류에_수동_id가_실린다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [Message(id: 300)]
+            public partial class AutoManualId { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        // Standalone(2)<<4 | 0, id 300 → 0x2000012C = 536871212.
+        Assert.Equal("536871212", ExtractMessageId(generated));
+        Assert.Contains("writer.WriteByte(0x20);", generated);
+    }
+
+    [Fact]
+    public void Child의_id_0은_수동_0이_아니라_해시로_해석된다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [Message(MessageKind.Parent, 10)]
+            public partial class ZeroIdRoot { public int X { get; set; } }
+
+            [Message(MessageKind.Child, 0)]
+            public partial class ZeroIdChild : ZeroIdRoot { public int Y { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        // id 0 은 '생략' — FullName 해시가 실리며(해시 0 이면 MSGPROT017), 수동 0 은 표현되지 않는다.
+        Assert.DoesNotContain("MessageId => 0;", generated);
+        Assert.Contains("writer.WriteByte(0x80);", generated);   // Child(8)<<4 | 0
+    }
+
+    [Fact]
+    public void 수동_Id와_category_생성자_인자는_와이어_MessageId에_그대로_반영된다()
+    {
+        // (uint id, MessageCategory category) 오버로드 — 기존 수동 Id 할당 호환 + category 니블 반영.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [Message(MessageKind.Standalone, 5, MessageCategory.Category3)]
+            public partial class ManualWithCategory { public int X { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        Assert.Contains("MessageId => 587202565;", generated);   // 0x23000005: Standalone(2)<<4 | 3, id 5
+        Assert.Contains("writer.WriteByte(0x23);", generated);
+    }
+
+    [Fact]
+    public void category_전용_생성자는_해시_Id와_category를_함께_쓴다()
+    {
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [Message(MessageKind.Parent, category: MessageCategory.Category2)]
+            public partial class CatRoot { public int X { get; set; } }
+
+            [Message(MessageKind.Child)]
+            public partial class CatChild : CatRoot { public int Y { get; set; } }
+            """ + Footer);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id.StartsWith("MSGPROT"));
+        Assert.Empty(compileErrors);
+        // 루트 헤더: GroupRoot(4)<<4 | 2 = 0x42. 해시 Id 는 0이 아니다(GroupElement 해시 0 은 MSGPROT017 로 거부됨).
+        Assert.Contains("writer.WriteByte(0x42);", generated);
+        Assert.DoesNotContain("MessageId => 0;", generated);
     }
 }

@@ -14,7 +14,7 @@ namespace MessageProtocol.Tests;
 public partial class WriterAbortPoolIntegrityTests
 {
     /// <summary>두 번째 멤버 게터에서 던지는 제어 가능 픽스처 — 첫 멤버는 이미 기록된 상태로 중단시킨다.</summary>
-    [StandaloneMessage(160)]
+    [Message(MessageKind.Standalone, 160)]
     public partial class AbortProbeMessage
     {
         public int First { get; set; }

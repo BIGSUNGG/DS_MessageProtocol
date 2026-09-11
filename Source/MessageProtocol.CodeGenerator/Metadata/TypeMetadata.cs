@@ -19,7 +19,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public bool IsGroupRootMessage { get; }
         public bool IsGroupElementMessage { get; }
 
-        /// <summary>[Message] 속성이 붙어 MessageId 를 FullName 해시로 얻는 타입인지 (종류 추론·충돌 진단 근거).</summary>
+        /// <summary>[Message] 또는 무인수 explicit 속성으로 MessageId 를 FullName 해시로 얻는 타입인지 (종류 추론·충돌 진단 근거).</summary>
         public bool IsHashIdMessage { get; }
 
         public uint StandaloneMessageId { get; }
@@ -49,7 +49,7 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public bool CanUseModuleInitializer => !Symbol.IsGenericType
             && ContainingTypes.All(static c => string.IsNullOrEmpty(c.TypeParameters));
 
-        /// <summary>헤더 하위 니블(0~15). MessageCategoryAttribute 가 없으면 0.</summary>
+        /// <summary>헤더 하위 니블(0~15). 속성 생성자가 category 를 안 주면 0.</summary>
         public byte Category { get; }
 
         public TypeMetadata? BaseTypeMetadata { get; }
@@ -71,19 +71,20 @@ namespace MessageProtocol.CodeGenerator.Metadata
             DeclarationKind = TypeDeclarationKindHelper.GetDeclarationKind(typeSymbol);
             ContainingTypes = GetContainingTypes(typeSymbol);
 
-            var nonIdMessageAttribute = typeSymbol.FindAttribute(references.NonIdMessageAttributeType);
             var messageAttribute = typeSymbol.FindAttribute(references.MessageAttributeType);
-            var standaloneMessageAttribute = typeSymbol.FindAttribute(references.StandaloneMessageAttributeType);
-            var groupRootMessageAttribute = typeSymbol.FindAttribute(references.GroupRootMessageAttributeType);
-            var groupElementMessageAttribute = typeSymbol.FindAttribute(references.GroupElementMessageAttributeType);
 
-            IsHashIdMessage = messageAttribute != null;
+            // [Message] 단일 속성에서 종류·수동 Id·category 를 해독한다. 정의되지 않은 Kind 값이면
+            // 검증기(MSGPROT018)가 이미 보고했으므로 Automatic 으로 안전하게 되돌린다.
+            if (!TryDecodeMessageAttribute(messageAttribute, out MessageKind kind, out uint manualId, out byte messageCategory))
+            {
+                kind = MessageKind.Automatic;
+            }
 
-            // [Message] 종류 자동 추론: 조상에 메시지 속성이 있으면 GroupElement,
-            // 없고 이 컴파일에 [Message] 파생이 있으면 GroupRoot, 나머지는 Standalone.
-            // [NonId] 조상은 세지 않는다 — 와이어 정체성(루트 역할)이 없다.
+            // Automatic 종류 추론: 조상에 메시지가 있으면 Child(GroupElement),
+            // 없고 이 컴파일에 [Message] 파생이 있으면 Parent(GroupRoot), 나머지는 Standalone.
+            // NonId 조상은 세지 않는다 — 와이어 정체성(루트 역할)이 없다.
             bool inferredStandalone = false, inferredGroupRoot = false, inferredGroupElement = false;
-            if (messageAttribute != null)
+            if (messageAttribute != null && kind == MessageKind.Automatic)
             {
                 if (HasMessageAncestor(typeSymbol, references))
                 {
@@ -99,26 +100,23 @@ namespace MessageProtocol.CodeGenerator.Metadata
                 }
             }
 
-            IsNonIdMessage = nonIdMessageAttribute != null;
-            IsStandaloneMessage = standaloneMessageAttribute != null || inferredStandalone;
-            IsGroupRootMessage = groupRootMessageAttribute != null || inferredGroupRoot;
-            IsGroupElementMessage = groupElementMessageAttribute != null || inferredGroupElement;
+            IsNonIdMessage = messageAttribute != null && kind == MessageKind.NonId;
+            IsStandaloneMessage = messageAttribute != null && (kind == MessageKind.Standalone || inferredStandalone);
+            IsGroupRootMessage = messageAttribute != null && (kind == MessageKind.Parent || inferredGroupRoot);
+            IsGroupElementMessage = messageAttribute != null && (kind == MessageKind.Child || inferredGroupElement);
             IsGroupMessage = IsGroupRootMessage || IsGroupElementMessage;
 
-            // [Message] 는 무인수 — ID 는 항상 FullName 해시. 해시는 선언 이름만으로 결정되므로
-            // 동일 타입이 어느 컴파일에서 해시돼도 같은 값을 가진다(와이어 안정성).
-            uint fullNameHash = messageAttribute != null ? MessageIdHash.FromFullName(BuildFullName(typeSymbol)) : 0;
-            StandaloneMessageId = standaloneMessageAttribute != null
-                ? ReadMessageIdOrDefault(standaloneMessageAttribute)
-                : inferredStandalone ? fullNameHash : 0;
-            GroupRootMessageId = groupRootMessageAttribute != null
-                ? ReadMessageIdOrDefault(groupRootMessageAttribute)
-                : inferredGroupRoot ? fullNameHash : 0;
-            GroupElementMessageId = groupElementMessageAttribute != null
-                ? ReadMessageIdOrDefault(groupElementMessageAttribute)
-                : inferredGroupElement ? fullNameHash : 0;
+            // 수동 Id 를 생략(0)하면 모든 Id 종류(Automatic 추론 포함)가 FullName 해시를 쓴다.
+            // 해시는 선언 이름만으로 결정되므로 동일 타입이 어느 컴파일에서 해시돼도 같은 값을 가진다(와이어 안정성).
+            IsHashIdMessage = messageAttribute != null && !IsNonIdMessage && manualId == 0;
+            uint fullNameHash = IsHashIdMessage ? MessageIdHash.FromFullName(BuildFullName(typeSymbol)) : 0;
+            uint idValue = manualId != 0 ? manualId : fullNameHash;
+            StandaloneMessageId = IsStandaloneMessage ? idValue : 0;
+            GroupRootMessageId = IsGroupRootMessage ? idValue : 0;
+            GroupElementMessageId = IsGroupElementMessage ? idValue : 0;
 
-            Category = ReadMessageCategoryOrDefault(typeSymbol.FindAttribute(references.MessageCategoryAttributeType));
+            // NonId 는 id·category 인자 금지(MSGPROT018) — 검증을 통과하지 못한 조합은 0 으로 되돌린다.
+            Category = IsNonIdMessage ? (byte)0 : messageCategory;
 
             var baseTypeSymbol = typeSymbol.BaseType;
             if (baseTypeSymbol != null &&
@@ -136,17 +134,14 @@ namespace MessageProtocol.CodeGenerator.Metadata
         /// </summary>
         public MemberMetadata[] Members => _members ??= ComputeMembers(Symbol, _references);
 
-        /// <summary>조상(자기 자신 제외) 중 와이어 정체성을 가진 메시지 속성(Standalone/GroupRoot/GroupElement/Message)이 있는지.</summary>
+        /// <summary>조상(자기 자신 제외) 중 [Message] 선언이 있는지 — 속성은 Inherited = false 라 선언부만 확인한다.</summary>
         static bool HasMessageAncestor(INamedTypeSymbol typeSymbol, AttributeReferences references)
         {
             for (var baseType = typeSymbol.BaseType;
                  baseType != null && baseType.SpecialType != SpecialType.System_Object;
                  baseType = baseType.BaseType)
             {
-                if (baseType.ContainAttribute(references.StandaloneMessageAttributeType)
-                    || baseType.ContainAttribute(references.GroupRootMessageAttributeType)
-                    || baseType.ContainAttribute(references.GroupElementMessageAttributeType)
-                    || baseType.ContainAttribute(references.MessageAttributeType))
+                if (baseType.ContainAttribute(references.MessageAttributeType))
                 {
                     return true;
                 }
@@ -253,8 +248,8 @@ namespace MessageProtocol.CodeGenerator.Metadata
                 flags = MessageFlag.None;
                 if (IsNonIdMessage) flags |= MessageFlag.NonIdMessage;
                 if (IsStandaloneMessage) flags |= MessageFlag.Standalone;
-                if (IsGroupRootMessage) flags |= MessageFlag.GroupRoot;
-                if (IsGroupElementMessage) flags |= MessageFlag.GroupElement;
+                if (IsGroupRootMessage) flags |= MessageFlag.Parent;
+                if (IsGroupElementMessage) flags |= MessageFlag.Child;
             }
 
             return MessageWireFormat.ComposeMessageId(flags, Category, GetMessageIdValue());
@@ -268,31 +263,57 @@ namespace MessageProtocol.CodeGenerator.Metadata
             return 0;
         }
 
-        static uint ReadMessageIdOrDefault(AttributeData? attributeData)
+        /// <summary>
+        /// [Message] 생성자 인자를 해독한다: MessageKind 인자는 kind, MessageCategory 인자는 category 니블,
+        /// 정수 인자는 수동 Id(0 = 생략 → FullName 해시). kind 가 정의되지 않은 값이면 false —
+        /// 검증기가 MSGPROT018 로 보고한다.
+        /// </summary>
+        internal static bool TryDecodeMessageAttribute(
+            AttributeData? attributeData,
+            out MessageKind kind,
+            out uint manualId,
+            out byte category)
         {
-            if (attributeData == null || attributeData.ConstructorArguments.Length == 0)
+            kind = MessageKind.Automatic;
+            manualId = 0;
+            category = 0;
+            if (attributeData == null)
             {
-                return 0;
+                return true;
             }
 
-            return TryConvertToUInt32(attributeData.ConstructorArguments[0].Value, out uint value)
-                ? value
-                : 0;
-        }
-
-        static byte ReadMessageCategoryOrDefault(AttributeData? attributeData)
-        {
-            if (attributeData == null || attributeData.ConstructorArguments.Length == 0)
+            uint rawKind = (uint)MessageKind.Automatic;
+            foreach (var argument in attributeData.ConstructorArguments)
             {
-                return 0;
+                if (argument.Type?.TypeKind == TypeKind.Enum)
+                {
+                    if (!TryConvertToUInt32(argument.Value, out uint value))
+                    {
+                        continue;
+                    }
+
+                    if (argument.Type.Name == nameof(MessageKind))
+                    {
+                        rawKind = value;
+                    }
+                    else
+                    {
+                        category = (byte)(value & MessageWireFormat.NibbleMask);
+                    }
+                }
+                else if (TryConvertToUInt32(argument.Value, out uint id))
+                {
+                    manualId = id;
+                }
             }
 
-            if (!TryConvertToUInt32(attributeData.ConstructorArguments[0].Value, out uint value))
+            if (rawKind > (uint)MessageKind.NonId)
             {
-                return 0;
+                return false;
             }
 
-            return (byte)(value & 0x0Fu);
+            kind = (MessageKind)rawKind;
+            return true;
         }
 
         internal static bool TryConvertToUInt32(object? value, out uint result)

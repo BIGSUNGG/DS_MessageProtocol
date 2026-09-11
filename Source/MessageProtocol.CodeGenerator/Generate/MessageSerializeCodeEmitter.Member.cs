@@ -123,7 +123,7 @@ namespace MessageProtocol.CodeGenerator.Generate
                 }
 
                 // 5) 메시지 타입인데 그래프 밖 (다른 어셈블리 등) — 정적 Serialize 위임.
-                //    단, 추상 메시지 타입(abstract [GroupRootMessage] 등)은 생성기가 정적 Serialize/Deserialize 를
+                //    단, 추상 메시지 타입(abstract [Message(MessageKind.Parent)] 등)은 생성기가 정적 Serialize/Deserialize 를
                 //    방출하지 않으므로(MSGPROT010 계열 — 인스턴스 생성 불가) 위임 코드가 소비자 빌드를 CS0117 로 깨뜨린다.
                 //    대신 런타임 메시지 디스패치로 *구체* 요소를 헤더째 쓴다 — 파생 멤버 유실 없이 다형성이 복원된다.
                 if (graph.IsMessageType(typeSymbol))

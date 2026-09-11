@@ -54,14 +54,6 @@ namespace MessageProtocol.CodeGenerator
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
-        public static readonly DiagnosticDescriptor DuplicateMessageAttributes = new(
-            id: "MSGPROT007",
-            title: "Message attributes are mutually exclusive",
-            messageFormat: "Message type '{0}' has multiple message attributes ({1}); they are mutually exclusive and code generation is skipped",
-            category: Category,
-            defaultSeverity: DiagnosticSeverity.Warning,
-            isEnabledByDefault: true);
-
         public static readonly DiagnosticDescriptor InvalidGenericMessageDeclaration = new(
             id: "MSGPROT008",
             title: "Invalid GenericMessage declaration",
@@ -121,7 +113,7 @@ namespace MessageProtocol.CodeGenerator
         public static readonly DiagnosticDescriptor HashMessageIdCollision = new(
             id: "MSGPROT016",
             title: "[Message] full-name hash MessageId collision",
-            messageFormat: "Message type '{0}' composes wire MessageId 0x{1} from its full-name hash, which is also composed by {2}. Rename one of the types or switch it to an explicit id attribute ([StandaloneMessage]/[GroupRootMessage]/[GroupElementMessage]) — the 24-bit hash space cannot be re-probed without breaking already-shipped message ids.",
+            messageFormat: "Message type '{0}' composes wire MessageId 0x{1} from its full-name hash, which is also composed by {2}. Rename one of the types or assign it an explicit id ([Message(id: …)]) — the 24-bit hash space cannot be re-probed without breaking already-shipped message ids.",
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
@@ -129,7 +121,15 @@ namespace MessageProtocol.CodeGenerator
         public static readonly DiagnosticDescriptor GroupElementHashZero = new(
             id: "MSGPROT017",
             title: "[Message] group element hash resolved to 0",
-            messageFormat: "The [Message] type '{0}' is inferred as a group element whose full-name hash is 0, which is reserved. Rename the type or use an explicit [GroupElementMessage] id — group element ids cannot be 0.",
+            messageFormat: "The [Message] type '{0}' is a child message whose full-name hash is 0, which is reserved. Rename the type or assign an explicit id ([Message(MessageKind.Child, id: …)]) — child message ids cannot be 0.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor MessageArgumentMismatch = new(
+            id: "MSGPROT018",
+            title: "[Message] constructor arguments do not match the declared kind",
+            messageFormat: "Type '{0}' has invalid [Message] usage: {1}",
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);

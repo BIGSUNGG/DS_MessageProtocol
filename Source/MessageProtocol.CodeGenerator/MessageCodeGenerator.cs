@@ -18,27 +18,16 @@ namespace MessageProtocol.CodeGenerator
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            var standalone = CreateAttributeProvider(context, MetadataNames.StandaloneMessageAttribute);
-            var groupRoot = CreateAttributeProvider(context, MetadataNames.GroupRootMessageAttribute);
-            var groupElement = CreateAttributeProvider(context, MetadataNames.GroupElementMessageAttribute);
-            var nonId = CreateAttributeProvider(context, MetadataNames.NonIdMessageAttribute);
+            // [Message] 이 종류 선언의 유일한 속성이다. [GenericMessage] 는 구성 선언용 캐리어 속성.
             var generic = CreateAttributeProvider(context, MetadataNames.GenericMessageAttribute);
             var message = CreateAttributeProvider(context, MetadataNames.MessageAttribute);
 
-            var candidates = standalone.Collect()
-                .Combine(groupRoot.Collect())
-                .Combine(groupElement.Collect())
-                .Combine(nonId.Collect())
-                .Combine(generic.Collect())
+            var candidates = generic.Collect()
                 .Combine(message.Collect())
                 .Select(static (sources, _) =>
                 {
-                    var (((((standaloneTypes, groupRootTypes), groupElementTypes), nonIdTypes), genericTypes), messageTypes) = sources;
-                    return standaloneTypes
-                        .Concat(groupRootTypes)
-                        .Concat(groupElementTypes)
-                        .Concat(nonIdTypes)
-                        .Concat(genericTypes)
+                    var (genericTypes, messageTypes) = sources;
+                    return genericTypes
                         .Concat(messageTypes)
                         .Distinct(NamedTypeSymbolComparer.Instance)
                         .ToImmutableArray();
@@ -138,12 +127,17 @@ namespace MessageProtocol.CodeGenerator
                 return;
             }
 
-            var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
-
-            if (TryReportDuplicateMessageAttributes(typeMeta, context, location))
+            if (!TypeMetadataValidator.TryValidateMessageAttributeConsistency(typeSymbol, attributeReferences, out string argumentMismatch))
             {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.MessageArgumentMismatch,
+                    location,
+                    typeSymbol.Name,
+                    argumentMismatch));
                 return;
             }
+
+            var typeMeta = new TypeMetadata(typeSymbol, attributeReferences);
 
             if (!ValidateRootHierarchy(typeSymbol, typeMeta, attributeReferences, context, location))
             {
@@ -156,7 +150,7 @@ namespace MessageProtocol.CodeGenerator
                 return;
             }
 
-            // [Message] 해시가 GroupElement 위치에서 0 을 조립하면 (확률 1/2^24) — 기존 [GroupElementMessage] 와
+            // [Message] 해시가 Child 위치에서 0 을 조립하면 (확률 1/2^24) — 수동 id 와
             // 동일하게 0 은 금지다. 자동 재해시는 하지 않는다: 나중 메시지 추가로 기존 ID 가 바뀌는 와이어 파손을
             // 만들지 않게, 이름을 바꾸거나 명시적 ID 속성으로 전환하게 안내한다.
             if (typeMeta.IsHashIdMessage && typeMeta.IsGroupElementMessage && typeMeta.GroupElementMessageId == 0)
@@ -340,11 +334,8 @@ namespace MessageProtocol.CodeGenerator
 
         internal static bool HasMessageAttribute(INamedTypeSymbol typeSymbol, AttributeReferences attributeReferences)
         {
-            return typeSymbol.ContainAttribute(attributeReferences.NonIdMessageAttributeType)
-                || typeSymbol.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
-                || typeSymbol.ContainAttribute(attributeReferences.GroupRootMessageAttributeType)
-                || typeSymbol.ContainAttribute(attributeReferences.GroupElementMessageAttributeType)
-                || typeSymbol.ContainAttribute(attributeReferences.MessageAttributeType);
+            // [Message] 이 종류 선언의 유일한 속성이다 — AllowMultiple = false 라 중복 부착 자체가 컴파일 오류이다.
+            return typeSymbol.ContainAttribute(attributeReferences.MessageAttributeType);
         }
 
         /// <summary>
@@ -356,7 +347,7 @@ namespace MessageProtocol.CodeGenerator
         /// </summary>
         /// <summary>
         /// 모듈 로드 시 구성 등록이 **실제로 조립할** 제네릭 와이어 MessageId. 등록되지 않는 선언은 false —
-        /// 제네릭이 아니거나 [StandaloneMessage] 가 없거나, partial 아님·기본 생성 불가(MSGPROT001·MSGPROT010),
+        /// 제네릭이 아니거나 [Message] 선언이 아니거나, partial 아님·기본 생성 불가(MSGPROT001·MSGPROT010),
         /// ID·카테고리 범위 위반(MSGPROT005·MSGPROT013), 메시지 속성 중복(MSGPROT007) 으로 이미 거부될 선언은
         /// 생성·등록되지 않으므로 충돌 판정에서 뺀다 — 연쇄 오탐 방지 규약은 <see cref="GenericConstruction.TryGetRegisteredWireMessageId"/>
         /// (KI-31) 와 같다.
@@ -420,42 +411,6 @@ namespace MessageProtocol.CodeGenerator
         }
 
         /// <summary>
-        /// 한 타입에 메시지 속성이 2개 이상이면 MSGPROT007 경고 후 생성을 건너뛴다.
-        /// 중복 속성은 헤더 플래그를 OR 로 합쳐 런타임 등록·디스패치와 어긋나기 때문이다.
-        /// </summary>
-        static bool TryReportDuplicateMessageAttributes(TypeMetadata typeMeta, SourceProductionContext context, Location location)
-        {
-            if (!HasMultipleMessageAttributes(typeMeta))
-            {
-                return false;
-            }
-
-            var names = new List<string>(4);
-            if (typeMeta.IsNonIdMessage) names.Add("NonIdMessage");
-            if (typeMeta.IsStandaloneMessage) names.Add("StandaloneMessage");
-            if (typeMeta.IsGroupRootMessage) names.Add("GroupRootMessage");
-            if (typeMeta.IsGroupElementMessage) names.Add("GroupElementMessage");
-
-            context.ReportDiagnostic(Diagnostic.Create(
-                DiagnosticDescriptors.DuplicateMessageAttributes,
-                location,
-                typeMeta.Symbol.Name,
-                string.Join(", ", names)));
-            return true;
-        }
-
-        /// <summary>메시지 속성이 2개 이상인지 — 중복 선언은 MSGPROT007 로 생성이 건너뛰어지므로 등록되지 않는다.</summary>
-        internal static bool HasMultipleMessageAttributes(TypeMetadata typeMeta)
-        {
-            int count = 0;
-            if (typeMeta.IsNonIdMessage) count++;
-            if (typeMeta.IsStandaloneMessage) count++;
-            if (typeMeta.IsGroupRootMessage) count++;
-            if (typeMeta.IsGroupElementMessage) count++;
-            return count > 1;
-        }
-
-        /// <summary>
         /// 타입에 붙은 [GenericMessage(typeof(구성), ClassId)] 선언을 파싱한다. 잘못된 속성 인수는 Construction 이 null.
         /// </summary>
         static bool ValidateRootHierarchy(INamedTypeSymbol typeSymbol, TypeMetadata typeMeta, AttributeReferences attributeReferences)
@@ -498,17 +453,15 @@ namespace MessageProtocol.CodeGenerator
                 }
             }
 
-            // 루트 메시지의 조상이 루트일 수 없다.
+            // 루트 메시지의 조상이 루트일 수 없다 — 메타데이터 체인으로 확인하므로 추론 루트도 잡힌다.
             if (typeMeta.IsGroupRootMessage)
             {
-                var baseType = typeSymbol.BaseType;
-                while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+                for (var baseMeta = typeMeta.BaseTypeMetadata; baseMeta != null; baseMeta = baseMeta.BaseTypeMetadata)
                 {
-                    if (baseType.FindAttribute(attributeReferences.GroupRootMessageAttributeType) != null)
+                    if (baseMeta.IsGroupRootMessage)
                     {
                         return false;
                     }
-                    baseType = baseType.BaseType;
                 }
             }
 

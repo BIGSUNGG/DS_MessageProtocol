@@ -87,8 +87,8 @@ public class RoundTripTests
     {
         Assert.Equal(MessageWireFormat.ComposeMessageId(MessageFlag.Standalone, 0, 100), FlatMessage.MessageId);
         Assert.Equal(MessageWireFormat.ComposeMessageId(MessageFlag.Standalone, 5, 101), AllTypesMessage.MessageId);
-        Assert.Equal(MessageWireFormat.ComposeMessageId(MessageFlag.GroupRoot, 0, 110), EventBase.MessageId);
-        Assert.Equal(MessageWireFormat.ComposeMessageId(MessageFlag.GroupElement, 0, 111), LoginEvent.MessageId);
+        Assert.Equal(MessageWireFormat.ComposeMessageId(MessageFlag.Parent, 0, 110), EventBase.MessageId);
+        Assert.Equal(MessageWireFormat.ComposeMessageId(MessageFlag.Child, 0, 111), LoginEvent.MessageId);
     }
 
     [Fact]

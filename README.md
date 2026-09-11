@@ -47,7 +47,7 @@ Declare a message type:
 ```csharp
 using MessageProtocol;
 
-[StandaloneMessage(1)]
+[Message(MessageKind.Standalone, 1)]
 public partial class PlayerSpawn
 {
     public int PlayerId { get; set; }
@@ -87,14 +87,20 @@ Prefer zero bookkeeping? `[Message]` (no arguments) infers the message kind from
 
 ### Message kinds and categories
 
-| Attribute | Purpose |
-| --------- | ------- |
-| `[Message]` | Zero-argument declaration — kind is **inferred** from the hierarchy, ID is the **full-name hash** (see below) |
-| `[StandaloneMessage(uint id)]` | Independent message with an ID |
-| `[GroupRootMessage(uint id)]` | Group root (inheritable base for a message family) |
-| `[GroupElementMessage(uint id)]` | Group element (id ≠ 0, requires a root in its inheritance hierarchy) |
-| `[NonIdMessage]` | Message without an ID (1-byte header) |
-| `[MessageCategory(MessageCategory.Category0..15)]` | Category nibble in the header byte (single category member only) |
+`[Message(MessageKind kind = Automatic, uint id = 0, MessageCategory category = Category0)]` is the single entry point for declaring a message:
+
+| `MessageKind` | Meaning |
+| ------------ | ------- |
+| `Automatic` (default) | Kind **inferred** from the hierarchy (see below) |
+| `Standalone` | Independent message (4-byte header) |
+| `Parent` | Parent of a message family — the top of an inheritance hierarchy |
+| `Child` | Child message — requires a `Parent` (or `[Message]`) base; manual id ≠ 0 |
+| `NonId` | Message without an ID (1-byte header); must not take `id`/`category` arguments (`MSGPROT018`) |
+
+Omitting `id` (or passing `0`) derives the ID from the type's **full-name hash** (see below); passing `id` assigns it manually (`Automatic` + `id` works too). The `category` nibble (0..15) is optional and defaults to `Category0` — use a single category member.
+
+| Related attribute | Purpose |
+| ----------------- | ------- |
 | `[GenericMessage(typeof(Construction), ClassId = n)]` | Declares a closed generic construction; repeatable (`AllowMultiple`) |
 
 Rules:
@@ -106,18 +112,17 @@ Rules:
 Example group hierarchy and category:
 
 ```csharp
-[GroupRootMessage(10)]
-[MessageCategory(MessageCategory.Category3)]
+[Message(MessageKind.Parent, 10, MessageCategory.Category3)]
 public partial class ShapeRoot { public string? Name { get; set; } }
 
-[GroupElementMessage(11)]
+[Message(MessageKind.Child, 11)]
 public partial class Circle : ShapeRoot { public double Radius { get; set; } }
 ```
 
 Generic messages close over specific constructions with a single attribute; declared constructions are auto-registered on module load for both sides:
 
 ```csharp
-[StandaloneMessage(40)]
+[Message(40)]
 [GenericMessage(typeof(Envelope<PlayerSpawn>), ClassId = 1)]
 [GenericMessage(typeof(Envelope<Circle>), ClassId = 2)]
 public partial class Envelope<T>
@@ -127,29 +132,29 @@ public partial class Envelope<T>
 }
 ```
 
-#### `[Message]` — auto-inferred kinds and hash IDs
+#### `MessageKind.Automatic` — inferred kinds and hash IDs
 
-`[Message]` declares a message with **no kind and no ID** — both are derived for you:
+`[Message]` with the default `Automatic` kind derives **both** the kind and the ID for you:
 
-- **Kind inference**: a base in the hierarchy carrying any message attribute → **GroupElement**; otherwise, if another `[Message]` type in the same compilation derives from it → **GroupRoot**; otherwise → **Standalone**.
+- **Kind inference**: a base in the hierarchy carrying `[Message]` → **Child**; otherwise, if another `[Message]` type in the same compilation derives from it → **Parent**; otherwise → **Standalone**.
 - **Hash ID**: the ID is the FNV-1a 32-bit hash of the type's full name (BCL `Type.FullName` conventions: namespace dots, `+` for nesting, `` `n `` arity), masked to the wire's 24 bits. The algorithm and name format are **frozen** — renaming a type changes its ID; both peers must ship the same name.
 
 ```csharp
 [Message]                                    // no derived [Message] types → Standalone
 public partial class ChatText { public string? Text { get; set; } }
 
-[Message]                                    // AutoEvent children derive → GroupRoot
+[Message]                                    // AutoEvent children derive → Parent
 public partial class AutoEvent { public long Timestamp { get; set; } }
 
-[Message]                                    // message-attributed ancestor → GroupElement
+[Message]                                    // message-attributed ancestor → Child
 public partial class PlayerJoined : AutoEvent { public int PlayerId { get; set; } }
 
 [Message]                                    // same for PlayerLeft, …
 public partial class PlayerLeft : AutoEvent { public string? Reason { get; set; } }
 ```
 
-- **Collisions are compile errors, not re-hashes**: two `[Message]` types whose full names hash to the same 24-bit value fail with `MSGPROT016` (rename one, or switch it to an explicit id attribute). A group element whose hash resolves to `0` fails with `MSGPROT017`. IDs never silently change after you ship.
-- **Cross-assembly derivation works**: in another project you can derive from a message base compiled elsewhere (e.g. a shared protocol DLL) — just apply `[Message]` (or any explicit attribute) to the derived type and the generator follows the referenced base chain, registering the new element.
+- **Collisions are compile errors, not re-hashes**: two hash-ID types whose full names hash to the same 24-bit value fail with `MSGPROT016` (rename one, or assign an explicit id: `[Message(id: …)]`). A child message whose hash resolves to `0` fails with `MSGPROT017`. IDs never silently change after you ship.
+- **Cross-assembly derivation works**: in another project you can derive from a message base compiled elsewhere (e.g. a shared protocol DLL) — just apply `[Message]` to the derived type and the generator follows the referenced base chain, registering the new element.
 - **Generic declarations**: `[Message]` on an open generic declaration replaces the declaration's MessageId with its hash; closed constructions still use the manual `[GenericMessage(typeof(...), ClassId = n)]` declarations shown above.
 - **Non-public types are supported**: generated partials follow the declared accessibility (`internal` works).
 - `MessageIdHash.FromFullName(name)` (runtime helper, same single source as the generator) computes the ID for a given full name — handy for diagnostics and tooling.
@@ -173,7 +178,7 @@ Serialization order = wire order: members are written in declaration order, foll
 ### Member control
 
 ```csharp
-[StandaloneMessage(4)]
+[Message(MessageKind.Standalone, 4)]
 public partial class MemberControl
 {
     public int Kept { get; set; }
@@ -207,8 +212,9 @@ The generated text is deterministic. The generator also validates your protocol 
 | `MSGPROT012` | **Warning** — member declared as a *concrete* base with derived message types: derived members are silently dropped (make the base `abstract` to get polymorphic dispatch instead) |
 | `MSGPROT013` | `MessageCategory` out of range (0..15) |
 | `MSGPROT014` | Duplicate composed wire MessageId across two message types |
-| `MSGPROT016` | `[Message]` full-name hash collision — rename one type or switch it to an explicit id attribute |
-| `MSGPROT017` | `[Message]` group element hash resolved to `0` (reserved) — rename or use `[GroupElementMessage]` |
+| `MSGPROT016` | full-name hash collision — rename one type or assign an explicit id (`[Message(id: …)]`) |
+| `MSGPROT017` | child message hash resolved to `0` (reserved) — rename or assign an explicit id |
+| `MSGPROT018` | `[Message]` arguments do not match the kind (`NonId` with `id`/`category`, or an undefined `MessageKind` value) |
 
 ### Runtime `MessageSerializer`
 
@@ -235,7 +241,7 @@ Manual message implementation is supported: expose the same contract shape (`IMe
 | ID message | 4-byte header (1 + 3-byte MessageId value) |
 | Generic message | 7-byte header (1 + 3-byte MessageId + 3-byte construction ClassId) |
 
-`MessageWireFormat` exposes header sizes, constants, and compose/parse helpers (`ComposeHeaderByte`, `ComposeMessageId`, `GetFlags`); `MessageFlag` lists the flag nibbles (`NonIdMessage`, `Standalone`, `GroupRoot`, `GroupElement`, `Generic`).
+`MessageWireFormat` exposes header sizes, constants, and compose/parse helpers (`ComposeHeaderByte`, `ComposeMessageId`, `GetFlags`); `MessageFlag` lists the flag nibbles (`NonIdMessage`, `Standalone`, `Parent`, `Child`, `Generic`).
 
 ## Cautions
 

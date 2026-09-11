@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\MessageFlag.cs" Link="MessageFlag.cs" />
+    <Compile Include="..\Shared\MessageKind.cs" Link="MessageKind.cs" />
     <Compile Include="..\Shared\MessageWireFormat.cs" Link="MessageWireFormat.cs" />
     <Compile Include="..\Shared\MessageIdHash.cs" Link="MessageIdHash.cs" />
   </ItemGroup>

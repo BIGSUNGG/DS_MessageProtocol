@@ -2,6 +2,38 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-11 (4) (3.0.0 배포)
+
+- 버전 2.4.0 → **3.0.0** (`Source/Directory.Build.props`) — 파괴 변경 릴리스: `MessageCategoryAttribute`·4종 종류 속성 제거, `[Message(MessageKind, id, category)]` 단일화, `MessageFlag` 멤버 개명(Parent/Child/IdMessage). 와이어 형식 불변.
+- 분석기 릴리스 컷: `AnalyzerReleases.Unshipped.md`(010–018 신규 + 007 제거) → `Shipped.md` `## Release 3.0.0` 으로 이관, Unshipped 는 스켈리턴으로 리셋.
+- `CONTEXT` 패키지 요약·`Packages` 버전 표기·`Feature-Spec` MSGPROT007 히스토리 주석을 3.0.0 으로 동기화.
+- 태그 `v3.0.0` 푸시로 nuget-publish 파이프라인(빌드→테스트 양 TFM→Sandbox→3패키지 pack→발행)이 3.0.0 을 nuget.org 에 발행한다. 발행 후 실재 확인 절차는 `Packages.md` 참조.
+
+## 2026-09-11 (3) (MessageKind 멤버 개명 ParentMessage→Parent · ChildMessage→Child)
+
+- `MessageKind.ParentMessage`→`Parent`, `MessageKind.ChildMessage`→`Child` 개명(와이어 비트·진단 ID 불변) — `MessageFlag.Parent`/`Child` 와 이름을 맞춘다. 사용처 전부 동기화: 생성기 비교식·진단 문구(MSGPROT016/017), Test·Sandbox 속성 문법 47곳, README·GLOSSARY·Feature-Spec·Public-API 표기. 코드 개명은 순수 리네임이라 왕복·와이어 단언은 전부 무수정 통과(의미 불변).
+
+## 2026-09-11 (2) ([Message] 단일 선언 속성 · MessageKind 통합)
+
+- 메시지 종류 선언을 `[Message(MessageKind kind = Automatic, uint id = 0, MessageCategory category = Category0)]` 단일 속성으로 통합 — `StandaloneMessageAttribute`·`GroupRootMessageAttribute`·`GroupElementMessageAttribute`·`NonIdMessageAttribute` 제거(공개 API 파괴 변경).
+- 신규 공개 열거 `MessageKind`(Automatic/Standalone/ParentMessage/ChildMessage/NonId, `Source/Shared/MessageKind.cs` 단일 소스 — Core·CodeGenerator 링크). Automatic 은 기존 [Message] 추론(조상 메시지 → Child, 동일 컴파일 파생 → Parent, 나머지 → Standalone). id 생략(0) = FullName 해시(모든 Id 종류 공통), 명시 = 수동(Automatic+수동 조합 가능, 수동 0 은 표현 불가).
+- 공개 `MessageFlag` 멤버 개명: GroupRoot→Parent, GroupElement→Child, StandaloneOrGroup→IdMessage — 와이어 비트 값 불변(테스트가 헤더 바이트로 고정).
+- 신규 진단 `MSGPROT018`([Message] 인자·종류 불일치): NonId 에 id·category 인자, 정의 밖 MessageKind 값. `AnalyzerReleases.Unshipped.md` 등록(KI-12: 마크다운 자동 서식이 구분 행을 바꿔치기해 sed 로 복구 — 재발 확인). `MSGPROT007`(속성 중복) 은 단일 속성화로 발생 불가 — 디스크립터·검사 코드 제거, Shipped 히스토리 보존, Feature-Spec 히스토리 주석 처리.
+- 생성기: `TypeMetadata.TryDecodeMessageAttribute`(MessageKind/MessageCategory/정수 인자 해독), `TypeMetadataValidator.TryValidateMessageAttributeConsistency`, `ValidateRootHierarchy` 메타데이터 체인 기반으로 교정(추론 Parent 도 조상-Parent 검사에 포착), 제네릭 구성 검증이 NonId 선언 거부.
+- 테스트 319→323: MSGPROT018 3종(NonId+id, NonId+category, 정의 밖 kind 값 5·99), kind×id 매트릭스(kind Standalone 해시==Automatic 해시 동일 FullName 비교, Automatic+수동 id 300 → 0x2000012C, ChildMessage id 0 → 해시 해석·헤더 0x80), 기존 왕복·와이어 단언은 속성 문법만 이전해 무수정 통과(의미 불변). Sandbox 전 시나리오 통과. 전 솔루션 빌드 오류 0.
+- `README.md` 전면(속성 표→MessageKind 표, 예제·[Message] 서브섹션 재제목, 진단 표 MSGPROT016/017/018 갱신), `Feature-Spec` F2·F5, `Public-API`, `GLOSSARY` 동기화. 버전 2.4.0 유지.
+- 범위 밖: DS_RPC 마이그레이션(사용자 지시 — 별도 작업, 이 시점부터 DS_RPC 컴파일 깨짐), Legacy/.
+
+## 2026-09-11 (MessageCategoryAttribute 제거 · 속성 생성자 통합)
+
+- `MessageCategoryAttribute` 제거(공개 API 파괴 변경) — category 니블은 이제 각 메시지 속성 생성자의 `MessageCategory` 인자로 지정한다. `[Message(MessageCategory)]` 오버로드 신규.
+- `StandaloneMessage`/`GroupRootMessage`/`GroupElementMessage` 에 4개 생성자 오버로드: 무인수(= FullName 해시 ID, `Category0`), `(MessageCategory)`(해시 ID + category), `(uint id)`(수동, 기존 호환), `(uint id, MessageCategory)`. 해시 ID 는 `[Message]` 와 동일한 `MessageIdHash.FromFullName`(FNV-1a 32→24비트). Id 프로퍼티는 수동 할당 시에만 값(`uint?`, null 이면 해시).
+- 진단 확장 — 해시 ID 충돌(`MSGPROT016`)·요소 해시 0(`MSGPROT017`)·카테고리 범위(`MSGPROT013`)가 무인수 explicit 속성에도 동일 적용. 와이어 형식 불변(헤더 니블 배치 동일).
+- `NonIdMessage`·`GenericMessageAttribute` 는 변경 없음 — NonId 헤더(1바이트)도 category 니블을 실리지만 실사용 사례가 없어 속성 추가는 보류(필요 시 생성자 오버로드로 확장).
+- 생성기 `TypeMetadata`(`DecodeAttributeArguments` — 정수 인자=수동 Id, enum 인자=category)·`TypeMetadataValidator`(범위 검사 신규 위치 이전)·`AttributeReferences`·`MetadataNames` 정리.
+- 테스트 316→319: 무인수 `[StandaloneMessage]` 가 `[Message]` 와 동일 해시 MessageId 를 생성(동일 FullName 두 컴파일 비교), 수동 id+category 오버로드 와이어 반영(`0x23000005`·헤더 `0x23`), category 전용 생성자 루트 헤더(`0x42`)·해시 0 아님. 기존 진단 테스트 전부 신규 문법으로 이전(왕복·와이어 단언은 무수정 통과 — 의미 불변 확인). Sandbox 통과.
+- `Feature-Spec` F2·F5, `Public-API`, `GLOSSARY`, 루트 `README.md` 동기화. 버전 2.4.0 유지(사용자 지시).
+
 ## 2026-09-10 ([Message] 자동 선언 · 크로스 어셈블리 파생)
 
 - `[Message]` 무인수 자동 선언 속성 신규 (`MessageProtocol.Core`) — 종류(Standalone/GroupRoot/GroupElement)는 상속 계층에서 자동 추론(조상 메시지 → 요소, 동일 컴파일 `[Message]` 파생 → 루트, 나머지 → 독립), ID 는 타입 FullName 의 FNV-1a 32비트 → 24비트 마스크 해시. 알고리즘·FullName 형식(BCL `Type.FullName` 관례)은 런타임·생성기 공유 단일 소스 `Source/Shared/MessageIdHash.cs` 로 동결.

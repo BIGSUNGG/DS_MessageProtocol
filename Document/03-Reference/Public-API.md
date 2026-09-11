@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: reference
 status: stable
 tags: [api]
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Public API
@@ -18,9 +18,9 @@ updated: 2026-09-10
 | `MessageBufferWriter` / `MessageBufferReader` | 페이로드 버퍼 I/O (리틀엔디안, forward-only) |
 | `PooledBuffer` | 풀링된 직렬화 결과 (Dispose 멱등). struct 사본 전체가 참조형 소유 홀더를 공유해 **어떤 사본이 Dispose 해도 풀 반납은 정확히 한 번**이고 나머지 사본의 뷰는 비어 있다(KI-37, 2.3.1). `Empty`·`Memory`·`UnsafeArraySegment` 는 2.3.0 부터 [Obsolete(error:false)] — 이 저장소·테스트·Sandbox·DS_RPC 전체에서 무참조(2026-09-08 감사)로 다음 major 제거 후보다 |
 | `MessageWireFormat` | 헤더 크기·상수·MessageId 조립/분해 헬퍼 |
-| `MessageFlag` | 헤더 flags 니블 (`NonIdMessage` / `Standalone` / `GroupRoot` / `GroupElement`) |
+| `MessageFlag` | 헤더 flags 니블 (`NonIdMessage` / `Standalone` / `Parent` / `Child`) |
 
-`MessageWireFormat` 상수: `NonIdHeaderSize=1`, `IdHeaderSize=4`, `GenericIdHeaderSize=7`(제네릭 헤더 = 헤더 1바이트 + MessageId 3바이트 + 구성 ClassId 3바이트), `NullSizedPayloadLength=-1`, `DefaultStreamCapacity=256`, `NibbleMask=0x0F`, `MessageIdValueMask=0x00FFFFFF`. `MessageFlag` 니블은 `NonIdMessage`/`Standalone`/`GroupRoot`/`GroupElement` 외에 **`Generic`(플래그 니블 0 예약)** — 제네릭 와이어 메시지는 전용 플래그로 조립되고 `IsGenericMessage(header)` 로 판별한다.
+`MessageWireFormat` 상수: `NonIdHeaderSize=1`, `IdHeaderSize=4`, `GenericIdHeaderSize=7`(제네릭 헤더 = 헤더 1바이트 + MessageId 3바이트 + 구성 ClassId 3바이트), `NullSizedPayloadLength=-1`, `DefaultStreamCapacity=256`, `NibbleMask=0x0F`, `MessageIdValueMask=0x00FFFFFF`. `MessageFlag` 니블은 `NonIdMessage`/`Standalone`/`Parent`/`Child` 외에 **`Generic`(플래그 니블 0 예약)** — 제네릭 와이어 메시지는 전용 플래그로 조립되고 `IsGenericMessage(header)` 로 판별한다.
 
 버퍼 I/O 계약: 위치는 forward-only — `Skip`·`Advance` 는 음수 `count` 를 `ArgumentOutOfRangeException` 으로 거부하고(되돌려 이미 소비·기록한 구간을 다시 읽거나 덮어쓰는 것 차단), 범위를 넘는 전진은 reader `EndOfStreamException` / writer `InvalidOperationException` 을 던진다. 문자열 길이 접두사는 `-1` 만 null 이고 그 외 음수는 `InvalidDataException` 으로 거부된다. 버퍼는 단일 `byte[]` 이라 페이로드 상한은 배열 상한(`0X7FEFFFFF` 바이트)이며, 이를 넘는 문자열은 `WriteString` 이 `ArgumentException` 으로 거부한다(용량 산술은 `long` — int 오버플로로 증설이 건너뛰어지지 않음). writer 증설도 `long` 산술 + 상한 clamp 라 1GB 너머에서도 **배증 여지를 유지**한다(정확 요구량 대여로 퇴보해 성장 비용이 제곱이 되지 않음 — Known-Issues KI-7), 상한을 넘는 용량 요구는 할당을 시도하지 않고 `InvalidOperationException` 으로 거부한다. `PatchInt32(offset, value)` 는 **기록된 구간**(`0 .. Length-4`) 안에서만 동작하고 밖이면 `ArgumentOutOfRangeException` — 대여 배열의 미기록 바이트(나중에 풀로 돌아감)에 쓰지 못한다.
 
@@ -32,15 +32,11 @@ updated: 2026-09-10
 
 | 속성 | 역할 |
 | ------ | ------ |
-| `Message` | 무인수 자동 선언 — 종류(Standalone/GroupRoot/GroupElement)는 계층 자동 추론, ID 는 FullName FNV-1a 해시 24비트. 제네릭 선언부에 쓰면 선언 MessageId 만 해시 대체(구성은 `[GenericMessage]` 그대로). 해시 충돌·요소 해시 0 은 `MSGPROT016`/`MSGPROT017` 로 거부 |
-| `StandaloneMessage(uint id)` | 독립 ID 메시지 |
-| `GroupRootMessage(uint id)` | 그룹 루트 |
-| `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0) |
-| `NonIdMessage` | ID 없는 메시지 (헤더 1바이트) |
+| `MessageAttribute(MessageKind kind = Automatic, uint id = 0, MessageCategory category = Category0)` | 메시지 선언의 **유일한** 속성 — 종류·ID·카테고리를 모두 생성자 인자로 받는다. `kind`: `Automatic`(계층 자동 추론 — 조상 메시지 → Child, 동일 컴파일 `[Message]` 파생 → Parent, 나머지 → Standalone) · `Standalone` · `Parent`(계층 꼭대기) · `Child`(부모 필수, 수동 id ≠ 0) · `NonId`(헤더 1바이트, id·category 인자 금지 → `MSGPROT018`). `id` 생략(0)이면 FullName FNV-1a 해시 24비트, 명시하면 수동 할당(Automatic+수동 id 도 가능, 수동 0 은 표현 불가). 해시 충돌·Child 해시 0 은 `MSGPROT016`/`MSGPROT017` 로 거부. 제네릭 선언부에 쓰면 선언 MessageId 만 id 값으로 대체(구성은 `[GenericMessage]` 그대로) |
+| `MessageKind` | `Automatic`/`Standalone`/`Parent`/`Child`/`NonId` 공개 열거 (`MessageProtocol` 네임스페이스, `Source/Shared` 단일 소스) |
 | `GenericMessageAttribute(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 (`AllowMultiple`) — 선언부·캐리어 아무 타입에나 구성마다 부착. `ClassId` 범위 1..2^24-1. 구성 등록은 `[ModuleInitializer]` 의 `RegisterGenericConstruction<T>` 로 발행된다 |
-| `MessageCategory(MessageCategory)` | category 니블 0..15 |
 
-ID 값 범위: `0 .. 2^24-1`. `[Message]` 해시 ID는 `MessageIdHash.FromFullName(fullName)`(런타임 공개 헬퍼 — FNV-1a 32 → 24비트 마스크, `Source/Shared` 단일 소스로 생성기와 동일 알고리즘)로 계산된다. FullName 은 BCL `Type.FullName` 관례(네임스페이스 점 + 중첩 `+` + 제네릭 차수 `` `n ``).
+ID 값 범위: `0 .. 2^24-1`. 해시 ID(id 생략)는 `MessageIdHash.FromFullName(fullName)`(런타임 공개 헬퍼 — FNV-1a 32 → 24비트 마스크, `Source/Shared` 단일 소스로 생성기와 동일 알고리즘)로 계산된다. FullName 은 BCL `Type.FullName` 관례(네임스페이스 점 + 중첩 `+` + 제네릭 차수 `` `n ``). category 니블(0..15)은 `category` 생성자 인자로 지정(기본 `Category0`) — 범위 밖 값은 `MSGPROT013`.
 
 ## 멤버 속성
 

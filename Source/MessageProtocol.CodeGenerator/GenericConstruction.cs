@@ -24,8 +24,7 @@ namespace MessageProtocol.CodeGenerator
         messageId = 0;
 
         if (!declaration.IsGenericType
-            || !(declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
-                || declaration.ContainAttribute(attributeReferences.MessageAttributeType)))
+            || !declaration.ContainAttribute(attributeReferences.MessageAttributeType))
         {
             return false;
         }
@@ -42,7 +41,7 @@ namespace MessageProtocol.CodeGenerator
         }
 
         var typeMeta = new TypeMetadata(declaration, attributeReferences);
-        if (MessageCodeGenerator.HasMultipleMessageAttributes(typeMeta) || !typeMeta.IsGenericWireMessage)
+        if (!typeMeta.IsGenericWireMessage)
         {
             return false;
         }
@@ -266,12 +265,17 @@ namespace MessageProtocol.CodeGenerator
             }
 
             var declaration = construction.OriginalDefinition;
-            if (!construction.IsGenericType
-                || !declaration.IsGenericType
-                || !(declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
-                    || declaration.ContainAttribute(attributeReferences.MessageAttributeType)))
+            if (!construction.IsGenericType || !declaration.IsGenericType)
             {
-                ReportInvalidConstruction(context, location, host, $"'{construction.ToDisplayString()}' is not a construction of a generic message declaration ('[StandaloneMessage]' or '[Message]' required)");
+                ReportInvalidConstruction(context, location, host, $"'{construction.ToDisplayString()}' is not a construction of a generic message declaration ('[Message]' required)");
+                return false;
+            }
+
+            // 제네릭 와이어 메시지는 Standalone 이어야 한다(NonId·Parent·Child 선언은 구성 슬롯이 없다).
+            var declarationMeta = new TypeMetadata(declaration, attributeReferences);
+            if (!declarationMeta.IsStandaloneMessage)
+            {
+                ReportInvalidConstruction(context, location, host, $"'{construction.ToDisplayString()}' is not a construction of a generic message declaration ('[Message]' required)");
                 return false;
             }
 

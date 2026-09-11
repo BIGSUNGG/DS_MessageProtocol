@@ -8,7 +8,7 @@ namespace MessageProtocol.NetStandardFixtures;
 // 실제로 실행되는 유일한 곳이므로, 이 픽스처들은 소비자 환경의 와이어 행동을 고정한다.
 
 /// <summary>폴백 컬렉션 경로 5형태: List(고정 크기)·List(가변 크기)·IList·배열(가변)·배열(고정 크기).</summary>
-[StandaloneMessage(900)]
+[Message(MessageKind.Standalone, 900)]
 public partial class FallbackCollections
 {
     public List<int>? Bulk { get; set; }
@@ -19,7 +19,7 @@ public partial class FallbackCollections
 }
 
 /// <summary>자기참조 + 중첩 컬렉션을 가진 NonId 페이로드 — 중첩 깊이 가드가 폴백 경로에서도 도는지 검증한다.</summary>
-[NonIdMessage]
+[Message(MessageKind.NonId)]
 public partial class FallbackNode
 {
     public string? Label { get; set; }

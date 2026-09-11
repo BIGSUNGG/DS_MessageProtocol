@@ -6,8 +6,7 @@ namespace SandboxMessages;
 
 public enum Color : byte { Red, Green, Blue }
 
-[StandaloneMessage(1)]
-[MessageCategory(MessageCategory.Category3)]
+[Message(MessageKind.Standalone, 1, MessageCategory.Category3)]
 public partial class AllPrimitives
 {
     public bool Bool { get; set; }
@@ -29,7 +28,7 @@ public partial class AllPrimitives
 
 // ---------- S2: NonId ----------
 
-[NonIdMessage]
+[Message(MessageKind.NonId)]
 public partial class Ping
 {
     public int Seq { get; set; }
@@ -37,13 +36,13 @@ public partial class Ping
 
 // ---------- S3: 그룹 루트/요소 ----------
 
-[GroupRootMessage(10)]
+[Message(MessageKind.Parent, 10)]
 public partial class ShapeRoot
 {
     public string? Name { get; set; }
 }
 
-[GroupElementMessage(11)]
+[Message(MessageKind.Child, 11)]
 public partial class Circle : ShapeRoot
 {
     public double Radius { get; set; }
@@ -51,7 +50,7 @@ public partial class Circle : ShapeRoot
 
 // ---------- S4: 컬렉션 ----------
 
-[StandaloneMessage(2)]
+[Message(MessageKind.Standalone, 2)]
 public partial class Collections
 {
     public byte[]? Bytes { get; set; }
@@ -69,7 +68,7 @@ public class NestedPoco
     public string? Tag { get; set; }
 }
 
-[StandaloneMessage(3)]
+[Message(MessageKind.Standalone, 3)]
 public partial class TreeNode
 {
     public string? Label { get; set; }
@@ -80,7 +79,7 @@ public partial class TreeNode
 
 // ---------- S6: 멤버 제어 ----------
 
-[StandaloneMessage(4)]
+[Message(MessageKind.Standalone, 4)]
 public partial class MemberControl
 {
     public int Kept { get; set; }
@@ -98,7 +97,7 @@ public partial class MemberControl
 // ---------- S10: 제네릭 메시지 ----------
 // GenericMessage 구성 선언: 직렬화 지원 구성과 클래스 ID 명시.
 // 선언된 구성은 송수신 양쪽에서 모듈 로드 시 자동 등록된다.
-[StandaloneMessage(40)]
+[Message(MessageKind.Standalone, 40)]
 [GenericMessage(typeof(Envelope<AllPrimitives>), ClassId = 1)]
 [GenericMessage(typeof(Envelope<Circle>), ClassId = 2)]
 public partial class Envelope<T>
@@ -109,27 +108,27 @@ public partial class Envelope<T>
 }
 
 // ---------- S13: 추상 그룹 루트 다형 멤버 ----------
-// abstract [GroupRootMessage] 는 인스턴스를 만들 수 없어 정적 Serialize/Deserialize 가 생성되지 않는다.
+// abstract [Message(MessageKind.Parent)] 는 인스턴스를 만들 수 없어 정적 Serialize/Deserialize 가 생성되지 않는다.
 // 이 타입을 멤버로 쓰면 생성기는 정적 위임 대신 런타임 메시지 디스패치로 *구체* 요소를 헤더째 기록한다.
-[GroupRootMessage(70)]
+[Message(MessageKind.Parent, 70)]
 public abstract partial class ShapeCommand
 {
     public long Seq { get; set; }
 }
 
-[GroupElementMessage(71)]
+[Message(MessageKind.Child, 71)]
 public partial class DrawCommand : ShapeCommand
 {
     public string? Layer { get; set; }
 }
 
-[GroupElementMessage(72)]
+[Message(MessageKind.Child, 72)]
 public partial class ClearCommand : ShapeCommand
 {
     public bool Full { get; set; }
 }
 
-[StandaloneMessage(73)]
+[Message(MessageKind.Standalone, 73)]
 public partial class CommandBatch
 {
     public ShapeCommand? Head { get; set; }

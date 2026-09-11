@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: architecture
 status: approved
 tags: [feature-spec, rewrite, parity]
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Feature Spec — 재작성 프로젝트 지원 기능
@@ -31,13 +31,13 @@ updated: 2026-09-10
 
 | 속성 | 역할 |
 | -------------------------------- | ---------------------------- |
-| `Message` | 무인수 자동 선언 — 종류(Standalone/GroupRoot/GroupElement)는 계층에서 자동 추론, ID 는 타입 FullName 의 FNV-1a 해시 24비트 (`MessageIdHash` 단일 소스, 알고리즘 동결). 조상에 메시지 속성이 있으면 GroupElement, 없고 동일 컴파일에 `[Message]` 파생이 있으면 GroupRoot, 나머지 Standalone. 해시 충돌은 `MSGPROT016`, 요소 위치 해시 0 은 `MSGPROT017` 로 거부(자동 재해시 없음 — 와이어 안정성). 제네릭 선언부에 쓰면 선언 MessageId 만 해시로 대체(구성 선언은 기존 `[GenericMessage]`). `[Message]` 조상은 그룹 요소의 루트 요건을 만족(참조 어셈블리 베이스 상속 지원) |
-| `StandaloneMessage(uint id)` | 독립 ID 메시지 |
-| `GroupRootMessage(uint id)` | 그룹 루트 |
-| `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
-| `NonIdMessage` | ID 없는 메시지 |
-| `MessageCategory(Category0..15)` | 카테고리 니블 — 값 범위 **0 .. 15**(벗어나면 `MSGPROT013`, 조용한 `& 0x0F` 마스킹 없음). `[Flags]` 열거형이라 `Category1`·`Category4` 를 결합한 값(5)은 **다른 단일 카테고리로 조용히 해석**되고 `CategoryMask`(0x0F)는 `Category15` 와 구분되지 않으므로, 항상 단일 카테고리 멤버만 쓴다 |
-| `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). `ClassId` 범위 **1 .. 2^24-1**(MessageId 와 같은 3바이트 와이어 슬롯 — 벗어나면 컴파일 진단). 제네릭 선언에는 `StandaloneMessage` 또는 `[Message]` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
+| `Message(MessageKind kind = Automatic, uint id = 0, MessageCategory category = Category0)` | 메시지 선언의 유일한 속성. `kind=Automatic`(기본)은 계층에서 자동 추론 — 조상에 메시지가 있으면 Child, 없고 동일 컴파일에 `[Message]` 파생이 있으면 Parent, 나머지 Standalone. `id` 생략(0)이면 타입 FullName 의 FNV-1a 해시 24비트 (`MessageIdHash` 단일 소스, 알고리즘 동결), 명시하면 수동 할당(Automatic+수동 조합 가능, 수동 0 은 표현 불가). 해시 충돌은 `MSGPROT016`, Child 위치 해시 0 은 `MSGPROT017` 로 거부(자동 재해시 없음 — 와이어 안정성). 제네릭 선언부에 쓰면 선언 MessageId 만 id 값으로 대체(구성 선언은 기존 `[GenericMessage]`). `[Message]` 조상은 자식의 루트 요건을 만족(참조 어셈블리 베이스 상속 지원) |
+| `MessageKind.Standalone` | 독립 ID 메시지 |
+| `MessageKind.Parent` | 부모 메시지 — 상속 계층의 꼭대기 (구 GroupRoot) |
+| `MessageKind.Child` | 자식 메시지 — 부모 필수, 수동 id ≠ 0 (구 GroupElement). 해시가 0 이면 `MSGPROT017` |
+| `MessageKind.NonId` | ID 없는 메시지. id·category 인자 금지 — 위반·정의 밖 kind 값은 `MSGPROT018` |
+| `category` 인자 | 카테고리 니블 — 값 범위 **0 .. 15**(벗어나면 `MSGPROT013`, 조용한 `& 0x0F` 마스킹 없음). 기본값 `Category0`. `[Flags]` 열거형이라 `Category1`·`Category4` 를 결합한 값(5)은 **다른 단일 카테고리로 조용히 해석**되고 `CategoryMask`(0x0F)는 `Category15` 와 구분되지 않으므로, 항상 단일 카테고리 멤버만 쓴다 |
+| `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). `ClassId` 범위 **1 .. 2^24-1**(MessageId 와 같은 3바이트 와이어 슬롯 — 벗어나면 컴파일 진단). 제네릭 선언에는 `[Message]` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
 
 - 메시지 타입은 `partial` 선언이 필수.
 - 그룹 계층 규칙 위반은 컴파일 진단으로 거부 (F5).
@@ -72,7 +72,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 
 중첩 객체 깊이는 **쓰기·읽기 양쪽**에서 버퍼 단위 상한으로 제한한다 — 기본 상한은 `MessageBufferReader.DefaultMaxNestingDepth = MessageBufferWriter.DefaultMaxNestingDepth = 64`(writer 쪽 상수는 reader 쪽을 참조해 **구조적으로 동일**하게 고정 — 써서 보낼 수 있는 그래프는 상대가 기본 설정으로 읽을 수 있어야 한다). 생성 코드(그래프 내부 중첩 객체·그래프 밖 메시지 위임)와 런타임 경유 지점(`SerializeToWriter`·`DeserializeFromReader` — 타입 매개변수·추상 메시지 멤버와 수동 구현의 재귀)이 재귀 지점에서 `EnterNestedObject`·`LeaveNestedObject` 쌍을 호출하고, 상한 초과 시 읽기는 `InvalidDataException`(와이어 내용 불법 — 경계 `EndOfStreamException` 과 구분), 쓰기는 `InvalidOperationException`(호출자 그래프가 너무 깊음)으로 거부한다. 이 가드가 막는 것은 두 방향 모두에서 **catch 불가한 스택 오버플로(프로세스 즉시 사망)** 다 — 수신: 자기참조 메시지에 `ReferenceKind.NewObject` 1바이트씩만 늘어놓은 20KB 남짓한 적대 프레임(KI-14), 송신: 수만 노드 연결 리스트·깊은 트리, 또는 백레퍼런스가 추적되지 않는 런타임 디스패치 멤버로 돌아가는 **순환 그래프**(KI-25). 합법적으로 깊은 객체 그래프는 `new MessageBufferReader(buffer, maxNestingDepth)` · `MessageBufferWriter.Create(initialCapacity, maxNestingDepth)` 로 **양쪽 상한을 함께** 올려 처리한다.
 
-메시지 타입 멤버는 세 경로로 나뉜다 — (1) 그래프 내부 타입(같은 컴파일의 구체 타입)은 백레퍼런스 추적 페이로드로, (2) 그래프 밖 **구체** 메시지(다른 어셈블리 등)는 그 타입의 생성 정적 `Serialize`/`Deserialize` 위임으로, (3) **추상 메시지 타입**(예: `abstract [GroupRootMessage]` — 상속 전용이라 생성 정적 멤버가 존재하지 않는다)은 런타임 메시지 디스패치(`SerializeToWriter`·`DeserializeFromReader`)로 기록한다. (3) 은 와이어에 구체 요소의 헤더(MessageId)를 포함하므로 수신 측이 **등록된 구체 요소 타입과 파생 멤버를 그대로 복원**한다(다형 멤버 — 베이스 타입 페이로드로 써서 파생 필드를 잃는 일이 없다). (2)·(3) 경로(타입 매개변수 `T` 멤버 포함)도 **호출측 참조 추적 컨텍스트**를 공유한다 — 같은 인스턴스가 두 번 등장하면 두 번째부터 백레퍼런스로 기록되어 참조 동일성이 복원되고, 순환도 해당 프레임 안에서 백레퍼런스로 유한하게 종결된다(Known-Issues KI-9 해소). 잔존 제약 두 가지: 디스패치된 프레임 **내부**는 자체 컨텍스트를 써서 프레임 경계를 넘는 공유는 경계마다 1회 중복 기록되고(KI-25 깊이 가드가 무한 재귀는 차단), 디스패치 멤버 위치의 백레퍼런스는 2.2.0 부터 발생하므로 구버전 수신측(2.1.x)과 공유 참조 그래프를 주고받으려면 양측 모두 재생성이 필요하다. 세 판독 경로 모두 참조 태그 바이트를 검증해 규격 밖 값(3–255)은 즉시 `InvalidDataException` 으로 거부한다 — 손상·변조 프레임이 NewObject 로 조용히 해석돼 프레임 역동기화되는 일을 막는다(Known-Issues KI-36). 합법 태그(0/1/2)의 와이어 바이트는 불변이므로 기존 데이터는 그대로 복호된다.
+메시지 타입 멤버는 세 경로로 나뉜다 — (1) 그래프 내부 타입(같은 컴파일의 구체 타입)은 백레퍼런스 추적 페이로드로, (2) 그래프 밖 **구체** 메시지(다른 어셈블리 등)는 그 타입의 생성 정적 `Serialize`/`Deserialize` 위임으로, (3) **추상 메시지 타입**(예: `abstract [Message(MessageKind.Parent)]` — 상속 전용이라 생성 정적 멤버가 존재하지 않는다)은 런타임 메시지 디스패치(`SerializeToWriter`·`DeserializeFromReader`)로 기록한다. (3) 은 와이어에 구체 요소의 헤더(MessageId)를 포함하므로 수신 측이 **등록된 구체 요소 타입과 파생 멤버를 그대로 복원**한다(다형 멤버 — 베이스 타입 페이로드로 써서 파생 필드를 잃는 일이 없다). (2)·(3) 경로(타입 매개변수 `T` 멤버 포함)도 **호출측 참조 추적 컨텍스트**를 공유한다 — 같은 인스턴스가 두 번 등장하면 두 번째부터 백레퍼런스로 기록되어 참조 동일성이 복원되고, 순환도 해당 프레임 안에서 백레퍼런스로 유한하게 종결된다(Known-Issues KI-9 해소). 잔존 제약 두 가지: 디스패치된 프레임 **내부**는 자체 컨텍스트를 써서 프레임 경계를 넘는 공유는 경계마다 1회 중복 기록되고(KI-25 깊이 가드가 무한 재귀는 차단), 디스패치 멤버 위치의 백레퍼런스는 2.2.0 부터 발생하므로 구버전 수신측(2.1.x)과 공유 참조 그래프를 주고받으려면 양측 모두 재생성이 필요하다. 세 판독 경로 모두 참조 태그 바이트를 검증해 규격 밖 값(3–255)은 즉시 `InvalidDataException` 으로 거부한다 — 손상·변조 프레임이 NewObject 로 조용히 해석돼 프레임 역동기화되는 일을 막는다(Known-Issues KI-36). 합법 태그(0/1/2)의 와이어 바이트는 불변이므로 기존 데이터는 그대로 복호된다.
 
 **구체** 베이스(파생 메시지 타입이 존재하는 non-abstract 메시지 타입)를 멤버 정적 타입으로 쓰면 (1) 경로라 선언 타입 기준으로 기록되어 파생 인스턴스의 추가 멤버가 **조용히 유실**되고 복원 타입도 베이스가 된다 — 생성기가 `MSGPROT012` **경고**로 알린다(생성은 막지 않음: 베이스 필드만 보내는 것은 유효한 설계일 수 있고 `#pragma warning disable MSGPROT012` 로 억제 가능). 다형이 필요하면 베이스를 `abstract` 로 선언해 (3) 경로(런타임 디스패치)를 쓴다 (Known-Issues KI-29).
 
@@ -89,7 +89,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 - `[ModuleInitializer]` 등록 코드 생성 → 모듈 로드 시 런타임에 자동 등록 (수동 등록 불필요).
 - Incremental generator. 생성 텍스트는 **결정적**이다 — 로컬 이름 번호가 이미트 단위 상태(`EmitState`)라 같은 입력은 항상 같은 출력을 내고, 컴파일러 프로세스의 이전 컴파일 이력에 의존하지 않는다(Roslyn 의 생성 출력 비교가 무관한 편집에 무효화되지 않음 — Known-Issues KI-3). 측정(KI-10 측정 기록): 출력 스텝 자체는 `Compilation` 의존 때문에 매 편집 재실행되지만, 생성 텍스트가 동일하므로 Roslyn 의 출력 비교가 **생성 트리 교체·재컴파일을 막는다** — 남은 비용은 편집당 생성기 CPU 뿐이다.
 - 제네릭 메시지 타입 지원: `[GenericMessage(typeof(닫힌 구성), ClassId = n)]` 단일 속성으로 구성 선언(선언부·캐리어 무관) — 헤더 플래그 Generic(0) + MessageId 뒤에 구성 클래스 ID 24비트 와이어, 선언 구성은 모듈 로드 시 자동 등록(송수신 무설정), 다중 타입 매개변수 지원. 제네릭 + 스탠드얼론 선언은 항상 제네릭 와이어이며 **구성 선언 필수**(미선언 직렬화는 예외) ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)).
-- `[Message]` 자동 추론 지원: 종류·ID 없이 선언만으로 메시지 등록 — 종류는 상속 계층에서 추론하고 ID 는 FullName FNV-1a 해시(24비트 마스크). 파생 클래스는 다른 프로젝트(참조 어셈블리)의 메시지 베이스를 상속해도 속성만 붙이면 인식·등록된다. 생성 partial 선언부는 원본 접근성(`public`/`internal` 등)을 그대로 따른다.
+- `[Message]` 단일 선언 속성: `MessageKind`·`uint id`·`MessageCategory` 생성자 인자로 종류·ID·카테고리를 모두 지정 — kind 기본 `Automatic` 은 종류·ID 없이 선언만으로 메시지 등록(종류는 상속 계층에서 추론, ID 는 FullName FNV-1a 해시 24비트 마스크). 파생 클래스는 다른 프로젝트(참조 어셈블리)의 메시지 베이스를 상속해도 속성만 붙이면 인식·등록된다. 생성 partial 선언부는 원본 접근성(`public`/`internal` 등)을 그대로 따른다.
 - 수동 구현 지원: 생성기 없이 동일한 계약 형태(`IMessageSerializable<T>` 등)를 직접 구현·등록 가능. 수동 구현 시 헤더는 사용자가 직접 쓴다.
 - 진단 (Legacy 기준, 동등한 검출 필요):
   - `MSGPROT001` 메시지 타입은 partial 필수
@@ -98,7 +98,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
   - `MSGPROT004` 루트 메시지의 부모가 루트일 수 없음
   - `MSGPROT005` ID 값 범위 초과
   - `MSGPROT006` 미지원 멤버 타입
-  - `MSGPROT007` 메시지 속성 중복 (경고 — 상호 배타, 생성 건너뜀. Legacy에 없는 신규 진단)
+  - `MSGPROT007` 메시지 속성 중복 (경고 — 상호 배타, 생성 건너뜀. Legacy에 없는 신규 진단. 3.0.0 종류 속성 통합 이후 단일 `[Message]`(`AllowMultiple = false`) 이라 발생 불가 — 이중 히스토리 보존 목록)
   - `MSGPROT008` 잘못된 GenericMessage 선언 (비메시지 구성 대상·미바운드 제네릭·ClassId 누락/중복/**범위 초과(0 또는 2^24 이상 — 방치하면 모듈 이니셜라이저에서 `TypeInitializationException`)**·컴파일 내 중복 선언)
   - `MSGPROT009` (삭제됨 — `MSGPROT008` 로 흡수)
   - `MSGPROT010` 메시지 타입 생성 불가 (추상 클래스·매개변수 없는 생성자 없음 — 포지셔널 레코드 등. Legacy에 없는 신규 진단)
@@ -107,8 +107,9 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
   - `MSGPROT013` `MessageCategory` 값 범위 초과(0..15) — 방치하면 `& 0x0F` 마스킹으로 와이어 MessageId 가 달라져 다른 메시지와 ID 충돌(모듈 로드 실패) 또는 피어 오라우팅. Legacy에 없는 신규 진단
   - `MSGPROT014` 와이어 MessageId 중복 — 조립된 ID(flags+category+24비트 값)가 같은 두 메시지 타입. 방치하면 모듈 이니셜라이저 등록 충돌로 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단
   - `MSGPROT015` 제네릭 구성 런타임 키 중복 — 서로 다른 두 제네릭 선언이 같은 (MessageId, ClassId) 조합을 쓰면 `RegisterGenericReaderInvoker` 가 모듈 이니셜라이저에서 충돌해 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단
-  - `MSGPROT016` `[Message]` FullName 해시 MessageId 충돌 — 24비트 해시가 같은 두 `[Message]` 타입. 이름 변경·명시적 ID 속성 전환으로 해결하게 안내(자동 재해시는 와이어 파손 위험으로 하지 않음)
-  - `MSGPROT017` `[Message]` 그룹 요소 해시 0 — 요소 위치의 FullName 해시가 0(예약)이면 거부. 이름 변경·명시적 `[GroupElementMessage]` 전환 안내
+  - `MSGPROT016` FullName 해시 MessageId 충돌 — 24비트 해시가 같은 두 해시 ID 타입. 이름 변경·수동 id 할당(`[Message(id: …)]`) 전환으로 해결하게 안내(자동 재해시는 와이어 파손 위험으로 하지 않음)
+  - `MSGPROT017` 자식 메시지 해시 0 — Child 위치의 FullName 해시가 0(예약)이면 거부. 이름 변경·수동 id 전환 안내
+  - `MSGPROT018` `[Message]` 인자·종류 불일치 — `NonId` 에 id·category 인자 전달 또는 정의 밖 `MessageKind` 값. Legacy에 없는 신규 진단
 
 ## F6. 런타임 `MessageSerializer`
 

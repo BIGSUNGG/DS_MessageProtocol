@@ -130,7 +130,7 @@ namespace MessageProtocol.Serialize
             byte header = data[0];
             var flags = MessageWireFormat.GetFlags(header);
             bool generic = MessageWireFormat.IsGenericMessage(header);
-            if (!generic && (flags & MessageFlag.StandaloneOrGroup) == 0)
+            if (!generic && (flags & MessageFlag.IdMessage) == 0)
             {
                 // 와이어 내용 불법(플래그 비트)은 InvalidDataException 이다 — 캐스트가 일어난 적이 없으므로
                 // InvalidCastException 은 유형부터 오해를 주었고 신뢰 경계 퍼저의 깨끗한 거부 목록에도

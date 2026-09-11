@@ -19,7 +19,7 @@ public class WireFormatTests
     [Fact]
     public void MessageId는_헤더바이트와_24비트_값으로_조립된다()
     {
-        uint id = MessageWireFormat.ComposeMessageId(MessageFlag.GroupRoot, 3, 0xABCDEF);
+        uint id = MessageWireFormat.ComposeMessageId(MessageFlag.Parent, 3, 0xABCDEF);
         Assert.Equal((uint)0x43ABCDEF, id);
     }
 
@@ -33,8 +33,8 @@ public class WireFormatTests
     [Theory]
     [InlineData(MessageFlag.NonIdMessage, false)]
     [InlineData(MessageFlag.Standalone, true)]
-    [InlineData(MessageFlag.GroupRoot, true)]
-    [InlineData(MessageFlag.GroupElement, true)]
+    [InlineData(MessageFlag.Parent, true)]
+    [InlineData(MessageFlag.Child, true)]
     public void NonId만_임베디드_ID가_없다(MessageFlag flag, bool expected)
     {
         byte header = MessageWireFormat.ComposeHeaderByte(flag, 0);

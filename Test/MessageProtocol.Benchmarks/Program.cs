@@ -23,7 +23,7 @@ namespace Benchmarks
         }
     }
 
-    [StandaloneMessage(1)]
+    [Message(MessageKind.Standalone, 1)]
     public partial class BenchMessage
     {
         public int Id { get; set; }
@@ -38,7 +38,7 @@ namespace Benchmarks
     /// 3n+3 보수 예약에서 ASCII 정확 산정으로 바뀐 것의 효과를 재는 시나리오다.
     /// 100자 문자열 4개 — 보수 예약은 4·(4+303)=1,228B, ASCII 실제는 416B.
     /// </summary>
-    [StandaloneMessage(2)]
+    [Message(MessageKind.Standalone, 2)]
     public partial class StringHeavyMessage
     {
         public string? Name { get; set; }
@@ -51,7 +51,7 @@ namespace Benchmarks
     /// 참조 추적 그래프 시나리오 — 같은 서브그래프를 두 갈래로 공유해 쓰기·읽기 양쪽에서 백레퍼런스를
     /// 강제한다(깊이 5·공유 노드 서브트리). 풀링 경로와 함께 기준선 갭이었던 두 경로를 잰다.
     /// </summary>
-    [StandaloneMessage(3)]
+    [Message(MessageKind.Standalone, 3)]
     public partial class GraphNode
     {
         public string? Label { get; set; }
@@ -63,7 +63,7 @@ namespace Benchmarks
     /// 대형 컬렉션 시나리오(인벤토리·엔티티 일괄 전송 실제 스케일) — `List&lt;int&gt;` 10만 요소는
     /// CollectionsMarshal 벌크 복사 경로, `string[]` 1천 요소는 요소별 쓰기 경로를 각각 압박한다.
     /// </summary>
-    [StandaloneMessage(4)]
+    [Message(MessageKind.Standalone, 4)]
     public partial class LargeCollections
     {
         public List<int>? Numbers { get; set; }

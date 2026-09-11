@@ -83,7 +83,7 @@ void Check(string name, bool condition)
         decoded is Circle c && c.Name == "c1" && c.Radius == 2.5);
 
     byte header = bytes[0];
-    Check("S3 요소 헤더 플래그", MessageWireFormat.GetFlags(header) == MessageFlag.GroupElement);
+    Check("S3 요소 헤더 플래그", MessageWireFormat.GetFlags(header) == MessageFlag.Child);
 }
 
 // ---------- S4: 컬렉션 ----------
@@ -210,7 +210,7 @@ void Check(string name, bool condition)
 
 // ---------- S13: 추상 그룹 루트 다형 멤버 ----------
 {
-    // abstract [GroupRootMessage] 멤버는 런타임 메시지 디스패치로 구체 요소가 기록된다 —
+    // abstract [Message(MessageKind.Parent)] 멤버는 런타임 메시지 디스패치로 구체 요소가 기록된다 —
     // 선언 타입(추상 루트)이 아니라 실제 요소 타입과 파생 멤버가 복원되어야 한다.
     var batch = new CommandBatch
     {
@@ -290,7 +290,7 @@ void Check(string name, bool condition)
     uint joinHash = MessageIdHash.FromFullName(typeof(AutoJoin).FullName!);
     var joinBytes = MessageSerializer.Serialize((object)join);
     Check("S15 요소 헤더 플래그·해시 ID 바이트",
-        MessageWireFormat.GetFlags(joinBytes[0]) == MessageFlag.GroupElement
+        MessageWireFormat.GetFlags(joinBytes[0]) == MessageFlag.Child
         && joinBytes[1] == (byte)(joinHash >> 16)
         && joinBytes[2] == (byte)(joinHash >> 8)
         && joinBytes[3] == (byte)joinHash);

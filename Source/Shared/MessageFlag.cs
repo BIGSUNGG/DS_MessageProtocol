@@ -16,8 +16,9 @@ namespace MessageProtocol
         Generic = 0,
         NonIdMessage = 1 << 0,
         Standalone = 1 << 1,
-        GroupRoot = 1 << 2,
-        GroupElement = 1 << 3,
-        StandaloneOrGroup = Standalone | GroupRoot | GroupElement,
+        Parent = 1 << 2,
+        Child = 1 << 3,
+        /// <summary>ID 를 가진 세 종류(Standalone/Parent/Child)의 조합 — NonIdMessage 의 반대 개념.</summary>
+        IdMessage = Standalone | Parent | Child,
     }
 }

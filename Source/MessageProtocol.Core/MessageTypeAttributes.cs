@@ -16,63 +16,37 @@ namespace MessageProtocol
     }
 
     /// <summary>
-    /// 무인수 메시지 선언. 종류(Standalone/GroupRoot/GroupElement)는 상속 계층에서 자동 추론되고
-    /// MessageId 값은 타입 FullName 의 FNV-1a 해시(24비트, <see cref="MessageIdHash"/>)로 결정된다.
-    /// 조상에 메시지 속성이 있으면 GroupElement, 없고 동일 컴파일에 [Message] 파생이 있으면 GroupRoot, 나머지는 Standalone.
-    /// 해시 충돌·GroupElement 위치의 0 은 진단 에러로 거부된다. 명시적 ID 가 필요하면 기존 속성을 쓴다.
+    /// 메시지 선언 속성 — 종류·ID·카테고리의 유일한 진입점.
+    /// <para>
+    /// <c>Kind</c> 는 <see cref="MessageKind"/> 값대로 종류를 확정하고, <see cref="MessageKind.Automatic"/> 은
+    /// 계층에서 추론한다. <c>Id</c> 를 생략(0)하면 MessageId 는 타입 FullName 의 FNV-1a 해시(24비트,
+    /// <see cref="MessageIdHash"/>)로 결정되고, 명시하면 수동 할당이다(단, 0 은 '생략'을 뜻하므로 수동 0 은 불가).
+    /// 해시 충돌·Child 위치의 해시 0 은 진단 에러로 거부된다. <see cref="MessageKind.NonId"/> 는
+    /// id·category 인자와 함께 쓰면 진단 에러(MSGPROT018)다.
+    /// </para>
     /// </summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
     public class MessageAttribute : Attribute
     {
-    }
+        /// <summary>메시지 종류. 기본 Automatic(계층 추론).</summary>
+        public MessageKind Kind { get; }
 
-    /// <summary>독립 ID 메시지. 헤더 4바이트.</summary>
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
-    public class StandaloneMessageAttribute : Attribute
-    {
-        public uint StandaloneMessageId { get; }
+        /// <summary>수동 MessageId. 0(생략)이면 FullName 해시로 결정된다.</summary>
+        public uint Id { get; }
 
-        public StandaloneMessageAttribute(uint standaloneMessageId)
+        /// <summary>헤더 하위 니블(0~15). 기본 Category0. NonId 에서는 사용 불가.</summary>
+        public MessageCategory Category { get; }
+
+        public MessageAttribute(
+            MessageKind kind = MessageKind.Automatic,
+            uint id = 0,
+            MessageCategory category = MessageCategory.Category0)
         {
-            MessageAttributeRange.Validate(standaloneMessageId, nameof(standaloneMessageId));
-            StandaloneMessageId = standaloneMessageId;
+            MessageAttributeRange.Validate(id, nameof(id));
+            Kind = kind;
+            Id = id;
+            Category = category;
         }
-    }
-
-    /// <summary>그룹 루트 메시지. 상속 계층의 꼭대기.</summary>
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
-    public class GroupRootMessageAttribute : Attribute
-    {
-        public uint GroupRootMessageId { get; }
-
-        public GroupRootMessageAttribute(uint groupRootMessageId)
-        {
-            MessageAttributeRange.Validate(groupRootMessageId, nameof(groupRootMessageId));
-            GroupRootMessageId = groupRootMessageId;
-        }
-    }
-
-    /// <summary>그룹 요소 메시지. 상속 계층에 그룹 루트가 필수이며 id 는 0 일 수 없다.</summary>
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
-    public class GroupElementMessageAttribute : Attribute
-    {
-        public uint GroupElementMessageId { get; }
-
-        public GroupElementMessageAttribute(uint groupElementMessageId)
-        {
-            MessageAttributeRange.Validate(groupElementMessageId, nameof(groupElementMessageId));
-            if (groupElementMessageId == 0)
-            {
-                throw new InvalidOperationException("GroupElementMessageId cannot be 0");
-            }
-            GroupElementMessageId = groupElementMessageId;
-        }
-    }
-
-    /// <summary>ID 없는 메시지. 헤더 1바이트. object Deserialize 대상이 아니다.</summary>
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
-    public class NonIdMessageAttribute : Attribute
-    {
     }
 
     /// <summary>
@@ -106,18 +80,6 @@ namespace MessageProtocol
         public GenericMessageAttribute(Type construction)
         {
             Construction = construction ?? throw new ArgumentNullException(nameof(construction));
-        }
-    }
-
-    /// <summary>헤더 category 니블(0~15) 지정.</summary>
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
-    public class MessageCategoryAttribute : Attribute
-    {
-        public MessageCategory Category { get; }
-
-        public MessageCategoryAttribute(MessageCategory category)
-        {
-            Category = category;
         }
     }
 }

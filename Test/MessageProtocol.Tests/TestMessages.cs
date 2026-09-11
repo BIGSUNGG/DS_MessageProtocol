@@ -7,14 +7,13 @@ namespace MessageProtocol.Tests.Fixtures;
 
 public enum Level : short { Low = -1, Mid = 0, High = 1 }
 
-[StandaloneMessage(100)]
+[Message(MessageKind.Standalone, 100)]
 public partial class FlatMessage
 {
     public int Value { get; set; }
 }
 
-[StandaloneMessage(101)]
-[MessageCategory(MessageCategory.Category5)]
+[Message(MessageKind.Standalone, 101, MessageCategory.Category5)]
 public partial class AllTypesMessage
 {
     public bool Bool { get; set; }
@@ -39,28 +38,28 @@ public partial class AllTypesMessage
     public FlatMessage? Nested { get; set; }
 }
 
-[StandaloneMessage(102)]
+[Message(MessageKind.Standalone, 102)]
 public partial struct PointMessage
 {
     public int X { get; set; }
     public int Y { get; set; }
 }
 
-[NonIdMessage]
+[Message(MessageKind.NonId)]
 public partial class NoIdMessage
 {
     public byte Flag { get; set; }
     public string? Note { get; set; }
 }
 
-[StandaloneMessage(103)]
+[Message(MessageKind.Standalone, 103)]
 public partial record SettingsRecord
 {
     public string? Theme { get; set; }
     public int Volume { get; set; }
 }
 
-[StandaloneMessage(104)]
+[Message(MessageKind.Standalone, 104)]
 public partial class GraphMessage
 {
     public string? Label { get; set; }
@@ -75,7 +74,7 @@ public class PlainPoco
     public string? Name { get; set; }
 }
 
-[StandaloneMessage(105)]
+[Message(MessageKind.Standalone, 105)]
 public partial class MemberControlMessage
 {
     public int Kept { get; set; }
@@ -92,19 +91,19 @@ public partial class MemberControlMessage
 
 // ---------- 상속/그룹 ----------
 
-[GroupRootMessage(110)]
+[Message(MessageKind.Parent, 110)]
 public partial class EventBase
 {
     public long Timestamp { get; set; }
 }
 
-[GroupElementMessage(111)]
+[Message(MessageKind.Child, 111)]
 public partial class LoginEvent : EventBase
 {
     public string? User { get; set; }
 }
 
-[GroupElementMessage(112)]
+[Message(MessageKind.Child, 112)]
 public partial class LogoutEvent : EventBase
 {
     public int Reason { get; set; }
@@ -164,7 +163,7 @@ public class NotAMessage
 
 // ---------- 제네릭 ----------
 
-[StandaloneMessage(120)]
+[Message(MessageKind.Standalone, 120)]
 [GenericMessage(typeof(GenericEnvelope<FlatMessage>), ClassId = 1)]
 [GenericMessage(typeof(GenericEnvelope<SettingsRecord>), ClassId = 2)]
 public partial class GenericEnvelope<T>
@@ -174,7 +173,7 @@ public partial class GenericEnvelope<T>
     public List<T?>? Items { get; set; }
 }
 
-[StandaloneMessage(121)]
+[Message(MessageKind.Standalone, 121)]
 [GenericMessage(typeof(GenericDuo<FlatMessage, SettingsRecord>), ClassId = 1)]
 public partial class GenericDuo<TFirst, TSecond>
 {
@@ -182,7 +181,7 @@ public partial class GenericDuo<TFirst, TSecond>
     public TSecond? Second { get; set; }
 }
 
-[NonIdMessage]
+[Message(MessageKind.NonId)]
 public partial class GenericPair<T>
 {
     public T? First { get; set; }
@@ -190,7 +189,7 @@ public partial class GenericPair<T>
 }
 
 // 동일 제네릭 페이로드의 두 구성이 한 그래프에 공존 — 헬퍼 이름 충돌 회귀 픽스처
-[StandaloneMessage(123)]
+[Message(MessageKind.Standalone, 123)]
 public partial class DuplicateGenericPayloadsMessage
 {
     public GenericPair<int>? IntPair { get; set; }
@@ -198,7 +197,7 @@ public partial class DuplicateGenericPayloadsMessage
 }
 
 // 구성 선언이 없는 제네릭 메시지 — 직렬화 시 예외 검증용 (구성 선언 필수 규칙)
-[StandaloneMessage(122)]
+[Message(MessageKind.Standalone, 122)]
 public partial class UnregisteredGeneric<T>
 {
     public int X { get; set; }
@@ -214,14 +213,14 @@ static class GenericEnvelopeExtraConstructions { }
 
 // 자기참조 체인 — 작은 프레임에 깊은 중첩을 담아 재귀 스택을 소진시키는 적대 페이로드의 최소 형태.
 // 와이어: 헤더 4바이트 + 수준당 ReferenceKind.NewObject 1바이트 + 종단 Null 1바이트.
-[StandaloneMessage(124)]
+[Message(MessageKind.Standalone, 124)]
 public partial class ChainMessage
 {
     public ChainMessage? Next { get; set; }
 }
 
 // 깊이가 아니라 *개수*로 중첩 객체를 많이 담는 픽스처 — 깊이 카운터가 짝 맞게 감소(Leave)하는지 검증한다.
-[StandaloneMessage(125)]
+[Message(MessageKind.Standalone, 125)]
 public partial class WideChainMessage
 {
     public List<ChainMessage>? Items { get; set; }
@@ -229,28 +228,28 @@ public partial class WideChainMessage
 
 // ---------- 추상 그룹 루트 다형 멤버 (KI-24) ----------
 
-// abstract [GroupRootMessage] 는 다형 그룹의 자연스러운 선언 형태지만 생성기는 인스턴스를 만들 수 없어
+// abstract [Message(MessageKind.Parent)] 는 다형 그룹의 자연스러운 선언 형태지만 생성기는 인스턴스를 만들 수 없어
 // 정적 Serialize/Deserialize 를 방출하지 않는다 — 멤버 타입으로 쓰이면 런타임 메시지 디스패치로
 // *구체* 요소가 헤더째 기록되어야 한다 (정적 위임은 소비자 빌드를 CS0117 로 깨뜨렸다).
-[GroupRootMessage(126)]
+[Message(MessageKind.Parent, 126)]
 public abstract partial class AbstractCommand
 {
     public long Seq { get; set; }
 }
 
-[GroupElementMessage(127)]
+[Message(MessageKind.Child, 127)]
 public partial class StartCommand : AbstractCommand
 {
     public string? Target { get; set; }
 }
 
-[GroupElementMessage(128)]
+[Message(MessageKind.Child, 128)]
 public partial class StopCommand : AbstractCommand
 {
     public int Code { get; set; }
 }
 
-[StandaloneMessage(129)]
+[Message(MessageKind.Standalone, 129)]
 public partial class CommandEnvelope
 {
     public AbstractCommand? Command { get; set; }
@@ -259,7 +258,7 @@ public partial class CommandEnvelope
 
 // 런타임 디스패치 멤버(추상 메시지 타입)를 통한 순환 그래프 픽스처 — 디스패치 경로는 백레퍼런스를
 // 추적하지 않으므로 이 멤버로 돌아가는 순환은 쓰기 재귀를 무한히 깊게 만든다 (KI-25).
-[GroupElementMessage(130)]
+[Message(MessageKind.Child, 130)]
 public partial class WrapCommand : AbstractCommand
 {
     public CommandEnvelope? Inner { get; set; }
@@ -284,7 +283,7 @@ public class LateBoundMessage : MessageProtocol.Serialize.IMessageSerializable<L
 
 // 컬렉션 프로퍼티 게터 호출 횟수를 세는 픽스처 — 생성 코드가 길이 접두·루프 조건·요소 접근마다
 // 멤버를 다시 평가하는지(게터 2N+2회) 한 번만 스냅샷하는지(1회)를 실행으로 검증한다.
-[StandaloneMessage(131)]
+[Message(MessageKind.Standalone, 131)]
 public partial class SnapshotCollectionMessage
 {
     List<int> _codes = new() { 1, 2, 3 };
@@ -316,7 +315,7 @@ public partial class SnapshotCollectionMessage
 // 실행으로 고정한다. 다형이 필요하면 루트를 abstract 로 선언해 런타임 디스패치(KI-24)로 해결하며,
 // 이 픽스처처럼 의도적으로 베이스 필드만 보낼 때는 #pragma 로 경고를 끄면 된다(억제 수단 검증 포함).
 #pragma warning disable MSGPROT012
-[StandaloneMessage(132)]
+[Message(MessageKind.Standalone, 132)]
 public partial class EventHost
 {
     public EventBase? Event { get; set; }
@@ -327,7 +326,7 @@ public partial class EventHost
 
 // 그래프 밖(다른 어셈블리) 구체 메시지를 두 멤버에 걸쳐 공유하는 픽스처 — NetStandardFixtures 의
 // 메시지 타입이라 Tests 어셈블리 그래프 밖 위임 경로(EmitOutOfGraphMessage*)를 탄다.
-[StandaloneMessage(133)]
+[Message(MessageKind.Standalone, 133)]
 public partial class SharedOutOfGraphHost
 {
     public FallbackCollections? First { get; set; }
@@ -433,7 +432,7 @@ public class ManualFlagProbeMessage : MessageProtocol.Serialize.IHasIdMessageSer
 // 쓰기는 First(베이스)가 베이스 필드만 기록하고 인스턴스를 등록 → Second(파생)는 백레퍼런스.
 // 읽기는 First 가 EventBase 인스턴스를 만들어 등록하므로 Second 의 파생 캐스트가 실패한다(KI-35).
 #pragma warning disable MSGPROT012
-[StandaloneMessage(134)]
+[Message(MessageKind.Standalone, 134)]
 public partial class SharedBaseDerivedHost
 {
     public EventBase? First { get; set; }
@@ -441,7 +440,7 @@ public partial class SharedBaseDerivedHost
 }
 
 // 베이스 멤버 2곳 — 예외 없이 파생 필드가 유실되고 두 멤버가 같은 베이스 인스턴스를 공유한다(조용한 타입 좁힘).
-[StandaloneMessage(135)]
+[Message(MessageKind.Standalone, 135)]
 public partial class SharedBaseBaseHost
 {
     public EventBase? First { get; set; }
@@ -451,7 +450,7 @@ public partial class SharedBaseBaseHost
 
 // 대조군: 같은 인스턴스를 추상 멤버(런타임 디스패치 — 구체 타입이 헤더째 기록)와 구체 멤버로 공유하면
 // 파생 필드까지 온전히 복원된다. 베이스 *구체* 멤버의 선언 타입 기록(KI-29)과의 차이를 고정한다.
-[StandaloneMessage(136)]
+[Message(MessageKind.Standalone, 136)]
 public partial class SharedDispatchConcreteHost
 {
     public AbstractCommand? Command { get; set; }
