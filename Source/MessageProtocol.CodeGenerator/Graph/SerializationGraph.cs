@@ -68,7 +68,8 @@ namespace MessageProtocol.CodeGenerator.Graph
             return namedType.ContainAttribute(_references.NonIdMessageAttributeType)
                 || namedType.ContainAttribute(_references.StandaloneMessageAttributeType)
                 || namedType.ContainAttribute(_references.GroupRootMessageAttributeType)
-                || namedType.ContainAttribute(_references.GroupElementMessageAttributeType);
+                || namedType.ContainAttribute(_references.GroupElementMessageAttributeType)
+                || namedType.ContainAttribute(_references.MessageAttributeType);
         }
 
         public bool TryGetSerializableObjectType(ITypeSymbol typeSymbol, out SerializableTypeModel typeModel)

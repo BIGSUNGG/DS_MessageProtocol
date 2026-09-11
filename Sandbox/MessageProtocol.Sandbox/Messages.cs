@@ -135,3 +135,29 @@ public partial class CommandBatch
     public ShapeCommand? Head { get; set; }
     public List<ShapeCommand>? Queue { get; set; }
 }
+
+// ---------- S15: [Message] 자동 선언 (종류 추론·FullName 해시 ID) ----------
+
+[Message]                                   // 파생 [Message] 없음 → Standalone 추론
+public partial class AutoNote
+{
+    public string? Text { get; set; }
+}
+
+[Message]                                   // AutoJoin/AutoLeave 파생 존재 → GroupRoot 추론
+public partial class AutoEvent
+{
+    public long Timestamp { get; set; }
+}
+
+[Message]                                   // 메시지 속성 조상 상속 → GroupElement 추론
+public partial class AutoJoin : AutoEvent
+{
+    public int PlayerId { get; set; }
+}
+
+[Message]
+public partial class AutoLeave : AutoEvent
+{
+    public string? Reason { get; set; }
+}

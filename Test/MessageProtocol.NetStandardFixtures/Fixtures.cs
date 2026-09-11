@@ -26,3 +26,14 @@ public partial class FallbackNode
     public FallbackNode? Next { get; set; }
     public List<FallbackNode>? Children { get; set; }
 }
+
+/// <summary>
+/// 크로스 어셈블리 파생 검증용 [Message] 루트 후보 — 이 어셈블리(netstandard2.1)에는 파생이 없어 Standalone 으로
+/// 확정된다. MessageProtocol.Tests 에서 [Message] 파생 요소를 만들면 참조 어셈블리 너머 상속 인식을 증명한다.
+/// </summary>
+[Message]
+public partial class CrossProjectRoot
+{
+    public int BaseValue { get; set; }
+    public string? BaseText { get; set; }
+}

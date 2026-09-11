@@ -23,20 +23,23 @@ namespace MessageProtocol.CodeGenerator
             var groupElement = CreateAttributeProvider(context, MetadataNames.GroupElementMessageAttribute);
             var nonId = CreateAttributeProvider(context, MetadataNames.NonIdMessageAttribute);
             var generic = CreateAttributeProvider(context, MetadataNames.GenericMessageAttribute);
+            var message = CreateAttributeProvider(context, MetadataNames.MessageAttribute);
 
             var candidates = standalone.Collect()
                 .Combine(groupRoot.Collect())
                 .Combine(groupElement.Collect())
                 .Combine(nonId.Collect())
                 .Combine(generic.Collect())
+                .Combine(message.Collect())
                 .Select(static (sources, _) =>
                 {
-                    var ((((standaloneTypes, groupRootTypes), groupElementTypes), nonIdTypes), genericTypes) = sources;
+                    var (((((standaloneTypes, groupRootTypes), groupElementTypes), nonIdTypes), genericTypes), messageTypes) = sources;
                     return standaloneTypes
                         .Concat(groupRootTypes)
                         .Concat(groupElementTypes)
                         .Concat(nonIdTypes)
                         .Concat(genericTypes)
+                        .Concat(messageTypes)
                         .Distinct(NamedTypeSymbolComparer.Instance)
                         .ToImmutableArray();
                 });
@@ -46,7 +49,7 @@ namespace MessageProtocol.CodeGenerator
             context.RegisterSourceOutput(compilationAndCandidates, static (spc, source) =>
             {
                 var (compilation, types) = source;
-                var attributeReferences = new AttributeReferences(compilation);
+                var attributeReferences = new AttributeReferences(compilation, CollectMessageDescendantBases(compilation, types));
                 // 컴파일 전체 구성 선언을 먼저 훑어 중복(모듈 로드 크래시 원인)을 컴파일 진단으로 승격한다.
                 var conflicts = GenericConstruction.CollectConstructionConflicts(types, attributeReferences);
                 // 파생 메시지 타입을 가진 구체 메시지 베이스 — 이런 타입을 멤버 정적 타입으로 쓰면
@@ -153,6 +156,18 @@ namespace MessageProtocol.CodeGenerator
                 return;
             }
 
+            // [Message] 해시가 GroupElement 위치에서 0 을 조립하면 (확률 1/2^24) — 기존 [GroupElementMessage] 와
+            // 동일하게 0 은 금지다. 자동 재해시는 하지 않는다: 나중 메시지 추가로 기존 ID 가 바뀌는 와이어 파손을
+            // 만들지 않게, 이름을 바꾸거나 명시적 ID 속성으로 전환하게 안내한다.
+            if (typeMeta.IsHashIdMessage && typeMeta.IsGroupElementMessage && typeMeta.GroupElementMessageId == 0)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.GroupElementHashZero,
+                    location,
+                    typeSymbol.Name));
+                return;
+            }
+
             // 메시지 타입은 매개변수 없는 생성자로 인스턴스를 만들 수 있어야 한다 (추상 클래스·포지셔널 레코드 거부).
             if (!IsConstructibleMessageType(typeSymbol))
             {
@@ -166,8 +181,12 @@ namespace MessageProtocol.CodeGenerator
             uint wireMessageId = typeMeta.GetMessageId();
             if (conflicts.TryGetMessageIdPeers(wireMessageId, typeSymbol, out string messageIdPeers))
             {
+                // [Message] 해시 ID 충돌은 이름 변경·명시적 속성 전환이라는 전용 해결 경로가 있어 별도 진단으로 안내한다.
+                var descriptor = typeMeta.IsHashIdMessage
+                    ? DiagnosticDescriptors.HashMessageIdCollision
+                    : DiagnosticDescriptors.DuplicateWireMessageId;
                 context.ReportDiagnostic(Diagnostic.Create(
-                    DiagnosticDescriptors.DuplicateWireMessageId,
+                    descriptor,
                     location,
                     typeSymbol.Name,
                     wireMessageId.ToString("X8"),
@@ -196,6 +215,43 @@ namespace MessageProtocol.CodeGenerator
             ReportPolymorphicMembers(typeMeta, polymorphicBases, context);
 
             context.AddSource($"{GetGeneratedFileName(typeMeta.Symbol)}.g.cs", SourceText.From(serializeCode!, Encoding.UTF8));
+        }
+
+        /// <summary>
+        /// 이 컴파일에 **선언된** [Message] 타입이 상속하는 베이스 집합. [Message] 베이스의 GroupRoot 자동 승격 근거로 쓰인다.
+        /// 참조 어셈블리의 베이스는 넣지 않는다 — 그 베이스의 와이어 플래그는 선언부 어셈블리에서 이미 확정됐으므로
+        /// 소비 컴파일에서 Root 로 재해석하면 어셈블리 간 플래그 불일치가 생긴다(크로스 어셈블리 파생은 느슨한
+        /// 루트 검증 — 임의 [Message] 조상을 루트로 인정 — 로 지원한다).
+        /// </summary>
+        static ImmutableHashSet<INamedTypeSymbol> CollectMessageDescendantBases(Compilation compilation, ImmutableArray<INamedTypeSymbol> types)
+        {
+            var messageAttributeType = compilation.GetTypeByMetadataName(MetadataNames.MessageAttribute);
+            if (messageAttributeType == null)
+            {
+                return ImmutableHashSet.Create<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+            }
+
+            var builder = ImmutableHashSet.CreateBuilder<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+            foreach (var typeSymbol in types)
+            {
+                if (typeSymbol.FindAttribute(messageAttributeType) == null)
+                {
+                    continue;
+                }
+
+                for (var baseType = typeSymbol.BaseType;
+                     baseType != null && baseType.SpecialType != SpecialType.System_Object;
+                     baseType = baseType.BaseType)
+                {
+                    // 이 컴파일에 소스가 있는 베이스만 — 참조 어셈블리 베이스는 DeclaringSyntaxReferences 가 비어 있다.
+                    if (baseType.DeclaringSyntaxReferences.Length > 0)
+                    {
+                        builder.Add(baseType);
+                    }
+                }
+            }
+
+            return builder.ToImmutable();
         }
 
         /// <summary>
@@ -287,7 +343,8 @@ namespace MessageProtocol.CodeGenerator
             return typeSymbol.ContainAttribute(attributeReferences.NonIdMessageAttributeType)
                 || typeSymbol.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
                 || typeSymbol.ContainAttribute(attributeReferences.GroupRootMessageAttributeType)
-                || typeSymbol.ContainAttribute(attributeReferences.GroupElementMessageAttributeType);
+                || typeSymbol.ContainAttribute(attributeReferences.GroupElementMessageAttributeType)
+                || typeSymbol.ContainAttribute(attributeReferences.MessageAttributeType);
         }
 
         /// <summary>
@@ -416,6 +473,23 @@ namespace MessageProtocol.CodeGenerator
                         break;
                     }
                     current = current.BaseTypeMetadata;
+                }
+
+                // [Message] 조상은 그 자체로 그룹의 루트 역할을 한다 — 조상이 참조 어셈블리에 있으면
+                // 이 컴파일에서는 Standalone 으로 해석되지만(와이어 플래그는 선언부 어셈블리가 확정),
+                // 크로스 어셈블리 파생 요소의 루트 요건은 만족시킨다.
+                if (!hasRoot)
+                {
+                    for (var baseType = typeSymbol.BaseType;
+                         baseType != null && baseType.SpecialType != SpecialType.System_Object;
+                         baseType = baseType.BaseType)
+                    {
+                        if (baseType.FindAttribute(attributeReferences.MessageAttributeType) != null)
+                        {
+                            hasRoot = true;
+                            break;
+                        }
+                    }
                 }
 
                 if (!hasRoot)

@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: reference
 status: stable
 tags: [api]
-updated: 2026-09-09
+updated: 2026-09-10
 ---
 
 # Public API
@@ -32,6 +32,7 @@ updated: 2026-09-09
 
 | 속성 | 역할 |
 | ------ | ------ |
+| `Message` | 무인수 자동 선언 — 종류(Standalone/GroupRoot/GroupElement)는 계층 자동 추론, ID 는 FullName FNV-1a 해시 24비트. 제네릭 선언부에 쓰면 선언 MessageId 만 해시 대체(구성은 `[GenericMessage]` 그대로). 해시 충돌·요소 해시 0 은 `MSGPROT016`/`MSGPROT017` 로 거부 |
 | `StandaloneMessage(uint id)` | 독립 ID 메시지 |
 | `GroupRootMessage(uint id)` | 그룹 루트 |
 | `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0) |
@@ -39,7 +40,7 @@ updated: 2026-09-09
 | `GenericMessageAttribute(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 (`AllowMultiple`) — 선언부·캐리어 아무 타입에나 구성마다 부착. `ClassId` 범위 1..2^24-1. 구성 등록은 `[ModuleInitializer]` 의 `RegisterGenericConstruction<T>` 로 발행된다 |
 | `MessageCategory(MessageCategory)` | category 니블 0..15 |
 
-ID 값 범위: `0 .. 2^24-1`.
+ID 값 범위: `0 .. 2^24-1`. `[Message]` 해시 ID는 `MessageIdHash.FromFullName(fullName)`(런타임 공개 헬퍼 — FNV-1a 32 → 24비트 마스크, `Source/Shared` 단일 소스로 생성기와 동일 알고리즘)로 계산된다. FullName 은 BCL `Type.FullName` 관례(네임스페이스 점 + 중첩 `+` + 제네릭 차수 `` `n ``).
 
 ## 멤버 속성
 

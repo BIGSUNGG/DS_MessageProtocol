@@ -19,6 +19,9 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public bool IsGroupRootMessage { get; }
         public bool IsGroupElementMessage { get; }
 
+        /// <summary>[Message] 속성이 붙어 MessageId 를 FullName 해시로 얻는 타입인지 (종류 추론·충돌 진단 근거).</summary>
+        public bool IsHashIdMessage { get; }
+
         public uint StandaloneMessageId { get; }
         public uint GroupRootMessageId { get; }
         public uint GroupElementMessageId { get; }
@@ -27,6 +30,18 @@ namespace MessageProtocol.CodeGenerator.Metadata
         public string DeclarationName => Symbol.Name + (Symbol.TypeParameters.Length == 0
             ? string.Empty
             : "<" + string.Join(", ", Symbol.TypeParameters.Select(static tp => tp.Name)) + ">");
+
+        /// <summary>선언된 접근성 한정자 — partial 생성부는 원본 선언의 접근성과 일치해야 한다(public 이 아닌 메시지 지원).</summary>
+        public string AccessibilityKeyword => Symbol.DeclaredAccessibility switch
+        {
+            Accessibility.Public => "public",
+            Accessibility.Internal => "internal",
+            Accessibility.Protected => "protected",
+            Accessibility.Private => "private",
+            Accessibility.ProtectedOrInternal => "protected internal",
+            Accessibility.ProtectedAndInternal => "private protected",
+            _ => "public",
+        };
 
         /// <summary>
         /// 자동 등록([ModuleInitializer]) 가능 여부. 제네릭 타입·제네릭 컨테이닝 타입 안의 타입은 불가능하다.
@@ -57,19 +72,51 @@ namespace MessageProtocol.CodeGenerator.Metadata
             ContainingTypes = GetContainingTypes(typeSymbol);
 
             var nonIdMessageAttribute = typeSymbol.FindAttribute(references.NonIdMessageAttributeType);
+            var messageAttribute = typeSymbol.FindAttribute(references.MessageAttributeType);
             var standaloneMessageAttribute = typeSymbol.FindAttribute(references.StandaloneMessageAttributeType);
             var groupRootMessageAttribute = typeSymbol.FindAttribute(references.GroupRootMessageAttributeType);
             var groupElementMessageAttribute = typeSymbol.FindAttribute(references.GroupElementMessageAttributeType);
 
+            IsHashIdMessage = messageAttribute != null;
+
+            // [Message] 종류 자동 추론: 조상에 메시지 속성이 있으면 GroupElement,
+            // 없고 이 컴파일에 [Message] 파생이 있으면 GroupRoot, 나머지는 Standalone.
+            // [NonId] 조상은 세지 않는다 — 와이어 정체성(루트 역할)이 없다.
+            bool inferredStandalone = false, inferredGroupRoot = false, inferredGroupElement = false;
+            if (messageAttribute != null)
+            {
+                if (HasMessageAncestor(typeSymbol, references))
+                {
+                    inferredGroupElement = true;
+                }
+                else if (references.HasMessageDescendant(typeSymbol))
+                {
+                    inferredGroupRoot = true;
+                }
+                else
+                {
+                    inferredStandalone = true;
+                }
+            }
+
             IsNonIdMessage = nonIdMessageAttribute != null;
-            IsStandaloneMessage = standaloneMessageAttribute != null;
-            IsGroupRootMessage = groupRootMessageAttribute != null;
-            IsGroupElementMessage = groupElementMessageAttribute != null;
+            IsStandaloneMessage = standaloneMessageAttribute != null || inferredStandalone;
+            IsGroupRootMessage = groupRootMessageAttribute != null || inferredGroupRoot;
+            IsGroupElementMessage = groupElementMessageAttribute != null || inferredGroupElement;
             IsGroupMessage = IsGroupRootMessage || IsGroupElementMessage;
 
-            StandaloneMessageId = ReadMessageIdOrDefault(standaloneMessageAttribute);
-            GroupRootMessageId = ReadMessageIdOrDefault(groupRootMessageAttribute);
-            GroupElementMessageId = ReadMessageIdOrDefault(groupElementMessageAttribute);
+            // [Message] 는 무인수 — ID 는 항상 FullName 해시. 해시는 선언 이름만으로 결정되므로
+            // 동일 타입이 어느 컴파일에서 해시돼도 같은 값을 가진다(와이어 안정성).
+            uint fullNameHash = messageAttribute != null ? MessageIdHash.FromFullName(BuildFullName(typeSymbol)) : 0;
+            StandaloneMessageId = standaloneMessageAttribute != null
+                ? ReadMessageIdOrDefault(standaloneMessageAttribute)
+                : inferredStandalone ? fullNameHash : 0;
+            GroupRootMessageId = groupRootMessageAttribute != null
+                ? ReadMessageIdOrDefault(groupRootMessageAttribute)
+                : inferredGroupRoot ? fullNameHash : 0;
+            GroupElementMessageId = groupElementMessageAttribute != null
+                ? ReadMessageIdOrDefault(groupElementMessageAttribute)
+                : inferredGroupElement ? fullNameHash : 0;
 
             Category = ReadMessageCategoryOrDefault(typeSymbol.FindAttribute(references.MessageCategoryAttributeType));
 
@@ -88,6 +135,45 @@ namespace MessageProtocol.CodeGenerator.Metadata
         /// 모든 후보 타입의 멤버를 순회·`MemberMetadata` 생성하지 않도록 (Known-Issues KI-31).
         /// </summary>
         public MemberMetadata[] Members => _members ??= ComputeMembers(Symbol, _references);
+
+        /// <summary>조상(자기 자신 제외) 중 와이어 정체성을 가진 메시지 속성(Standalone/GroupRoot/GroupElement/Message)이 있는지.</summary>
+        static bool HasMessageAncestor(INamedTypeSymbol typeSymbol, AttributeReferences references)
+        {
+            for (var baseType = typeSymbol.BaseType;
+                 baseType != null && baseType.SpecialType != SpecialType.System_Object;
+                 baseType = baseType.BaseType)
+            {
+                if (baseType.ContainAttribute(references.StandaloneMessageAttributeType)
+                    || baseType.ContainAttribute(references.GroupRootMessageAttributeType)
+                    || baseType.ContainAttribute(references.GroupElementMessageAttributeType)
+                    || baseType.ContainAttribute(references.MessageAttributeType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 해시 대상 FullName — BCL <c>Type.FullName</c> 관례: 네임스페이스 점 + 중첩 <c>+</c> + 제네릭 차수 <c>`n</c>.
+        /// 타입 매개변수 이름은 포함하지 않는다(이름 리팩터링으로 ID 가 바뀌면 안 된다).
+        /// </summary>
+        static string BuildFullName(INamedTypeSymbol typeSymbol)
+        {
+            string ns = typeSymbol.ContainingNamespace is { IsGlobalNamespace: false } containingNamespace
+                ? containingNamespace.ToDisplayString() + "."
+                : string.Empty;
+
+            var containingTypes = new Stack<string>();
+            for (var current = typeSymbol.ContainingType; current != null; current = current.ContainingType)
+            {
+                containingTypes.Push(current.MetadataName); // MetadataName 은 제네릭 차수(`n) 를 포함한다
+            }
+
+            string nested = containingTypes.Count > 0 ? string.Join("+", containingTypes) + "+" : string.Empty;
+            return ns + nested + typeSymbol.MetadataName;
+        }
 
         static MemberMetadata[] ComputeMembers(INamedTypeSymbol typeSymbol, AttributeReferences references)
         {

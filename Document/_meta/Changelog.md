@@ -2,6 +2,18 @@
 
 문서 변경 기록. 최신이 위.
 
+## 2026-09-10 ([Message] 자동 선언 · 크로스 어셈블리 파생)
+
+- `[Message]` 무인수 자동 선언 속성 신규 (`MessageProtocol.Core`) — 종류(Standalone/GroupRoot/GroupElement)는 상속 계층에서 자동 추론(조상 메시지 → 요소, 동일 컴파일 `[Message]` 파생 → 루트, 나머지 → 독립), ID 는 타입 FullName 의 FNV-1a 32비트 → 24비트 마스크 해시. 알고리즘·FullName 형식(BCL `Type.FullName` 관례)은 런타임·생성기 공유 단일 소스 `Source/Shared/MessageIdHash.cs` 로 동결.
+- 제네릭 선언부에 `[Message]` 적용 시 선언 MessageId 만 해시 대체 — 닫힌 구성 등록은 기존 `[GenericMessage(typeof(…), ClassId)]` 수동 방식 유지(`GenericConstruction` 수용 확장).
+- 크로스 어셈블리 파생 지원 — 다른 프로젝트(참조 어셈블리)의 메시지 베이스를 상속한 클래스에 속성을 붙이면 참조 베이스 계층까지 심볼 추적해 생성·등록. `[Message]` 조상은 그룹 요소의 루트 요건을 만족(참조 베이스는 선언부 어셈블리에서 확정된 플래그 유지 — 소비 컴파일에서 재해석 없음).
+- 신규 진단: `MSGPROT016`(FullName 해시 MessageId 충돌 — 이름 변경·명시적 속성 전환 안내, 자동 재해시 없음), `MSGPROT017`(그룹 요소 위치 해시 0 거부). `AnalyzerReleases.Unshipped.md` 등록.
+- 생성 partial 선언부가 원본 접근성(`internal` 등)을 따르도록 수정(`TypeMetadata.AccessibilityKeyword`) — public 아닌 메시지 타입 지원.
+- 테스트 309→316: `[Message]` 추론 왕복(독립/그룹 object dispatch), 해시 ID 알고리즘 핀(리터럴 단언), 제네릭 선언부 해시 구성 왕복, 크로스 어셈블리 상속 요소 왕복(NetStandardFixtures 베이스), `MSGPROT016`/`MSGPROT017` 진단. 전 솔루션 빌드 0 오류, Sandbox 통과.
+- `Feature-Spec` F2·F5, `Public-API`, `GLOSSARY` 동기화. 버전 2.3.9 → 2.4.0.
+- 루트 `README.md` 에 `[Message]` 사용법 추가 — QuickStart 팁(무설정 선언 안내), 속성 표 행, 전용 서브섹션(종류 추론 규칙·FullName 해시·동결 고지·충돌 정책·크로스 어셈블리 파생·제네릭 선언부·internal 지원·`MessageIdHash` 헬퍼), 진단 표 `MSGPROT016`/`MSGPROT017` 행.
+- Sandbox S15 신규 — `[Message]` 자동 선언 실행 검증: Standalone 추론 round-trip·MessageId=FullName 해시 조립 단언, GroupRoot/GroupElement 추론 object dispatch, 요소 헤더 플래그(GroupElement 니블)·해시 ID 3바이트 빅엔디언 와이어 검증. 4체크 통과.
+
 ## 2026-09-09 (README 전면 재작성)
 
 - 루트 `README.md` 벤치마크 섹션에 경쟁제 비교 상세 확장 — `Performance-Comparison` 전체 이관: 4종 형태 × 직렬화/역직렬화 속도 8행(플랫·문자열 헤비·그래프·대형, MemoryPack 1.21.4 / MessagePack-CSharp 3.1.4, 동일 머신·동일 BDN Job), GC 카운터 할당 4행, 와이어 크기 4행, 그래프 형태 상이·프레이밍 포함 여부·변동성 공정성 주의, 라이브러리별 특성 노트. 결론 문구(전 영역 최속~동급, 참조 추적 수행하며 트리 변형보다 빠름) 포함.

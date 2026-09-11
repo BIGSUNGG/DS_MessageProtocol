@@ -1634,4 +1634,51 @@ public class GeneratorDiagnosticTests
         Assert.DoesNotContain(".Static", payload);
         Assert.Contains(".Instance", payload);
     }
+
+    [Fact]
+    public void MSGPROT016_Message_해시_충돌은_컴파일에서_거부된다()
+    {
+        // TestNs.C17819 / TestNs.C21964 — FullName FNV-1a 24비트가 0x1867E1 로 같은 쌍(오프라인 탐색으로 발굴).
+        // 자동 재해시 없이 진단으로 거부하고 이름 변경·명시적 속성 전환을 안내한다.
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation(Header + """
+            [Message]
+            public partial class C17819 { public int X { get; set; } }
+
+            [Message]
+            public partial class C21964 { public int Y { get; set; } }
+            """ + Footer);
+
+        var reported = diagnostics.Where(d => d.Id == "MSGPROT016").ToArray();
+        Assert.Equal(2, reported.Length);
+        Assert.All(reported, d => Assert.Equal(DiagnosticSeverity.Error, d.Severity));
+        Assert.Contains("Rename", reported[0].GetMessage());
+        Assert.DoesNotContain(diagnostics, d => d.Id == "MSGPROT014");   // [Message] 전용 진단으로 보고된다
+
+        // 둘 다 생성되지 않는다(등록될 수 없으므로).
+        Assert.DoesNotContain("partial class C17819", generated);
+        Assert.DoesNotContain("partial class C21964", generated);
+        Assert.Empty(compileErrors);
+    }
+
+    [Fact]
+    public void MSGPROT017_Message_요소_해시_0은_거부된다()
+    {
+        // "Zq4197766"(전역 네임스페이스)의 FNV-1a 24비트 == 0 (오프라인 탐색으로 발굴).
+        var (diagnostics, generated, compileErrors) = RunGeneratorWithCompilation("""
+            using MessageProtocol;
+
+            [GroupRootMessage(1)]
+            public partial class ZRoot { public int X { get; set; } }
+
+            [Message]
+            public partial class Zq4197766 : ZRoot { public int Y { get; set; } }
+            """);
+
+        var reported = diagnostics.Where(d => d.Id == "MSGPROT017").ToArray();
+        Assert.Single(reported);
+        Assert.Equal(DiagnosticSeverity.Error, reported[0].Severity);
+        Assert.Contains("Zq4197766", reported[0].GetMessage());
+        Assert.DoesNotContain("partial class Zq4197766", generated);
+        Assert.Empty(compileErrors);
+    }
 }

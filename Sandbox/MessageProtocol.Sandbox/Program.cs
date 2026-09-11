@@ -264,6 +264,38 @@ void Check(string name, bool condition)
         RejectsWith(() => MessageSerializer.Deserialize<CommandBatch>(batch), "Unknown reference kind 3"));
 }
 
+// ---------- S15: [Message] 자동 선언 (종류 추론·FullName 해시 ID) ----------
+{
+    // 독립 추론: 종류·ID 없이 선언만으로 Standalone 등록.
+    var note = new AutoNote { Text = "자동" };
+    var rtNote = MessageSerializer.Deserialize<AutoNote>(MessageSerializer.Serialize(note));
+    Check("S15 Standalone 추론 round-trip", rtNote.Text == "자동");
+
+    uint noteHash = MessageIdHash.FromFullName(typeof(AutoNote).FullName!);
+    Check("S15 Standalone MessageId = FullName 해시",
+        AutoNote.MessageId == MessageWireFormat.ComposeMessageId(MessageFlag.Standalone, 0, noteHash));
+
+    // 그룹 추론: 파생 존재 → 루트, 조상 상속 → 요소. object dispatch 로 요소별 복원.
+    var join = new AutoJoin { Timestamp = 123L, PlayerId = 7 };
+    var leave = new AutoLeave { Timestamp = 456L, Reason = "quit" };
+
+    var dJoin = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)join));
+    var dLeave = MessageSerializer.Deserialize(MessageSerializer.Serialize((object)leave));
+
+    Check("S15 GroupElement 추론 dispatch",
+        dJoin is AutoJoin j && j.Timestamp == 123L && j.PlayerId == 7
+        && dLeave is AutoLeave l && l.Timestamp == 456L && l.Reason == "quit");
+
+    // 와이어 검증: 헤더 플래그는 GroupElement 니블, ID 3바이트는 해시 빅엔디언.
+    uint joinHash = MessageIdHash.FromFullName(typeof(AutoJoin).FullName!);
+    var joinBytes = MessageSerializer.Serialize((object)join);
+    Check("S15 요소 헤더 플래그·해시 ID 바이트",
+        MessageWireFormat.GetFlags(joinBytes[0]) == MessageFlag.GroupElement
+        && joinBytes[1] == (byte)(joinHash >> 16)
+        && joinBytes[2] == (byte)(joinHash >> 8)
+        && joinBytes[3] == (byte)joinHash);
+}
+
 Console.WriteLine();
 Console.WriteLine(failures == 0 ? "ALL SCENARIOS PASSED" : $"{failures} SCENARIO CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;

@@ -81,12 +81,15 @@ using (var pooled = MessageSerializer.SerializePooled(msg))
 } // Dispose returns the buffer to the ArrayPool
 ```
 
+Prefer zero bookkeeping? `[Message]` (no arguments) infers the message kind from the hierarchy and derives the ID from the type's full name — see [Message kinds and categories](#message-kinds-and-categories).
+
 ## Feature Guide
 
 ### Message kinds and categories
 
 | Attribute | Purpose |
 | --------- | ------- |
+| `[Message]` | Zero-argument declaration — kind is **inferred** from the hierarchy, ID is the **full-name hash** (see below) |
 | `[StandaloneMessage(uint id)]` | Independent message with an ID |
 | `[GroupRootMessage(uint id)]` | Group root (inheritable base for a message family) |
 | `[GroupElementMessage(uint id)]` | Group element (id ≠ 0, requires a root in its inheritance hierarchy) |
@@ -123,6 +126,33 @@ public partial class Envelope<T>
     public string? Note { get; set; }
 }
 ```
+
+#### `[Message]` — auto-inferred kinds and hash IDs
+
+`[Message]` declares a message with **no kind and no ID** — both are derived for you:
+
+- **Kind inference**: a base in the hierarchy carrying any message attribute → **GroupElement**; otherwise, if another `[Message]` type in the same compilation derives from it → **GroupRoot**; otherwise → **Standalone**.
+- **Hash ID**: the ID is the FNV-1a 32-bit hash of the type's full name (BCL `Type.FullName` conventions: namespace dots, `+` for nesting, `` `n `` arity), masked to the wire's 24 bits. The algorithm and name format are **frozen** — renaming a type changes its ID; both peers must ship the same name.
+
+```csharp
+[Message]                                    // no derived [Message] types → Standalone
+public partial class ChatText { public string? Text { get; set; } }
+
+[Message]                                    // AutoEvent children derive → GroupRoot
+public partial class AutoEvent { public long Timestamp { get; set; } }
+
+[Message]                                    // message-attributed ancestor → GroupElement
+public partial class PlayerJoined : AutoEvent { public int PlayerId { get; set; } }
+
+[Message]                                    // same for PlayerLeft, …
+public partial class PlayerLeft : AutoEvent { public string? Reason { get; set; } }
+```
+
+- **Collisions are compile errors, not re-hashes**: two `[Message]` types whose full names hash to the same 24-bit value fail with `MSGPROT016` (rename one, or switch it to an explicit id attribute). A group element whose hash resolves to `0` fails with `MSGPROT017`. IDs never silently change after you ship.
+- **Cross-assembly derivation works**: in another project you can derive from a message base compiled elsewhere (e.g. a shared protocol DLL) — just apply `[Message]` (or any explicit attribute) to the derived type and the generator follows the referenced base chain, registering the new element.
+- **Generic declarations**: `[Message]` on an open generic declaration replaces the declaration's MessageId with its hash; closed constructions still use the manual `[GenericMessage(typeof(...), ClassId = n)]` declarations shown above.
+- **Non-public types are supported**: generated partials follow the declared accessibility (`internal` works).
+- `MessageIdHash.FromFullName(name)` (runtime helper, same single source as the generator) computes the ID for a given full name — handy for diagnostics and tooling.
 
 ### Supported member types
 
@@ -177,6 +207,8 @@ The generated text is deterministic. The generator also validates your protocol 
 | `MSGPROT012` | **Warning** — member declared as a *concrete* base with derived message types: derived members are silently dropped (make the base `abstract` to get polymorphic dispatch instead) |
 | `MSGPROT013` | `MessageCategory` out of range (0..15) |
 | `MSGPROT014` | Duplicate composed wire MessageId across two message types |
+| `MSGPROT016` | `[Message]` full-name hash collision — rename one type or switch it to an explicit id attribute |
+| `MSGPROT017` | `[Message]` group element hash resolved to `0` (reserved) — rename or use `[GroupElementMessage]` |
 
 ### Runtime `MessageSerializer`
 

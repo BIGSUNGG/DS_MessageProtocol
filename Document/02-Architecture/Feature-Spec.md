@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: architecture
 status: approved
 tags: [feature-spec, rewrite, parity]
-updated: 2026-09-09
+updated: 2026-09-10
 ---
 
 # Feature Spec — 재작성 프로젝트 지원 기능
@@ -31,12 +31,13 @@ updated: 2026-09-09
 
 | 속성 | 역할 |
 | -------------------------------- | ---------------------------- |
+| `Message` | 무인수 자동 선언 — 종류(Standalone/GroupRoot/GroupElement)는 계층에서 자동 추론, ID 는 타입 FullName 의 FNV-1a 해시 24비트 (`MessageIdHash` 단일 소스, 알고리즘 동결). 조상에 메시지 속성이 있으면 GroupElement, 없고 동일 컴파일에 `[Message]` 파생이 있으면 GroupRoot, 나머지 Standalone. 해시 충돌은 `MSGPROT016`, 요소 위치 해시 0 은 `MSGPROT017` 로 거부(자동 재해시 없음 — 와이어 안정성). 제네릭 선언부에 쓰면 선언 MessageId 만 해시로 대체(구성 선언은 기존 `[GenericMessage]`). `[Message]` 조상은 그룹 요소의 루트 요건을 만족(참조 어셈블리 베이스 상속 지원) |
 | `StandaloneMessage(uint id)` | 독립 ID 메시지 |
 | `GroupRootMessage(uint id)` | 그룹 루트 |
 | `GroupElementMessage(uint id)` | 그룹 요소 (id ≠ 0, 상속 계층에 루트 필수) |
 | `NonIdMessage` | ID 없는 메시지 |
 | `MessageCategory(Category0..15)` | 카테고리 니블 — 값 범위 **0 .. 15**(벗어나면 `MSGPROT013`, 조용한 `& 0x0F` 마스킹 없음). `[Flags]` 열거형이라 `Category1`·`Category4` 를 결합한 값(5)은 **다른 단일 카테고리로 조용히 해석**되고 `CategoryMask`(0x0F)는 `Category15` 와 구분되지 않으므로, 항상 단일 카테고리 멤버만 쓴다 |
-| `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). `ClassId` 범위 **1 .. 2^24-1**(MessageId 와 같은 3바이트 와이어 슬롯 — 벗어나면 컴파일 진단). 제네릭 선언에는 `StandaloneMessage` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
+| `GenericMessage(typeof(닫힌 구성), ClassId)` | 제네릭 구성 선언 — 선언부·캐리어 등 임의 타입 선언에 구성마다 반복 부착 (`AllowMultiple`). `ClassId` 범위 **1 .. 2^24-1**(MessageId 와 같은 3바이트 와이어 슬롯 — 벗어나면 컴파일 진단). 제네릭 선언에는 `StandaloneMessage` 또는 `[Message]` 필수, 구성 미선언 직렬화는 예외 ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)) |
 
 - 메시지 타입은 `partial` 선언이 필수.
 - 그룹 계층 규칙 위반은 컴파일 진단으로 거부 (F5).
@@ -88,6 +89,7 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
 - `[ModuleInitializer]` 등록 코드 생성 → 모듈 로드 시 런타임에 자동 등록 (수동 등록 불필요).
 - Incremental generator. 생성 텍스트는 **결정적**이다 — 로컬 이름 번호가 이미트 단위 상태(`EmitState`)라 같은 입력은 항상 같은 출력을 내고, 컴파일러 프로세스의 이전 컴파일 이력에 의존하지 않는다(Roslyn 의 생성 출력 비교가 무관한 편집에 무효화되지 않음 — Known-Issues KI-3). 측정(KI-10 측정 기록): 출력 스텝 자체는 `Compilation` 의존 때문에 매 편집 재실행되지만, 생성 텍스트가 동일하므로 Roslyn 의 출력 비교가 **생성 트리 교체·재컴파일을 막는다** — 남은 비용은 편집당 생성기 CPU 뿐이다.
 - 제네릭 메시지 타입 지원: `[GenericMessage(typeof(닫힌 구성), ClassId = n)]` 단일 속성으로 구성 선언(선언부·캐리어 무관) — 헤더 플래그 Generic(0) + MessageId 뒤에 구성 클래스 ID 24비트 와이어, 선언 구성은 모듈 로드 시 자동 등록(송수신 무설정), 다중 타입 매개변수 지원. 제네릭 + 스탠드얼론 선언은 항상 제네릭 와이어이며 **구성 선언 필수**(미선언 직렬화는 예외) ([ADR-0005](../05-Decisions/ADR-0005-Generic-Attribute-Unification.md)).
+- `[Message]` 자동 추론 지원: 종류·ID 없이 선언만으로 메시지 등록 — 종류는 상속 계층에서 추론하고 ID 는 FullName FNV-1a 해시(24비트 마스크). 파생 클래스는 다른 프로젝트(참조 어셈블리)의 메시지 베이스를 상속해도 속성만 붙이면 인식·등록된다. 생성 partial 선언부는 원본 접근성(`public`/`internal` 등)을 그대로 따른다.
 - 수동 구현 지원: 생성기 없이 동일한 계약 형태(`IMessageSerializable<T>` 등)를 직접 구현·등록 가능. 수동 구현 시 헤더는 사용자가 직접 쓴다.
 - 진단 (Legacy 기준, 동등한 검출 필요):
   - `MSGPROT001` 메시지 타입은 partial 필수
@@ -105,6 +107,8 @@ decimal 와이어 16바이트는 재해석 전에 flags 를 검증한다 — 스
   - `MSGPROT013` `MessageCategory` 값 범위 초과(0..15) — 방치하면 `& 0x0F` 마스킹으로 와이어 MessageId 가 달라져 다른 메시지와 ID 충돌(모듈 로드 실패) 또는 피어 오라우팅. Legacy에 없는 신규 진단
   - `MSGPROT014` 와이어 MessageId 중복 — 조립된 ID(flags+category+24비트 값)가 같은 두 메시지 타입. 방치하면 모듈 이니셜라이저 등록 충돌로 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단
   - `MSGPROT015` 제네릭 구성 런타임 키 중복 — 서로 다른 두 제네릭 선언이 같은 (MessageId, ClassId) 조합을 쓰면 `RegisterGenericReaderInvoker` 가 모듈 이니셜라이저에서 충돌해 `TypeInitializationException`(어셈블리 로드 실패). Legacy에 없는 신규 진단
+  - `MSGPROT016` `[Message]` FullName 해시 MessageId 충돌 — 24비트 해시가 같은 두 `[Message]` 타입. 이름 변경·명시적 ID 속성 전환으로 해결하게 안내(자동 재해시는 와이어 파손 위험으로 하지 않음)
+  - `MSGPROT017` `[Message]` 그룹 요소 해시 0 — 요소 위치의 FullName 해시가 0(예약)이면 거부. 이름 변경·명시적 `[GroupElementMessage]` 전환 안내
 
 ## F6. 런타임 `MessageSerializer`
 

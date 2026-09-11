@@ -33,7 +33,8 @@ namespace MessageProtocol.CodeGenerator.Metadata
             return namedType.ContainAttribute(references.NonIdMessageAttributeType)
                 || namedType.ContainAttribute(references.StandaloneMessageAttributeType)
                 || namedType.ContainAttribute(references.GroupRootMessageAttributeType)
-                || namedType.ContainAttribute(references.GroupElementMessageAttributeType);
+                || namedType.ContainAttribute(references.GroupElementMessageAttributeType)
+                || namedType.ContainAttribute(references.MessageAttributeType);
         }
     }
 }

@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: context
 status: stable
 tags: [ai, context]
-updated: 2026-09-08
+updated: 2026-09-10
 ---
 
 # CONTEXT — DS_MessageProtocol
@@ -34,7 +34,7 @@ updated: 2026-09-08
 6. `05-Decisions/` ADR ([ADR-0001](../05-Decisions/ADR-0001-Rewrite-Bootstrap.md))
 7. [CONVENTIONS](./CONVENTIONS.md)
 
-## 패키지 요약 (2.3.9)
+## 패키지 요약 (2.4.0)
 
 | NuGet 패키지 | 설명 |
 | -------------- | ------ |

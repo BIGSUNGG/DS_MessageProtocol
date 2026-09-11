@@ -3,6 +3,7 @@ namespace MessageProtocol.CodeGenerator.Reference
     internal static class MetadataNames
     {
         public const string NonIdMessageAttribute = "MessageProtocol.NonIdMessageAttribute";
+        public const string MessageAttribute = "MessageProtocol.MessageAttribute";
         public const string GroupRootMessageAttribute = "MessageProtocol.GroupRootMessageAttribute";
         public const string GroupElementMessageAttribute = "MessageProtocol.GroupElementMessageAttribute";
         public const string StandaloneMessageAttribute = "MessageProtocol.StandaloneMessageAttribute";

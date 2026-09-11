@@ -15,6 +15,17 @@ namespace MessageProtocol
         }
     }
 
+    /// <summary>
+    /// 무인수 메시지 선언. 종류(Standalone/GroupRoot/GroupElement)는 상속 계층에서 자동 추론되고
+    /// MessageId 값은 타입 FullName 의 FNV-1a 해시(24비트, <see cref="MessageIdHash"/>)로 결정된다.
+    /// 조상에 메시지 속성이 있으면 GroupElement, 없고 동일 컴파일에 [Message] 파생이 있으면 GroupRoot, 나머지는 Standalone.
+    /// 해시 충돌·GroupElement 위치의 0 은 진단 에러로 거부된다. 명시적 ID 가 필요하면 기존 속성을 쓴다.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
+    public class MessageAttribute : Attribute
+    {
+    }
+
     /// <summary>독립 ID 메시지. 헤더 4바이트.</summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
     public class StandaloneMessageAttribute : Attribute

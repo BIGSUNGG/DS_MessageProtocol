@@ -3,7 +3,7 @@ project: DS_MessageProtocol
 type: context
 status: stable
 tags: [ai, glossary]
-updated: 2026-08-31
+updated: 2026-09-10
 ---
 
 # Glossary
@@ -21,6 +21,8 @@ updated: 2026-08-31
 | MessageCategory | 헤더 하위 니블 0..15 (`MessageCategoryAttribute`) |
 | NonId | ID 없는 메시지. 헤더 1바이트. object `Deserialize` 불가 |
 | Standalone / GroupRoot / GroupElement | ID를 가진 메시지 종류. object deserialize 대상 |
+| `[Message]` 자동 선언 | 무인수 속성 — 종류는 계층 추론(조상 메시지 → 요소, 동일 컴파일 파생 → 루트, 나머지 → 독립), ID 는 FullName 해시. 참조 어셈블리 베이스 상속도 인식 |
+| FullName 해시 ID | `[Message]` 의 자동 ID — 타입 FullName 의 FNV-1a 32비트를 24비트로 마스크 (`MessageIdHash`, 알고리즘 동결) |
 | MessageIgnore / MessageInclude | 멤버 제어 속성. **`MessageProtocol` 네임스페이스 소속** (v2에서 전역 네임스페이스에서 이동 — Legacy 버그 수정) |
 | ModuleInitializer | 생성 코드가 모듈 로드 시 `Register*` 를 호출하는 훅 |
 | Shared Link | `Source/Shared`를 Core·Generator에 Compile Link로 공유 (와이어 규칙 단일 소스) |

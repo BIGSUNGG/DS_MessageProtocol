@@ -24,7 +24,8 @@ namespace MessageProtocol.CodeGenerator
         messageId = 0;
 
         if (!declaration.IsGenericType
-            || !declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType))
+            || !(declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
+                || declaration.ContainAttribute(attributeReferences.MessageAttributeType)))
         {
             return false;
         }
@@ -267,9 +268,10 @@ namespace MessageProtocol.CodeGenerator
             var declaration = construction.OriginalDefinition;
             if (!construction.IsGenericType
                 || !declaration.IsGenericType
-                || !declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType))
+                || !(declaration.ContainAttribute(attributeReferences.StandaloneMessageAttributeType)
+                    || declaration.ContainAttribute(attributeReferences.MessageAttributeType)))
             {
-                ReportInvalidConstruction(context, location, host, $"'{construction.ToDisplayString()}' is not a construction of a generic message declaration ('[StandaloneMessage]' required)");
+                ReportInvalidConstruction(context, location, host, $"'{construction.ToDisplayString()}' is not a construction of a generic message declaration ('[StandaloneMessage]' or '[Message]' required)");
                 return false;
             }
 

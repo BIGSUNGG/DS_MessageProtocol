@@ -29,7 +29,7 @@ namespace MessageProtocol.CodeGenerator.Generate
 
             string baseAndInterfaces = GetBaseAndInterfaces(typeMeta, attributeReferences);
             string staticHidingModifier = GetStaticHidingModifier(typeMeta);
-            sb.AppendLine($"{declarationIndent}public partial {typeMeta.DeclarationKeyword} {typeMeta.DeclarationName}{baseAndInterfaces}");
+            sb.AppendLine($"{declarationIndent}{typeMeta.AccessibilityKeyword} partial {typeMeta.DeclarationKeyword} {typeMeta.DeclarationName}{baseAndInterfaces}");
             sb.AppendLine($"{declarationIndent}{{");
             sb.AppendLine($"{declarationIndent}    public {staticHidingModifier}static uint MessageId => {typeMeta.GetMessageId()};");
             if (typeMeta.CanUseModuleInitializer)

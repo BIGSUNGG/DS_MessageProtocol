@@ -117,5 +117,21 @@ namespace MessageProtocol.CodeGenerator
             category: Category,
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor HashMessageIdCollision = new(
+            id: "MSGPROT016",
+            title: "[Message] full-name hash MessageId collision",
+            messageFormat: "Message type '{0}' composes wire MessageId 0x{1} from its full-name hash, which is also composed by {2}. Rename one of the types or switch it to an explicit id attribute ([StandaloneMessage]/[GroupRootMessage]/[GroupElementMessage]) — the 24-bit hash space cannot be re-probed without breaking already-shipped message ids.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor GroupElementHashZero = new(
+            id: "MSGPROT017",
+            title: "[Message] group element hash resolved to 0",
+            messageFormat: "The [Message] type '{0}' is inferred as a group element whose full-name hash is 0, which is reserved. Rename the type or use an explicit [GroupElementMessage] id — group element ids cannot be 0.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }
